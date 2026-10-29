@@ -1,8 +1,9 @@
 // Swipe sideways to pick a plan; pull the front card down to buy it.
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { Portal } from './Portal';
 import { HoloCard } from './HoloCard';
-import { fmtMoney, type Plan } from '../api';
+import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
 
 interface Props {
@@ -11,13 +12,27 @@ interface Props {
   onIndex: (i: number) => void;
   onPull: () => void;
   disabled?: boolean;
+  months: number;
+  /** optional shared pull distance, so the page can react while the card is pulled */
+  pull?: MotionValue<number>;
+  /** optional shared hold amount (0…1 while the front card is pressed) */
+  hold?: MotionValue<number>;
 }
 
 const PULL = 110;
 
-function Slot({ i, pos, pull, plan, active, onTap }: {
-  i: number; pos: MotionValue<number>; pull: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void;
+function Slot({ i, pos, pull, hold, fallEnd, plan, active, onTap, months }: {
+  i: number; pos: MotionValue<number>; pull: MotionValue<number>; hold: MotionValue<number>; fallEnd: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number;
 }) {
+  // pressed in slightly while held; past the pull point it starts to fall into the portal:
+  // it shrinks, tips forward and fades as the pull carries it down
+  // fall progress: 0 at the pull point, 1 with the card's centre in the portal
+  const fall = useTransform([pull, fallEnd] as MotionValue<number>[], ([p, end]: number[]) =>
+    (active ? Math.max(0, Math.min(1, (p - PULL * 1.05) / (end - PULL * 1.05))) : 0));
+  const press = useTransform([hold, fall] as MotionValue<number>[], ([h, f]: number[]) => (!active ? 1 : (1 - h * 0.035) * (1 - f * 0.92)));
+  const tip = useTransform(fall, (f) => f * 62);
+  const fade = useTransform(fall, (f) => (f < 0.6 ? 1 : Math.max(0, 1 - (f - 0.6) / 0.4)));
+  const t = plan.terms?.find((x) => x.months === months) ?? plan.terms?.[0];
   const off = useTransform(pos, (p) => i - p);
   const x = useTransform(off, (o) => `${o * 74}%`);
   const scale = useTransform(off, (o) => 1 - Math.min(Math.abs(o), 1.2) * 0.2);
@@ -34,10 +49,11 @@ function Slot({ i, pos, pull, plan, active, onTap }: {
         animate={{ y: 0, rotate: 0, opacity: 1, scale: 1 }}
         transition={{ type: 'spring', stiffness: 120, damping: 17, delay: 0.35 + i * 0.12 }}
       >
-        <motion.div animate={active ? { y: [0, -8, 0] } : { y: 0 }} transition={active ? { duration: 4.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.4 }}>
+        <motion.div style={{ scale: press, rotateX: tip, opacity: fade, transformPerspective: 700 }}>
           <HoloCard
             planId={plan.id}
-            credit={plan.available ? fmtMoney(plan.credit!, plan.currency!) : undefined}
+            credit={t ? fmtMoney(t.credit, t.currency) : undefined}
+            term={t ? termLabel(t.months) : undefined}
             interactive={active}
             idle={active}
           />
@@ -47,18 +63,45 @@ function Slot({ i, pos, pull, plan, active, onTap }: {
   );
 }
 
-export function PlanCarousel({ plans, index, onIndex, onPull, disabled }: Props) {
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold }: Props) {
   const pos = useMotionValue(index);
-  const pull = useMotionValue(0);
+  const ownPull = useMotionValue(0);
+  const pull = sharedPull ?? ownPull;
   const axis = useRef<'x' | 'y' | null>(null);
+  // holding the front card: speed lines appear and the card presses in
+  const ownHold = useMotionValue(0);
+  const hold = sharedHold ?? ownHold;
+  // where the fall ends: the card's centre in the portal (half a card + the portal's distance below it)
+  const fallEnd = useMotionValue(PULL + 200);
+  const [holding, setHolding] = useState(false);
+  const off = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const press = () => {
+    if (disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    clearTimeout(off.current);
+    setHolding(true);
+    animate(hold, 1, { duration: 0.18, ease: 'easeOut' });
+  };
+  const release = () => {
+    animate(hold, 0, { duration: 0.28, ease: 'easeOut' });
+    clearTimeout(off.current);
+    // pause the portal once everything has faded and the card is back (or has fallen in)
+    const settle = () => { off.current = setTimeout(() => (pull.get() < 1 ? setHolding(false) : settle()), 300); };
+    settle();
+  };
   const width = useRef(260);
   const stage = useRef<HTMLDivElement>(null);
 
   useEffect(() => { animate(pos, index, { type: 'spring', stiffness: 260, damping: 30 }); }, [index, pos]);
-  useEffect(() => { width.current = (stage.current?.querySelector('.card-wrap') as HTMLElement)?.offsetWidth || 260; });
+  useEffect(() => {
+    width.current = (stage.current?.querySelector('.card-wrap') as HTMLElement)?.offsetWidth || 260;
+    fallEnd.set(width.current / 0.63 / 2 + 130); // matches --land (170px) minus the zone's 40px overlap
+  });
 
   const onPan = (_: PointerEvent, info: PanInfo) => {
-    if (!axis.current) axis.current = Math.abs(info.offset.x) > Math.abs(info.offset.y) ? 'x' : 'y';
+    if (!axis.current) {
+      axis.current = Math.abs(info.offset.x) > Math.abs(info.offset.y) ? 'x' : 'y';
+      if (axis.current === 'x') release(); // swiping sideways, not pulling
+    }
     if (axis.current === 'x') {
       const step = width.current * 0.74;
       const p = index - info.offset.x / step;
@@ -79,10 +122,16 @@ export function PlanCarousel({ plans, index, onIndex, onPull, disabled }: Props)
       else animate(pos, index, { type: 'spring', stiffness: 260, damping: 30 });
     } else if (axis.current === 'y') {
       if (!disabled && info.offset.y > PULL) {
-        tg.tap('heavy');
-        animate(pull, 420, { duration: 0.32, ease: [0.4, 0, 1, 1] }).then(() => {
+        // the card falls into the portal, then the review opens
+        animate(pull, fallEnd.get(), { duration: 0.46, ease: [0.5, 0, 0.9, 0.45] }).then(() => {
+          tg.tap('heavy');
           onPull();
-          setTimeout(() => animate(pull, 0, { type: 'spring', stiffness: 200, damping: 24 }), 350);
+          // the sheet now covers the stage: put the card back and close the portal at once,
+          // so nothing keeps animating behind the sheet
+          clearTimeout(off.current);
+          pull.set(0);
+          hold.set(0);
+          setHolding(false);
         });
       } else {
         animate(pull, 0, { type: 'spring', stiffness: 300, damping: 22 });
@@ -97,6 +146,9 @@ export function PlanCarousel({ plans, index, onIndex, onPull, disabled }: Props)
       className="carousel"
       onPan={onPan}
       onPanEnd={onPanEnd}
+      onPointerDown={press}
+      onPointerUp={release}
+      onPointerCancel={release}
       role="listbox"
       aria-label="Plans"
       tabIndex={0}
@@ -106,9 +158,11 @@ export function PlanCarousel({ plans, index, onIndex, onPull, disabled }: Props)
         if (e.key === 'Enter' && !disabled) onPull();
       }}
     >
+      <Portal hold={hold} pull={pull} max={PULL} on={holding} />
       {plans.map((p, i) => (
-        <Slot key={p.id} i={i} pos={pos} pull={pull} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} />
+        <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} fallEnd={fallEnd} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} />
       ))}
+      <Portal hold={hold} pull={pull} max={PULL} on={holding} lip />
     </motion.div>
   );
-}
+});

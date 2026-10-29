@@ -14,10 +14,11 @@ import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
+import { sendPayment } from './testnet-transfer.mjs';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const require = createRequire(path.join(here, '../server/package.json'));
-const { TonClient, WalletContractV4, internal, toNano, fromNano } = require('@ton/ton');
+const { TonClient, WalletContractV4, toNano, fromNano } = require('@ton/ton');
 const { mnemonicNew, mnemonicToPrivateKey } = require('@ton/crypto');
 
 function loadEnv(file) {
@@ -81,12 +82,7 @@ if (bal < need) {
 console.log(`✓ Funded: ${fromNano(bal)} GRAM\n`);
 
 async function send(to, nano, memo) {
-  const seqno = await contract.getSeqno();
-  await contract.sendTransfer({
-    seqno, secretKey: key.secretKey,
-    messages: [internal({ to, value: BigInt(nano), body: memo, bounce: false })],
-  });
-  for (let i = 0; i < 60 && (await contract.getSeqno()) === seqno; i++) await sleep(2000);
+  await sendPayment(contract, key.secretKey, to, nano, memo);
 }
 async function waitStatus(id, want, ms = 180000) {
   const end = Date.now() + ms;

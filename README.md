@@ -98,7 +98,7 @@ Telegram's rules say digital goods sold inside bots and Mini Apps must be paid i
 - **Before the charge:** Telegram sends a `pre_checkout_query`. The bot approves it only if the order belongs to that buyer, the amount matches and the 20-minute price hold hasn't run out.
 - **After the charge:** the `successful_payment` message pays the order. Its charge id is recorded once, so a repeated update never buys twice.
 - **Refunds:** for a Stars order, the admin bot's **Refund Stars** button really refunds through `refundStarPayment`, then marks the order refunded. Delivered orders can't be refunded.
-- **Pricing:** `stars = cost × (1 + STARS_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it, not what buyers pay for Stars, so the price covers your cost. Buyers pay noticeably more in Stars than in GRAM because of Telegram's and the app stores' cut.
+- **Pricing:** Stars are priced to cost the buyer about the same as GRAM (`GRAM price in USD ÷ STAR_BUYER_USD`), but never below `cost × (1 + STARS_MIN_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it. Because Telegram and the app stores keep a cut, the floor usually wins, so Stars stay somewhat dearer than GRAM; they never sell at a loss.
 - Stars you earn are withdrawn to TON through Fragment after Telegram's holding period, so you pay for codes before that money arrives.
 - Without `BOT_TOKEN` (local demo) Stars runs in demo mode: no invoice, the payment is simulated.
 
@@ -148,10 +148,17 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 | `RATE_MAX_AGE_MIN` | Mainnet only: pause new orders when the rate is older than this (default 10) |
 | `STARS` | `off` to hide the Stars option (default on) |
 | `STAR_USD` | What one Star is worth to you on withdrawal, in USD (default `0.013`) |
-| `STARS_MARGIN` | Markup for Stars orders (defaults to `MARGIN`) |
+| `APPLE_PRICE_SYNC` | `off` to stop syncing in-app prices from the App Store (default on) |
+| `STAR_BUYER_USD` | Roughly what a buyer pays per Star, in USD (default `0.02`), used to match the GRAM price |
+| `STARS_MIN_MARGIN` | Smallest markup on Stars orders at the payout rate (default `0.03`) |
 | `TEST_PRICE_SCALE` | Testnet only: multiply GRAM amounts (e.g. `0.01`) so faucet coins cover test buys |
 
 ## How pricing works
+
+- **Apple's prices sync automatically.** At startup and every 6 hours, the server reads the Claude app's App Store page for `STORE_REGION` and picks up the four plans: Pro monthly and yearly, Max 5× and Max 20×. A change is applied to new quotes and posted to the admin bot. A page it can't read, a missing plan, or a price that more than doubles or halves changes nothing and alerts you instead. `/price` still overrides, and `/prices` shows where each price comes from (set by you, App Store, or default). Set `APPLE_PRICE_SYNC=off` to stop it.
+- **GRAM prices are live.** The rate refreshes every 30 s, and the app refreshes its prices every 30 s and when it comes back to the front.
+- **Held quotes:** opening the review sheet locks the price for 20 minutes (`POST /api/quotes`), and the order uses exactly that price.
+
 
 - `server/src/catalog.js` holds the Claude in-app price for each App Store country (October 2026 data). Re-check these regularly.
 - The credit needed is the in-app price, plus a tax buffer for the US (+10%) and Canada (+15%), where App Store prices exclude sales tax.

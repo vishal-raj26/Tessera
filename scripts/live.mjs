@@ -10,6 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import { BUYER_COMMANDS } from './bot-commands.mjs';
 
 const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const server = path.join(root, 'server');
@@ -80,7 +81,7 @@ if (env.BOT_TOKEN) {
   try {
     const me = await api('getMe', {});
     await api('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Open', web_app: { url: publicUrl } } });
-    await api('setMyCommands', { commands: [{ command: 'start', description: 'Open Tessera' }] });
+    await api('setMyCommands', { commands: BUYER_COMMANDS }); // same menu as bot:setup, never a shorter one
     console.log(`✓ @${me.username} now opens ${publicUrl} from its menu button. Open Telegram → @${me.username} → Open.`);
   } catch (e) {
     console.warn(`! Could not set up the bot: ${e.message}`);
