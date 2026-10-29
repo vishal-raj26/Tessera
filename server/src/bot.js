@@ -26,10 +26,11 @@ const PLAN = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 const isStars = (o) => o?.method === 'stars';
+const term = (o) => (o?.months === 12 ? '1 year' : (o?.months ?? 1) === 1 ? '1 month' : `${o.months} months`);
 
 function describe(o) {
   return [
-    `<b>Claude ${PLAN[o.plan_id] ?? o.plan_id}</b> · ${o.currency} ${o.face_value} credit`,
+    `<b>Claude ${PLAN[o.plan_id] ?? o.plan_id}, ${term(o)}</b> · ${o.currency} ${o.face_value} credit`,
     `Status: <b>${esc(o.status)}</b>`,
     isStars(o)
       ? `Paid with Stars: ${o.stars} ⭐${o.charge_id ? '' : ' (not paid yet)'}`
@@ -74,6 +75,8 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       case 'extra':
         if (e.stars != null) return toAdmins(`➕ <b>Unexpected Stars payment</b> of ${e.stars} ⭐\nCharge <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
         return toAdmins(`➕ <b>Extra payment</b> of ${fromNano(e.valueNano)} GRAM\nTx <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
+      case 'credit_unrecognised':
+        return toAdmins(`🔎 <b>Payment not recognised</b>: ${esc(e.reason)}\n${fromNano(e.valueNano)} GRAM · memo <code>${esc(e.comment)}</code>\nFrom <code>${esc(e.source)}</code>\nTx <code>${esc(e.hash)}</code>\nCheck it in an explorer. If the money arrived, fulfil or refund by hand.${o ? `\n\n${describe(o)}` : ''}`, o ? buttons(o) : undefined);
       case 'stars_unmatched':
         return toAdmins(`❓ <b>Stars payment for an unknown order</b>\n${e.amount} ⭐ from <a href="tg://user?id=${esc(e.userId)}">${esc(e.userId)}</a>\nOrder <code>${esc(e.orderId)}</code>\nCharge <code>${esc(e.chargeId)}</code>`);
       case 'unmatched':
@@ -81,7 +84,9 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       case 'refunded':
         return toBuyer(o, isStars(o) ? `Your ${o.stars} Stars were refunded. Sorry it didn’t work out this time.` : 'Your order was refunded. Sorry it didn’t work out this time.');
       case 'renewal':
-        return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} month renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up with GRAM in Tessera.`);
+        if (o.months === 12) return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} year renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up in Tessera.`);
+        if ((o.months ?? 1) > 1) return toBuyer(o, `The credit you bought for ${term(o)} of Claude ${PLAN[o.plan_id]} runs out in about 3 days. After that Apple charges your card for each month. You can top up in Tessera.`);
+        return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} month renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up in Tessera.`);
       case 'rate_stale':
         return toAdmins(`⏸ <b>GRAM price feed is stale</b> (${e.minutes} min). New orders are paused until it recovers.`);
       case 'rate_ok':
@@ -94,11 +99,11 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
   /** Stars invoice link for an order, opened in the Mini App with Telegram.WebApp.openInvoice. */
   function createInvoice(o) {
     return api('createInvoiceLink', {
-      title: `Claude ${PLAN[o.plan_id]}`,
-      description: `${o.currency} ${o.face_value} App Store credit for one month of Claude ${PLAN[o.plan_id]}. Code delivered in the app.`,
+      title: `Claude ${PLAN[o.plan_id]}, ${term(o)}`,
+      description: `${o.currency} ${o.face_value} App Store credit for ${o.months === 12 ? 'a year' : term(o)} of Claude ${PLAN[o.plan_id]}. Code delivered in the app.`,
       payload: o.id,
       currency: 'XTR',
-      prices: [{ label: `Claude ${PLAN[o.plan_id]}, 1 month`, amount: o.stars }],
+      prices: [{ label: `Claude ${PLAN[o.plan_id]}, ${term(o)}`, amount: o.stars }],
     });
   }
 
@@ -160,7 +165,7 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     if (cmd.startsWith('/start')) {
       return send(chat, isAdmin
         ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices — in-app prices we sell against\n/price &lt;plan&gt; &lt;amount&gt; — change one\n\nBuyer messages land here. Reply to one to answer that buyer.'
-        : 'Claude Pro and Max, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', isAdmin ? undefined : openApp);
+        : 'Claude Pro and Max, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', openApp);
     }
     if (cmd.startsWith('/terms')) return send(chat, TERMS);
     if (cmd.startsWith('/paysupport') || cmd.startsWith('/help')) {
