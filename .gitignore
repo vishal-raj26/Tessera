@@ -1,0 +1,11 @@
+node_modules
+dist
+data
+.env
+scripts/.testnet-*.json
+*.db
+*.db-*
+.env.*
+!.env.example
+.DS_Store
+*.log

@@ -1,0 +1,10 @@
+# docker compose up -d   (put your settings in server/.env; the database lives in the tessera-data volume)
+services:
+  tessera:
+    build: .
+    env_file: server/.env
+    ports: ["8787:8787"]
+    volumes: ["tessera-data:/data"]
+    restart: unless-stopped
+volumes:
+  tessera-data:

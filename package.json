@@ -1,0 +1,13 @@
+{
+  "name": "tessera",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix web install",
+    "testnet:setup": "node scripts/testnet-setup.mjs",
+    "live": "node scripts/live.mjs",
+    "testnet:buy": "node scripts/testnet-buy.mjs",
+    "test": "npm --prefix server test && npm --prefix server run test:e2e",
+    "dev": "npm --prefix server run dev & npm --prefix web run dev"
+  }
+}
