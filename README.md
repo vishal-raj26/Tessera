@@ -1,6 +1,6 @@
 # Tessera
 
-A Telegram Mini App for buying **App Store credit for a Claude Pro / Max plan with GRAM**. The user picks a plan and pays from their TON wallet. They get the code(s) and a short guide to redeem them and subscribe inside the Claude iOS app. The App Store country is a server setting and isn't shown to users.
+A Telegram Mini App for buying **App Store credit for a Claude Pro / Max plan with GRAM or Telegram Stars**. The user picks a plan and pays from their TON wallet or with Stars. They get the code(s) and a short guide to redeem them and subscribe inside the Claude iOS app. The App Store country is a server setting and isn't shown to users.
 
 ```
 web/     React + Vite Mini App: TON Connect, Framer Motion (swipe plans, pull the card down to buy),
@@ -44,7 +44,7 @@ Open http://localhost:5173 (add `?intro=1` to see the onboarding again). In demo
 
 ```bash
 cd server
-npm test            # engine, bot, streaming, guardrails and chain helpers (26 tests)
+npm test            # engine, bot, Stars, streaming, guardrails and chain helpers (32 tests)
 npm run test:e2e    # starts the server in chain mode against a fake TON Center and pays two orders end to end
 ```
 
@@ -82,6 +82,18 @@ What to check on testnet:
   - a payment more than 2 hours late;
   - a supplier failure;
   - a purchase interrupted by a restart. These are never re-bought automatically, because the supplier may already have charged.
+
+## Telegram Stars
+
+Telegram's rules say digital goods sold inside bots and Mini Apps must be paid in Stars ([Bot Payments for Stars](https://core.telegram.org/bots/payments-stars)), so Stars is offered next to GRAM. The buyer picks one on the review sheet; the choice is remembered.
+
+- **Checkout:** the server creates an invoice link (`createInvoiceLink`, currency `XTR`) and the app opens Telegram's own payment sheet with `openInvoice`.
+- **Before the charge:** Telegram sends a `pre_checkout_query`. The bot approves it only if the order belongs to that buyer, the amount matches and the 20-minute price hold hasn't run out.
+- **After the charge:** the `successful_payment` message pays the order. Its charge id is recorded once, so a repeated update never buys twice.
+- **Refunds:** for a Stars order, the admin bot's **Refund Stars** button really refunds through `refundStarPayment`, then marks the order refunded. Delivered orders can't be refunded.
+- **Pricing:** `stars = cost × (1 + STARS_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it, not what buyers pay for Stars, so the price covers your cost. Buyers pay noticeably more in Stars than in GRAM because of Telegram's and the app stores' cut.
+- Stars you earn are withdrawn to TON through Fragment after Telegram's holding period, so you pay for codes before that money arrives.
+- Without `BOT_TOKEN` (local demo) Stars runs in demo mode: no invoice, the payment is simulated.
 
 ## Admin bot
 
@@ -125,6 +137,9 @@ Refunds themselves are sent by you from the merchant wallet. The bot only record
 | `MARGIN` | Your markup over supplier cost (default `0.08` = 8%) |
 | `GRAM_USD_FALLBACK` | Rate used in demo/testnet before the first live price arrives |
 | `RATE_MAX_AGE_MIN` | Mainnet only: pause new orders when the rate is older than this (default 10) |
+| `STARS` | `off` to hide the Stars option (default on) |
+| `STAR_USD` | What one Star is worth to you on withdrawal, in USD (default `0.013`) |
+| `STARS_MARGIN` | Markup for Stars orders (defaults to `MARGIN`) |
 | `TEST_PRICE_SCALE` | Testnet only: multiply GRAM amounts (e.g. `0.01`) so faucet coins cover test buys |
 
 ## How pricing works

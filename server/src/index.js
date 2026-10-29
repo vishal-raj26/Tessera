@@ -22,6 +22,11 @@ const MARGIN = Number(process.env.MARGIN ?? 0.08);
 // The App Store country we sell credit for. Set by you, never shown to users.
 const STORE_REGION = String(process.env.STORE_REGION || 'US').toUpperCase();
 const QUOTE_TTL_MS = 20 * 60 * 1000;
+// Telegram Stars: Telegram requires Stars for digital goods inside Mini Apps. STAR_USD is what one Star
+// is worth to you when you withdraw (not what buyers pay for it), so the Stars price covers your cost.
+const STARS = process.env.STARS !== 'off';
+const STAR_USD = Number(process.env.STAR_USD || 0.013);
+const STARS_MARGIN = Number(process.env.STARS_MARGIN ?? MARGIN);
 
 if (PAYMENT_MODE === 'chain' && !normalize(MERCHANT)) {
   console.error('PAYMENT_MODE=chain needs a valid MERCHANT_WALLET');
@@ -48,14 +53,16 @@ async function quote(regionCode, planId) {
   const needed = price * (1 + (region.taxBuffer || 0));
   const pick = pickPackages(packages, needed);
   if (!pick) return null;
-  // demo and testnet tolerate an old rate (no real value moves); mainnet refuses to quote on a stale one
+  // demo and testnet tolerate an old rate (no real value moves); mainnet refuses to quote GRAM on a stale one
   const rate = await gramUsd({ allowStale: PAYMENT_MODE === 'mock' || NETWORK === 'testnet' });
-  if (!rate) return { stale: true };
+  const stars = STARS ? Math.max(1, Math.ceil((pick.costUsd * (1 + STARS_MARGIN)) / STAR_USD)) : null;
+  if (!rate && !stars) return { stale: true };
   // On testnet, TEST_PRICE_SCALE shrinks the GRAM amount so a faucet's few GRAM cover several test buys.
   const scale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
-  const gram = ((pick.costUsd * (1 + MARGIN)) / rate) * scale;
-  const amountNano = toNano(gram);
+  const amountNano = rate ? toNano(((pick.costUsd * (1 + MARGIN)) / rate) * scale) : null;
   return {
+    stale: !rate, // GRAM is paused, Stars still works
+    stars,
     regionCode, planId,
     appPrice: price,
     currency: region.currency,
@@ -64,8 +71,8 @@ async function quote(regionCode, planId) {
     packages: pick.packages,
     costUsd: pick.costUsd,
     usd: round2(pick.costUsd * (1 + MARGIN)),
-    gram: fromNano(amountNano),
-    amountNano: amountNano.toString(),
+    gram: amountNano ? fromNano(amountNano) : null,
+    amountNano: amountNano ? amountNano.toString() : null,
     gramUsd: rate,
   };
 }
@@ -83,7 +90,7 @@ app.get('/tonconnect-manifest.json', (req, res) => {
 app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE }));
 
 app.get('/api/config', (req, res) => {
-  res.json({ paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION });
+  res.json({ paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS });
 });
 
 // Regions the supplier can actually fulfil right now, intersected with regions we have Claude prices for.
@@ -102,8 +109,8 @@ app.get('/api/catalog', async (req, res) => {
   const plans = await Promise.all(PLANS.map(async (p) => {
     const q = await quote(code, p.id).catch(() => null);
     if (q?.stale) stale = true;
-    const ok = q && !q.stale;
-    return { ...p, available: !!ok, ...(ok && { appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, usd: q.usd }) };
+    const ok = q && (q.gram || q.stars);
+    return { ...p, available: !!ok, ...(ok && { appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd }) };
   }));
   res.json({ region: { code, ...REGIONS[code], prices: undefined }, plans, pricesUpdating: stale });
 });
@@ -116,6 +123,8 @@ const publicOrder = (o) => o && {
   plan: PLANS.find((p) => p.id === o.plan_id),
   credit: o.face_value,
   currency: o.currency,
+  method: o.method,
+  stars: o.stars,
   gram: fromNano(o.amount_nano),
   amountNano: o.amount_nano,
   comment: o.comment,
@@ -134,19 +143,32 @@ const publicOrder = (o) => o && {
 
 app.post('/api/orders', telegramAuth, async (req, res) => {
   const { region, planId, wallet } = req.body || {};
+  const method = req.body?.method === 'stars' ? 'stars' : 'gram';
   const code = String(region || STORE_REGION).toUpperCase();
   const q = await quote(code, planId).catch((e) => { console.error(e); return null; });
-  if (q?.stale) return res.status(503).json({ error: 'Prices are updating. Try again in a minute.' });
-  if (!q) return res.status(400).json({ error: 'This plan is not available right now.' });
+  if (!q || (!q.gram && !q.stars)) return res.status(q?.stale ? 503 : 400).json({ error: q?.stale ? 'Prices are updating. Try again in a minute.' : 'This plan is not available right now.' });
+  if (method === 'gram' && !q.gram) return res.status(503).json({ error: 'GRAM prices are updating. Pay with Stars, or try again in a minute.' });
+  if (method === 'stars' && !q.stars) return res.status(400).json({ error: 'Stars payments are off right now.' });
   const now = Date.now();
   const id = crypto.randomUUID();
   const memo = 'TS-' + crypto.randomBytes(5).toString('hex').toUpperCase();
   orders.insert({
     id, tgUserId: String(req.tgUser.id), wallet: wallet || null, region: code, planId,
     packages: q.packages, faceValue: q.credit, currency: q.currency, costUsd: q.costUsd,
-    amountNano: q.amountNano, comment: memo, createdAt: now, expiresAt: now + QUOTE_TTL_MS,
+    amountNano: method === 'gram' ? q.amountNano : '0', comment: memo, createdAt: now, expiresAt: now + QUOTE_TTL_MS,
+    method, stars: method === 'stars' ? q.stars : null,
   });
-  res.json(publicOrder(orders.get(id)));
+  let invoiceLink = null;
+  if (method === 'stars') {
+    try {
+      invoiceLink = await bot.createInvoice(orders.get(id));
+    } catch (e) {
+      console.error(`[order ${id}] invoice failed`, e.message);
+      orders.transition(id, 'awaiting_payment', 'expired');
+      return res.status(502).json({ error: "Couldn't start the Stars payment. Try again." });
+    }
+  }
+  res.json({ ...publicOrder(orders.get(id)), invoiceLink });
 });
 
 app.get('/api/orders', telegramAuth, (req, res) => {
@@ -164,7 +186,11 @@ if (PAYMENT_MODE === 'mock') {
   app.post('/api/orders/:id/mock-pay', telegramAuth, (req, res) => {
     const o = orders.get(req.params.id);
     if (!o || o.tg_user_id !== String(req.tgUser.id)) return res.status(404).json({ error: 'Order not found' });
-    if (o.status === 'awaiting_payment') {
+    if (o.status === 'awaiting_payment' && o.method === 'stars') {
+      // simulate Telegram's successful_payment arriving
+      const chargeId = 'mock_' + crypto.randomBytes(8).toString('hex');
+      setTimeout(() => engine.applyStars({ orderId: o.id, amount: o.stars, chargeId, userId: o.tg_user_id }).catch(console.error), 900);
+    } else if (o.status === 'awaiting_payment') {
       // simulate the transfer landing on chain a moment later
       const tx = { hash: 'mock_' + crypto.randomBytes(8).toString('hex'), comment: o.comment, valueNano: BigInt(o.amount_nano), source: 'mock' };
       setTimeout(() => engine.seePending(tx), 600); // like the stream's "pending"

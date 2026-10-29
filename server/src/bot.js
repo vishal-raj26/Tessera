@@ -9,13 +9,17 @@ const fromNano = (n) => (Number(BigInt(n ?? 0)) / 1e9).toFixed(2);
 const PLAN = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
+const isStars = (o) => o?.method === 'stars';
+
 function describe(o) {
   return [
     `<b>Claude ${PLAN[o.plan_id] ?? o.plan_id}</b> · ${o.currency} ${o.face_value} credit`,
     `Status: <b>${esc(o.status)}</b>`,
-    `Owed ${fromNano(o.amount_nano)} GRAM · received ${fromNano(o.received_nano)} GRAM`,
+    isStars(o)
+      ? `Paid with Stars: ${o.stars} ⭐${o.charge_id ? '' : ' (not paid yet)'}`
+      : `Owed ${fromNano(o.amount_nano)} GRAM · received ${fromNano(o.received_nano)} GRAM`,
     `Memo <code>${esc(o.comment)}</code>`,
-    o.tx_hash ? `Tx <code>${esc(o.tx_hash)}</code>` : null,
+    o.charge_id ? `Charge <code>${esc(o.charge_id)}</code>` : o.tx_hash ? `Tx <code>${esc(o.tx_hash)}</code>` : null,
     o.wallet ? `Wallet <code>${esc(o.wallet)}</code>` : null,
     `Buyer <a href="tg://user?id=${esc(o.tg_user_id)}">${esc(o.tg_user_id)}</a>`,
     o.admin_note ? `Note: ${esc(o.admin_note)}` : null,
@@ -26,7 +30,8 @@ function describe(o) {
 function buttons(o) {
   const row = [];
   if (o.status === 'failed') row.push({ text: 'Retry', callback_data: `r:${o.id}` });
-  if (['failed', 'underpaid', 'expired', 'awaiting_payment', 'paid'].includes(o.status)) row.push({ text: 'Mark refunded', callback_data: `f:${o.id}` });
+  if (isStars(o) && o.charge_id && ['failed', 'paid', 'expired'].includes(o.status)) row.push({ text: 'Refund Stars', callback_data: `f:${o.id}` });
+  else if (!isStars(o) && ['failed', 'underpaid', 'expired', 'awaiting_payment', 'paid'].includes(o.status)) row.push({ text: 'Mark refunded', callback_data: `f:${o.id}` });
   return row.length ? { inline_keyboard: [row] } : undefined;
 }
 
@@ -51,11 +56,14 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
         await toAdmins(`💸 <b>Underpaid</b>\n\n${describe(o)}`, buttons(o));
         return toBuyer(o, `We received ${fromNano(e.receivedNano)} of ${fromNano(o.amount_nano)} GRAM. Send the rest with the same memo (${o.comment}) to finish, or reply here for a refund.`);
       case 'extra':
+        if (e.stars != null) return toAdmins(`➕ <b>Unexpected Stars payment</b> of ${e.stars} ⭐\nCharge <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
         return toAdmins(`➕ <b>Extra payment</b> of ${fromNano(e.valueNano)} GRAM\nTx <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
+      case 'stars_unmatched':
+        return toAdmins(`❓ <b>Stars payment for an unknown order</b>\n${e.amount} ⭐ from <a href="tg://user?id=${esc(e.userId)}">${esc(e.userId)}</a>\nOrder <code>${esc(e.orderId)}</code>\nCharge <code>${esc(e.chargeId)}</code>`);
       case 'unmatched':
         return toAdmins(`❓ <b>Payment with unknown memo</b>\nMemo <code>${esc(e.memo)}</code> · ${fromNano(e.valueNano)} GRAM\nFrom <code>${esc(e.source)}</code>\nTx <code>${esc(e.hash)}</code>`);
       case 'refunded':
-        return toBuyer(o, 'Your order was refunded. Sorry it didn’t work out this time.');
+        return toBuyer(o, isStars(o) ? `Your ${o.stars} Stars were refunded. Sorry it didn’t work out this time.` : 'Your order was refunded. Sorry it didn’t work out this time.');
       case 'renewal':
         return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} month renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up with GRAM in Tessera.`);
       case 'rate_stale':
@@ -67,7 +75,36 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     }
   }
 
+  /** Stars invoice link for an order, opened in the Mini App with Telegram.WebApp.openInvoice. */
+  function createInvoice(o) {
+    return api('createInvoiceLink', {
+      title: `Claude ${PLAN[o.plan_id]}`,
+      description: `${o.currency} ${o.face_value} App Store credit for one month of Claude ${PLAN[o.plan_id]}. Code delivered in the app.`,
+      payload: o.id,
+      currency: 'XTR',
+      prices: [{ label: `Claude ${PLAN[o.plan_id]}, 1 month`, amount: o.stars }],
+    });
+  }
+
   async function handleUpdate(u) {
+    // Stars checkout: Telegram asks before charging, then reports the payment
+    const pq = u.pre_checkout_query;
+    if (pq) {
+      const error = pq.currency === 'XTR'
+        ? getEngine().checkStars({ orderId: pq.invoice_payload, amount: pq.total_amount, userId: pq.from?.id })
+        : 'Unsupported currency';
+      return api('answerPreCheckoutQuery', { pre_checkout_query_id: pq.id, ok: !error, ...(error && { error_message: error }) });
+    }
+    const paid = u.message?.successful_payment;
+    if (paid) {
+      if (paid.currency !== 'XTR') return undefined;
+      await getEngine().applyStars({
+        orderId: paid.invoice_payload, amount: paid.total_amount,
+        chargeId: paid.telegram_payment_charge_id, userId: u.message.from?.id,
+      });
+      return undefined;
+    }
+
     const cb = u.callback_query;
     if (cb) {
       const from = String(cb.from?.id);
@@ -81,10 +118,10 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
         await api('answerCallbackQuery', { callback_query_id: cb.id });
         return api('editMessageReplyMarkup', {
           chat_id: cb.message.chat.id, message_id: cb.message.message_id,
-          reply_markup: { inline_keyboard: [[{ text: 'Yes, I refunded it', callback_data: `fc:${id}` }, { text: 'Cancel', callback_data: `x:${id}` }]] },
+          reply_markup: { inline_keyboard: [[{ text: isStars(orders.get(id)) ? `Yes, refund ${orders.get(id)?.stars} Stars` : 'Yes, I refunded it', callback_data: `fc:${id}` }, { text: 'Cancel', callback_data: `x:${id}` }]] },
         });
       }
-      if (act === 'fc') result = getEngine().markRefunded(id, `Refunded by admin ${from}`);
+      if (act === 'fc') result = await refund(id, from);
       if (act === 'x') result = { ok: true, msg: 'Cancelled' };
       await api('answerCallbackQuery', { callback_query_id: cb.id, text: result.msg });
       const o = orders.get(id);
@@ -132,7 +169,22 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     return undefined;
   }
 
-  return { notify, handleUpdate };
+  /** GRAM refunds are sent by hand, so we only record them. Stars go back to the buyer through Telegram first. */
+  async function refund(id, by) {
+    const o = orders.get(id);
+    if (!o) return { ok: false, msg: 'Order not found' };
+    if (!isStars(o)) return getEngine().markRefunded(id, `Refunded by admin ${by}`);
+    if (o.status === 'delivered') return { ok: false, msg: 'Already delivered; refunding would double-pay' };
+    if (!o.charge_id) return { ok: false, msg: 'No Stars payment on this order' };
+    try {
+      await api('refundStarPayment', { user_id: Number(o.tg_user_id), telegram_payment_charge_id: o.charge_id });
+    } catch (e) {
+      return { ok: false, msg: `Telegram refused the refund: ${e.message}` };
+    }
+    return getEngine().markRefunded(id, `${o.stars} Stars refunded by admin ${by}`);
+  }
+
+  return { notify, handleUpdate, createInvoice };
 }
 
 /** Real bot with long polling. Without BOT_TOKEN it only logs, so local demos still work. */
@@ -140,7 +192,10 @@ export function startAdminBot({ getEngine, orders, prices, publicUrl }) {
   const token = process.env.BOT_TOKEN;
   const adminIds = String(process.env.ADMIN_CHAT_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!token) {
-    return { notify: (e) => { if (e.type !== 'delivered') console.log(`[admin] ${e.type}`, e.order?.id ?? e.memo ?? ''); } };
+    return {
+      notify: (e) => { if (e.type !== 'delivered') console.log(`[admin] ${e.type}`, e.order?.id ?? e.memo ?? ''); },
+      createInvoice: async () => null, // no bot: Stars runs in demo mode
+    };
   }
   const api = async (method, body) => {
     const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
@@ -157,7 +212,7 @@ export function startAdminBot({ getEngine, orders, prices, publicUrl }) {
   (async function poll() {
     for (;;) {
       try {
-        const updates = await api('getUpdates', { offset, timeout: 30, allowed_updates: ['message', 'callback_query'] });
+        const updates = await api('getUpdates', { offset, timeout: 30, allowed_updates: ['message', 'callback_query', 'pre_checkout_query'] });
         for (const u of updates) {
           offset = u.update_id + 1;
           await bot.handleUpdate(u).catch((e) => console.error('bot update failed', e));

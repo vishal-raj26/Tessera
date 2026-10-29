@@ -53,6 +53,10 @@ export function openStore(file) {
   if (!cols.includes('seen_at')) db.exec('ALTER TABLE orders ADD COLUMN seen_at INTEGER');
   if (!cols.includes('delivered_at')) db.exec('ALTER TABLE orders ADD COLUMN delivered_at INTEGER');
   if (!cols.includes('reminded_at')) db.exec('ALTER TABLE orders ADD COLUMN reminded_at INTEGER');
+  // payment method: 'gram' (on-chain, matched by memo) or 'stars' (Telegram Stars invoice)
+  if (!cols.includes('method')) db.exec("ALTER TABLE orders ADD COLUMN method TEXT NOT NULL DEFAULT 'gram'");
+  if (!cols.includes('stars')) db.exec('ALTER TABLE orders ADD COLUMN stars INTEGER');
+  if (!cols.includes('charge_id')) db.exec('ALTER TABLE orders ADD COLUMN charge_id TEXT');
 
   const parse = (row) => row && {
     ...row,
@@ -63,10 +67,10 @@ export function openStore(file) {
   const orders = {
     insert(o) {
       db.prepare(`INSERT INTO orders (id, tg_user_id, wallet, region, plan_id, packages, face_value, currency, cost_usd,
-        amount_nano, comment, status, created_at, expires_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         o.id, o.tgUserId ?? null, o.wallet ?? null, o.region, o.planId, JSON.stringify(o.packages), o.faceValue, o.currency,
-        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt);
+        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null);
     },
     get: (id) => parse(db.prepare('SELECT * FROM orders WHERE id = ?').get(id)),
     byMemo: (memo) => parse(db.prepare('SELECT * FROM orders WHERE comment = ?').get(memo)),

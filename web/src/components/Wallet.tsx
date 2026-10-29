@@ -2,10 +2,10 @@
 // top while the rest settle into a pile at the bottom. Pull the lifted card down to put it back.
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { fmtGram, fmtMoney, groupCode, type Order } from '../api';
+import { fmtMoney, groupCode, type Order } from '../api';
 import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
-import { GramIcon } from './GramIcon';
+import { Amount } from './Amount';
 
 interface Props {
   orders: Order[] | null; // null while loading
@@ -165,7 +165,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
           >
             <div className="wl-meta">
               <span>Claude {PLAN_LABEL[lifted.plan.id]} · {fmtMoney(lifted.credit, lifted.currency)}</span>
-              <span className="amt">{fmtGram(lifted.gram)}<GramIcon size={12} /></span>
+              <span className="amt"><Amount method={lifted.method} gram={lifted.gram} stars={lifted.stars} size={12} /></span>
             </div>
             {lifted.codes?.length ? (
               <>
@@ -187,7 +187,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
             ) : (
               <>
                 <p className="wl-note">{note(lifted)}</p>
-                {(lifted.status === 'awaiting_payment' || lifted.status === 'underpaid') && <div className="memo">memo {lifted.comment}</div>}
+                {lifted.method !== 'stars' && (lifted.status === 'awaiting_payment' || lifted.status === 'underpaid') && <div className="memo">memo {lifted.comment}</div>}
               </>
             )}
           </motion.div>

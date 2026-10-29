@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtMoney, groupCode, type AppConfig, type Order, type Plan } from './api';
+import { api, fmtGram, fmtMoney, groupCode, type AppConfig, type Order, type PayMethod, type Plan } from './api';
 import { tg } from './tg';
 import { HoloCard, PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -12,6 +12,8 @@ import { Header } from './components/Header';
 import { Rolling } from './components/Rolling';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
+import { Amount } from './components/Amount';
+import { StarIcon } from './components/StarIcon';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
 type SheetName = null | 'review' | 'guide';
@@ -78,7 +80,16 @@ export default function App() {
   }, [plans, load]);
 
   const plan = plans?.[index];
-  const needsWallet = config?.paymentMode === 'chain' && !wallet;
+  // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
+  const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
+  const payWith: PayMethod = !config?.stars || !plan?.stars ? 'gram' : plan?.gram == null ? 'stars' : method;
+  const bothMethods = !!config?.stars && plan?.gram != null && plan?.stars != null;
+  function chooseMethod(m: PayMethod) {
+    if (m === method) return;
+    tg.select(); setMethod(m); setErr(null);
+    try { localStorage.setItem('pay', m); } catch { /* ignore */ }
+  }
+  const needsWallet = config?.paymentMode === 'chain' && !wallet && payWith === 'gram';
   const closeSheet = useCallback(() => setSheet(null), []);
   const rollDir = index >= prevIndex.current ? 1 : -1;
   useEffect(() => { prevIndex.current = index; }, [index]);
@@ -140,7 +151,7 @@ export default function App() {
 
   function openReview() {
     if (!plan?.available) return;
-    if (needsWallet) { tonConnectUI.openModal(); return; }
+    if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
     setHoldUntil(Date.now() + 20 * 60 * 1000);
@@ -153,10 +164,26 @@ export default function App() {
     setBusy(true);
     setErr(null);
     try {
-      const o = await api.createOrder(config.region, plan.id, wallet || undefined);
+      const o = await api.createOrder(config.region, plan.id, payWith, wallet || undefined);
       setOrder(o);
       setWalletSent(false);
-      if (config.paymentMode === 'chain' && o.merchant) {
+      if (payWith === 'stars' && o.invoiceLink) {
+        // Telegram's own checkout sheet; the code is issued once Telegram confirms the charge
+        const st = await tg.openInvoice(o.invoiceLink);
+        if (st !== 'paid' && st !== 'pending') throw new Error(st === 'cancelled' ? 'cancelled' : 'Telegram could not complete the payment. Nothing was charged.');
+        tg.notify('success');
+        setWalletSent(true);
+        setSheet(null);
+        setView('paying');
+      } else if (payWith === 'stars') {
+        // Demo mode: no bot, so pretend Telegram approved it
+        setSheet(null);
+        setView('paying');
+        await new Promise((r) => setTimeout(r, 1100));
+        setWalletSent(true);
+        tg.tap('medium');
+        await api.mockPay(o.id);
+      } else if (config.paymentMode === 'chain' && o.merchant) {
         await tonConnectUI.sendTransaction({
           validUntil: Math.floor(o.expiresAt / 1000),
           network: o.network === 'testnet' ? CHAIN.TESTNET : CHAIN.MAINNET,
@@ -176,7 +203,7 @@ export default function App() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setErr(/reject|cancel|declin/i.test(msg) ? 'Payment cancelled in your wallet. Nothing was charged.' : msg);
+      setErr(/reject|cancel|declin/i.test(msg) ? (payWith === 'stars' ? 'Payment cancelled. Nothing was charged.' : 'Payment cancelled in your wallet. Nothing was charged.') : msg);
       tg.notify('error');
     } finally {
       setBusy(false);
@@ -207,14 +234,15 @@ export default function App() {
   const failed = status === 'failed' || status === 'expired' || status === 'refunded';
   const steps = useMemo(() => {
     const paid = status === 'paid' || status === 'fulfilling' || status === 'delivered';
+    const stars = order?.method === 'stars';
     return [
-      { label: walletSent ? 'Approved in wallet' : 'Approve in your wallet', done: walletSent || status === 'underpaid', on: !walletSent && status !== 'underpaid' },
-      { label: status === 'underpaid' ? 'Waiting for the rest of the payment' : paid ? 'Payment confirmed' : order?.paymentSeen ? 'Payment seen, confirming' : 'Waiting for payment', done: paid, on: (walletSent || status === 'underpaid') && !paid },
+      { label: stars ? (walletSent ? 'Paid with Stars' : 'Confirm in Telegram') : walletSent ? 'Approved in wallet' : 'Approve in your wallet', done: walletSent || status === 'underpaid', on: !walletSent && status !== 'underpaid' },
+      { label: status === 'underpaid' ? 'Waiting for the rest of the payment' : paid ? 'Payment confirmed' : stars ? 'Confirming with Telegram' : order?.paymentSeen ? 'Payment seen, confirming' : 'Waiting for payment', done: paid, on: (walletSent || status === 'underpaid') && !paid },
       { label: 'Issuing your credit', done: status === 'delivered', on: paid && status !== 'delivered' },
     ];
-  }, [status, walletSent, order?.paymentSeen]);
+  }, [status, walletSent, order?.paymentSeen, order?.method]);
 
-  const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? 'Waiting for wallet' : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
+  const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? (order?.method === 'stars' ? 'Waiting for Telegram' : 'Waiting for wallet') : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
 
   return (
     <>
@@ -257,10 +285,18 @@ export default function App() {
               <motion.div className="price" aria-live="polite" {...rise(0.75)}>
                 {plan?.available ? (
                   <>
-                    <div className="gram"><Rolling text={fmtGram(plan.gram!)} dir={rollDir} /><GramIcon size={28} /></div>
+                    <div className="gram">
+                      <Rolling text={payWith === 'stars' ? plan.stars!.toLocaleString() : fmtGram(plan.gram!)} dir={rollDir} />
+                      {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
+                    </div>
                     <AnimatePresence mode="wait" initial={false}>
-                      <motion.div key={plan.id} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
+                      <motion.div key={plan.id + payWith} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
                         ≈ ${plan.usd!.toFixed(2)} · Claude {plan.name}, 1 month
+                        {bothMethods && (
+                          <button className="alt-price" onClick={() => chooseMethod(payWith === 'stars' ? 'gram' : 'stars')} aria-label="Switch currency">
+                            or <span className="amt"><Amount method={payWith === 'stars' ? 'gram' : 'stars'} gram={plan.gram} stars={plan.stars} size={13} /></span>
+                          </button>
+                        )}
                       </motion.div>
                     </AnimatePresence>
                   </>
@@ -292,7 +328,7 @@ export default function App() {
                   back={
                     <>
                       <b>{backLine}</b>
-                      <span className="amt">{fmtGram(order.gram)}<GramIcon size={13} /></span>
+                      <span className="amt"><Amount method={order.method} gram={order.gram} stars={order.stars} size={13} /></span>
                       {!failed && <div className="charge"><i /></div>}
                     </>
                   }
@@ -325,13 +361,14 @@ export default function App() {
                       </motion.li>
                     ))}
                   </ul>
-                  <motion.div className="memo" {...rise(0.65)}>
+                  {order.method !== 'stars' && <motion.div className="memo" {...rise(0.65)}>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.span key={lost >= 3 ? 'r' : 'm'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         {lost >= 3 ? 'Reconnecting… your payment is safe' : `memo ${order.comment}`}
                       </motion.span>
                     </AnimatePresence>
-                  </motion.div>
+                  </motion.div>}
+                  {order.method === 'stars' && lost >= 3 && <motion.div className="memo" {...rise(0)}>Reconnecting… your payment is safe</motion.div>}
                   {status === 'underpaid' && order.error && <p className="memo" style={{ color: 'var(--danger)', fontFamily: 'var(--font)', maxWidth: 300, textAlign: 'center' }}>{order.error}</p>}
                 </>
               )}
@@ -349,7 +386,7 @@ export default function App() {
                     reveal={reveal}
                     flipped={flipped}
                     interactive
-                    back={<><b>Ready</b><span className="amt">{fmtGram(order.gram)}<GramIcon size={13} /></span></>}
+                    back={<><b>Ready</b><span className="amt"><Amount method={order.method} gram={order.gram} stars={order.stars} size={13} /></span></>}
                   />
                 </motion.div>
               </div>
@@ -427,19 +464,34 @@ export default function App() {
             <dl className="rows">
               <div className="row"><dt>App Store credit</dt><dd>{fmtMoney(plan.credit!, plan.currency!)}{plan.codes! > 1 ? ` · ${plan.codes} codes` : ''}</dd></div>
               <div className="row"><dt>In-app price</dt><dd>{fmtMoney(plan.appPrice!, plan.currency!)}</dd></div>
-              <div className="row total"><dt>You pay</dt><dd className="amt">{fmtGram(plan.gram!)}<GramIcon size={17} /></dd></div>
+              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={plan.gram} stars={plan.stars} size={17} /></dd></div>
             </dl>
+            {bothMethods && (
+              <div className="paywith" role="radiogroup" aria-label="Pay with">
+                {(['gram', 'stars'] as const).map((m) => (
+                  <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
+                    {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
+                    <span className="pw-amt"><Amount method={m} gram={plan.gram} stars={plan.stars} size={15} /></span>
+                    <span className="pw-sub">{m === 'gram' ? (wallet || config?.paymentMode === 'mock' ? 'Wallet' : 'Connect wallet') : 'Telegram Stars'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <label className="agree">
               <input type="checkbox" checked={agree} onChange={(e) => { tg.select(); setAgree(e.target.checked); }} />
               <span>I understand App Store credit can't be refunded once issued.</span>
             </label>
             {err && <p className="error" role="alert">{err}</p>}
-            <motion.button className="btn btn-pearl" disabled={!agree || busy} onClick={pay} whileTap={{ scale: 0.97 }}>
-              {busy ? <span className="spin" /> : <>Pay<span className="amt">{fmtGram(plan.gram!)}<GramIcon size={19} /></span></>}
-            </motion.button>
+            {needsWallet ? (
+              <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
+            ) : (
+              <motion.button className="btn btn-pearl" disabled={!agree || busy} onClick={pay} whileTap={{ scale: 0.97 }}>
+                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={plan.gram} stars={plan.stars} size={19} /></span></>}
+              </motion.button>
+            )}
             <p className="fine">
               Price held for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
-              {config?.paymentMode === 'mock' ? ' · Demo mode, nothing leaves your wallet' : ''}
+              {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
             </p>
           </div>
         )}

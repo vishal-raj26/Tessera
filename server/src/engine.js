@@ -7,7 +7,10 @@
 //   awaiting_payment → underpaid        (some GRAM arrived, not enough; a top-up with the same memo completes it)
 //   fulfilling       → failed           (paid, but the supplier could not issue a code)
 //   failed|underpaid → paid             (admin pressed Retry / payment completed)
-//   *                → refunded         (admin marked it refunded)
+//   *                → refunded         (admin marked it refunded; Stars orders are refunded for real)
+//
+// Stars orders are paid through a Telegram invoice. Telegram asks us to approve the checkout
+// (checkStars) and then reports the payment (applyStars) with a charge id that we record once.
 // Payments that can't be applied (unknown memo, order already done, too late) are recorded and flagged.
 
 export const LATE_MS = 2 * 3600e3;
@@ -44,6 +47,12 @@ export function createEngine({ orders, payments, supplier, fetchIncoming, notify
     const first = payments.record({ hash: t.hash, orderId: o?.id, memo, valueNano: t.valueNano, source: t.source });
     if (!first) return 'seen';
 
+    if (o?.method === 'stars') {
+      // GRAM sent with a Stars order's memo: never counts as payment for it
+      orders.update(o.id, { admin_note: `GRAM transfer ${fmt(t.valueNano)} (tx ${t.hash}) on a Stars order` });
+      notify({ type: 'extra', order: orders.get(o.id), valueNano: String(t.valueNano), hash: t.hash });
+      return 'extra';
+    }
     if (!o) {
       if (memo?.startsWith('TS-')) notify({ type: 'unmatched', memo, valueNano: String(t.valueNano), hash: t.hash, source: t.source });
       return 'unmatched';
@@ -87,6 +96,38 @@ export function createEngine({ orders, payments, supplier, fetchIncoming, notify
     try { txs = await fetchIncoming(); } catch (e) { log.warn?.('payment poll failed:', e.message); return; }
     // oldest first, so top-ups are summed in order
     for (const t of [...txs].reverse()) await applyTransfer(t);
+  }
+
+  /** Telegram's pre-checkout question: may this Stars payment go ahead? Returns an error message or null. */
+  function checkStars({ orderId, amount, userId }) {
+    const o = orders.get(orderId);
+    if (!o || o.method !== 'stars') return 'This order no longer exists. Start again in Tessera.';
+    if (userId != null && o.tg_user_id && String(userId) !== o.tg_user_id) return 'This invoice belongs to someone else.';
+    if (o.status !== 'awaiting_payment' || now() > o.expires_at) return 'This price has expired. Start again in Tessera for a fresh one.';
+    if (Number(amount) !== Number(o.stars)) return 'The amount changed. Start again in Tessera.';
+    return null;
+  }
+
+  /** Telegram confirmed a Stars payment. Safe to call repeatedly with the same charge id. */
+  async function applyStars({ orderId, amount, chargeId, userId }) {
+    const o = orders.get(orderId);
+    const first = payments.record({ hash: `stars:${chargeId}`, orderId: o?.id, memo: o?.comment, valueNano: amount, source: `tg:${userId}` });
+    if (!first) return 'seen';
+    if (!o || o.method !== 'stars') {
+      notify({ type: 'stars_unmatched', orderId, amount, chargeId, userId });
+      return 'unmatched';
+    }
+    orders.update(o.id, { charge_id: chargeId, received_nano: String(amount), seen_at: now() });
+    // Telegram only charges after checkStars approved, but guard anyway: a wrong amount or a
+    // payment for an order that already moved on goes to a person (who can refund the Stars).
+    if (Number(amount) !== Number(o.stars) || !orders.transition(o.id, ['awaiting_payment', 'expired'], 'paid')) {
+      orders.update(o.id, { admin_note: `Stars payment ${amount} (charge ${chargeId}) while "${o.status}", expected ${o.stars}` });
+      notify({ type: 'extra', order: orders.get(o.id), stars: amount, hash: chargeId });
+      return 'extra';
+    }
+    orders.update(o.id, { tx_hash: `stars:${chargeId}`, error: null });
+    await fulfil(o.id);
+    return 'paid';
   }
 
   /** Admin: try fulfilment again for a failed order. */
@@ -140,5 +181,5 @@ export function createEngine({ orders, payments, supplier, fetchIncoming, notify
     return due.length;
   }
 
-  return { tick, applyTransfer, seePending, fulfil, retry, markRefunded, resume, remindRenewals };
+  return { tick, applyTransfer, seePending, fulfil, retry, markRefunded, resume, remindRenewals, checkStars, applyStars };
 }

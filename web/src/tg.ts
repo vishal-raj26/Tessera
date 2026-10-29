@@ -1,5 +1,6 @@
 // Thin wrapper over the Telegram Mini App SDK that degrades gracefully in a normal browser.
 type Haptic = 'light' | 'medium' | 'heavy' | 'rigid' | 'soft';
+export type InvoiceStatus = 'paid' | 'cancelled' | 'failed' | 'pending';
 
 interface BottomButton {
   setParams(p: { text?: string; color?: string; text_color?: string; is_active?: boolean; is_visible?: boolean; has_shine_effect?: boolean; position?: string }): void;
@@ -22,6 +23,7 @@ interface TgWebApp {
   setBackgroundColor?(c: string): void;
   setBottomBarColor?(c: string): void;
   openLink?(url: string): void;
+  openInvoice?(url: string, cb?: (status: InvoiceStatus) => void): void;
   isVersionAtLeast?(v: string): boolean;
   MainButton?: BottomButton;
   SecondaryButton?: BottomButton;
@@ -126,6 +128,11 @@ export const tg = {
   tap: (s: Haptic = 'light') => wa?.HapticFeedback?.impactOccurred(s),
   select: () => wa?.HapticFeedback?.selectionChanged(),
   notify: (t: 'success' | 'warning' | 'error') => wa?.HapticFeedback?.notificationOccurred(t),
+  /** Telegram's native Stars checkout. Resolves with how the sheet closed. */
+  openInvoice(url: string): Promise<InvoiceStatus> {
+    if (!inTelegram || !wa?.openInvoice) return Promise.reject(new Error('Open Tessera inside Telegram to pay with Stars.'));
+    return new Promise((res) => wa.openInvoice!(url, res));
+  },
   openLink(url: string) {
     if (inTelegram && wa?.openLink) wa.openLink(url);
     else window.open(url, '_blank', 'noopener');
