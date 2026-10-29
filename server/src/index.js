@@ -4,7 +4,7 @@ import cors from 'cors';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
-import { PLANS, REGIONS, pickPackages, round2 } from './catalog.js';
+import { PLANS, REGIONS, pickPackages, round2, termsFor, termLabel } from './catalog.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
@@ -44,9 +44,17 @@ function inAppPrice(regionCode, planId) {
   return o != null ? Number(o) : REGIONS[regionCode]?.prices?.[planId];
 }
 
-async function quote(regionCode, planId) {
+/** Price for a term: Apple's yearly Pro plan for 12 months, else that many monthly renewals. */
+function termPrice(regionCode, planId, months) {
+  if (!termsFor(planId, REGIONS[regionCode]).includes(months)) return null;
+  if (months === 12) return inAppPrice(regionCode, 'pro_y');
+  const monthly = inAppPrice(regionCode, planId);
+  return monthly ? round2(monthly * months) : null;
+}
+
+async function quote(regionCode, planId, months = 1) {
   const region = REGIONS[regionCode];
-  const price = inAppPrice(regionCode, planId);
+  const price = termPrice(regionCode, planId, months);
   if (!price) return null;
   const packages = await SUPPLIER.listPackages(regionCode);
   if (!packages.length) return null;
@@ -63,7 +71,9 @@ async function quote(regionCode, planId) {
   return {
     stale: !rate, // GRAM is paused, Stars still works
     stars,
-    regionCode, planId,
+    regionCode, planId, months,
+    annual: months === 12,
+    monthly: inAppPrice(regionCode, planId),
     appPrice: price,
     currency: region.currency,
     credit: pick.faceValue,
@@ -106,11 +116,14 @@ app.get('/api/catalog', async (req, res) => {
   const code = String(req.query.region || STORE_REGION).toUpperCase();
   if (!REGIONS[code]) return res.status(400).json({ error: 'Unknown region' });
   let stale = false;
+  const pick = (q) => ({ months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
   const plans = await Promise.all(PLANS.map(async (p) => {
-    const q = await quote(code, p.id).catch(() => null);
-    if (q?.stale) stale = true;
-    const ok = q && (q.gram || q.stars);
-    return { ...p, available: !!ok, ...(ok && { appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd }) };
+    const quotes = await Promise.all(termsFor(p.id, REGIONS[code]).map((m) => quote(code, p.id, m).catch(() => null)));
+    if (quotes.some((q) => q?.stale)) stale = true;
+    const terms = quotes.filter((q) => q && (q.gram || q.stars)).map(pick);
+    const one = terms.find((t) => t.months === 1);
+    // top-level fields keep describing one month, for older clients
+    return { ...p, available: terms.length > 0, terms, ...(one && { appPrice: one.appPrice, currency: one.currency, credit: one.credit, codes: one.codes, gram: one.gram, stars: one.stars, usd: one.usd }) };
   }));
   res.json({ region: { code, ...REGIONS[code], prices: undefined }, plans, pricesUpdating: stale });
 });
@@ -121,6 +134,8 @@ const publicOrder = (o) => o && {
   regionName: REGIONS[o.region]?.name,
   flag: REGIONS[o.region]?.flag,
   plan: PLANS.find((p) => p.id === o.plan_id),
+  months: o.months ?? 1,
+  annual: o.months === 12,
   credit: o.face_value,
   currency: o.currency,
   method: o.method,
@@ -144,8 +159,9 @@ const publicOrder = (o) => o && {
 app.post('/api/orders', telegramAuth, async (req, res) => {
   const { region, planId, wallet } = req.body || {};
   const method = req.body?.method === 'stars' ? 'stars' : 'gram';
+  const months = Number(req.body?.months ?? 1);
   const code = String(region || STORE_REGION).toUpperCase();
-  const q = await quote(code, planId).catch((e) => { console.error(e); return null; });
+  const q = await quote(code, planId, months).catch((e) => { console.error(e); return null; });
   if (!q || (!q.gram && !q.stars)) return res.status(q?.stale ? 503 : 400).json({ error: q?.stale ? 'Prices are updating. Try again in a minute.' : 'This plan is not available right now.' });
   if (method === 'gram' && !q.gram) return res.status(503).json({ error: 'GRAM prices are updating. Pay with Stars, or try again in a minute.' });
   if (method === 'stars' && !q.stars) return res.status(400).json({ error: 'Stars payments are off right now.' });
@@ -156,7 +172,7 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
     id, tgUserId: String(req.tgUser.id), wallet: wallet || null, region: code, planId,
     packages: q.packages, faceValue: q.credit, currency: q.currency, costUsd: q.costUsd,
     amountNano: method === 'gram' ? q.amountNano : '0', comment: memo, createdAt: now, expiresAt: now + QUOTE_TTL_MS,
-    method, stars: method === 'stars' ? q.stars : null,
+    method, stars: method === 'stars' ? q.stars : null, months,
   });
   let invoiceLink = null;
   if (method === 'stars') {
@@ -203,10 +219,14 @@ if (PAYMENT_MODE === 'mock') {
 // ---- background workers -------------------------------------------------
 
 const prices = {
-  list: (region = STORE_REGION) => PLANS.map((p) => ({ plan: p.id, name: p.name, price: inAppPrice(region, p.id), currency: REGIONS[region]?.currency, overridden: settings.get(`price:${region}:${p.id}`) != null })),
+  // pro_y is Apple's yearly Pro price; the others are monthly
+  keys: (region = STORE_REGION) => [...PLANS.map((p) => p.id), ...(inAppPrice(region, 'pro_y') ? ['pro_y'] : [])],
+  list(region = STORE_REGION) {
+    return this.keys(region).map((k) => ({ plan: k, name: k === 'pro_y' ? 'Pro, yearly' : PLANS.find((p) => p.id === k).name, price: inAppPrice(region, k), currency: REGIONS[region]?.currency, overridden: settings.get(`price:${region}:${k}`) != null }));
+  },
   set(region, plan, value) {
     if (!REGIONS[region]) return 'Unknown region';
-    if (!PLANS.some((p) => p.id === plan)) return `Unknown plan. Use one of: ${PLANS.map((p) => p.id).join(', ')}`;
+    if (!this.keys(region).includes(plan)) return `Unknown plan. Use one of: ${this.keys(region).join(', ')}`;
     if (!(value > 0)) return 'Price must be a positive number';
     settings.set(`price:${region}:${plan}`, value);
     return null;
@@ -218,9 +238,18 @@ const engine = createEngine({
   orders,
   payments,
   supplier: SUPPLIER,
-  fetchIncoming: PAYMENT_MODE === 'chain' ? () => recentIncoming(MERCHANT) : null,
+  fetchIncoming: PAYMENT_MODE === 'chain' ? () => recentIncoming(MERCHANT, 100, flagRejected) : null,
   notify: (e) => bot.notify(e),
 });
+
+// A transfer with an order memo that the strict credit check rejected: tell a person once, never auto-pay.
+function flagRejected(t) {
+  const key = `rejected:${t.hash}`;
+  if (settings.get(key)) return;
+  settings.set(key, Date.now());
+  console.warn(`[payments] unrecognised credit ${t.hash} memo ${t.comment}: ${t.reason}`);
+  bot.notify({ type: 'credit_unrecognised', ...t, valueNano: String(t.valueNano), order: orders.byMemo(t.comment) });
+}
 
 // Instant detection via the streaming API; the poller catches anything the stream missed.
 // While the stream is connected we poll every 15s; while it's down, every 5s.
@@ -230,6 +259,7 @@ if (PAYMENT_MODE === 'chain' && process.env.TON_STREAM !== 'off') {
     merchant: MERCHANT,
     onPending: (t) => engine.seePending(t),
     onFinal: (t) => engine.applyTransfer(t).catch(console.error),
+    onRejected: flagRejected,
     onState: (up) => { streamUp = up; },
   });
 }

@@ -57,6 +57,8 @@ export function openStore(file) {
   if (!cols.includes('method')) db.exec("ALTER TABLE orders ADD COLUMN method TEXT NOT NULL DEFAULT 'gram'");
   if (!cols.includes('stars')) db.exec('ALTER TABLE orders ADD COLUMN stars INTEGER');
   if (!cols.includes('charge_id')) db.exec('ALTER TABLE orders ADD COLUMN charge_id TEXT');
+  // how many months the credit covers (12 with Pro = Apple's yearly plan)
+  if (!cols.includes('months')) db.exec('ALTER TABLE orders ADD COLUMN months INTEGER NOT NULL DEFAULT 1');
 
   const parse = (row) => row && {
     ...row,
@@ -67,10 +69,10 @@ export function openStore(file) {
   const orders = {
     insert(o) {
       db.prepare(`INSERT INTO orders (id, tg_user_id, wallet, region, plan_id, packages, face_value, currency, cost_usd,
-        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars, months)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         o.id, o.tgUserId ?? null, o.wallet ?? null, o.region, o.planId, JSON.stringify(o.packages), o.faceValue, o.currency,
-        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null);
+        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null, o.months ?? 1);
     },
     get: (id) => parse(db.prepare('SELECT * FROM orders WHERE id = ?').get(id)),
     byMemo: (memo) => parse(db.prepare('SELECT * FROM orders WHERE comment = ?').get(memo)),

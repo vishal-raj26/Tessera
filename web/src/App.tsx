@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, animate, motion, useMotionValue } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtMoney, groupCode, type AppConfig, type Order, type PayMethod, type Plan } from './api';
+import { api, fmtGram, fmtMoney, groupCode, termLabel, type AppConfig, type Order, type PayMethod, type Plan } from './api';
 import { tg } from './tg';
 import { HoloCard, PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -14,6 +14,7 @@ import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
+import { TermPicker } from './components/TermPicker';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
 type SheetName = null | 'review' | 'guide';
@@ -23,6 +24,14 @@ const rise = (delay = 0) => ({
   animate: { opacity: 1, y: 0 },
   transition: { type: 'spring' as const, stiffness: 200, damping: 24, delay },
 });
+
+/** Ticks on its own, so the rest of the app doesn't re-render every second. */
+function Countdown({ until }: { until: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  const left = Math.max(0, Math.floor((until - now) / 1000));
+  return <>{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</>;
+}
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -44,10 +53,13 @@ export default function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [walletSent, setWalletSent] = useState(false);
   const [holdUntil, setHoldUntil] = useState(0);
-  const [now, setNow] = useState(Date.now());
   const [flipped, setFlipped] = useState(true);
   const [settled, setSettled] = useState(false);
   const reveal = useMotionValue(0);
+  // how far the front card is pulled down; the price, terms and hint below make way as it comes
+  const pull = useMotionValue(0);
+  const belowOpacity = useTransform(pull, [0, 60], [1, 0]);
+  const belowY = useTransform(pull, [0, 140], [0, 48]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
   const [canHome, setCanHome] = useState(false);
   useEffect(() => {
@@ -80,10 +92,15 @@ export default function App() {
   }, [plans, load]);
 
   const plan = plans?.[index];
+  // how long: kept across plan swipes; a plan without that term (Max has no yearly plan) shows its closest one
+  const [months, setMonths] = useState(1);
+  const term = plan?.terms?.find((t) => t.months === months)
+    ?? [...(plan?.terms ?? [])].reverse().find((t) => t.months < months) ?? plan?.terms?.[0];
+  const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
-  const payWith: PayMethod = !config?.stars || !plan?.stars ? 'gram' : plan?.gram == null ? 'stars' : method;
-  const bothMethods = !!config?.stars && plan?.gram != null && plan?.stars != null;
+  const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
+  const bothMethods = !!config?.stars && term?.gram != null && term?.stars != null;
   function chooseMethod(m: PayMethod) {
     if (m === method) return;
     tg.select(); setMethod(m); setErr(null);
@@ -100,12 +117,6 @@ export default function App() {
   const toHome = useCallback(() => { setView('home'); setSheet(null); }, []);
   useEffect(() => (view === 'done' && !sheet ? tg.back(home) : undefined), [view, sheet, home]);
 
-  useEffect(() => {
-    if (sheet !== 'review') return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [sheet]);
-  const left = Math.max(0, Math.floor((holdUntil - now) / 1000));
 
   // don't let a stray swipe close the app while money is moving
   useEffect(() => { tg.guardClose(view === 'paying'); return () => tg.guardClose(false); }, [view]);
@@ -149,22 +160,25 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // stable handle for the memoised carousel, always calling the latest openReview
+  const reviewRef = useRef<() => void>(() => {});
+  const onPull = useCallback(() => reviewRef.current(), []);
   function openReview() {
-    if (!plan?.available) return;
+    if (!plan?.available || !term) return;
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
     setHoldUntil(Date.now() + 20 * 60 * 1000);
-    setNow(Date.now());
     setSheet('review');
-  }
+  }  reviewRef.current = openReview;
+
 
   async function pay() {
-    if (!plan || !config) return;
+    if (!plan || !term || !config) return;
     setBusy(true);
     setErr(null);
     try {
-      const o = await api.createOrder(config.region, plan.id, payWith, wallet || undefined);
+      const o = await api.createOrder(config.region, plan.id, term.months, payWith, wallet || undefined);
       setOrder(o);
       setWalletSent(false);
       if (payWith === 'stars' && o.invoiceLink) {
@@ -253,7 +267,7 @@ export default function App() {
 
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
-      {intro === false && <div className="app">
+      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
         <Header
           wallet={wallet}
           onCodes={openOrders}
@@ -268,7 +282,7 @@ export default function App() {
               <motion.div className="intro" {...rise(0.2)}><h1>Choose your Claude plan</h1></motion.div>
 
               {plans ? (
-                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={openReview} disabled={!plan?.available} />
+                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -282,19 +296,24 @@ export default function App() {
                 <div className="carousel"><div className="card-ghost" /></div>
               )}
 
+              <motion.div className="below" style={{ opacity: belowOpacity, y: belowY }}>
               <motion.div className="price" aria-live="polite" {...rise(0.75)}>
-                {plan?.available ? (
+                {plan?.available && term && (plan.terms?.length ?? 0) > 1 && (
+                  <TermPicker terms={plan.terms!} months={term.months} onChange={pickTerm} />
+                )}
+                {plan?.available && term ? (
                   <>
                     <div className="gram">
-                      <Rolling text={payWith === 'stars' ? plan.stars!.toLocaleString() : fmtGram(plan.gram!)} dir={rollDir} />
+                      <Rolling text={payWith === 'stars' ? term.stars!.toLocaleString() : fmtGram(term.gram!)} dir={rollDir} />
                       {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
-                      <motion.div key={plan.id + payWith} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
-                        ≈ ${plan.usd!.toFixed(2)} · Claude {plan.name}, 1 month
+                      <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
+                        ≈ ${term.usd.toFixed(2)} · Claude {plan.name}, {termLabel(term.months)}
+                        {term.annual && term.monthly > 0 && <span className="save"> · {Math.round((1 - term.appPrice / (term.monthly * 12)) * 100)}% less than monthly</span>}
                         {bothMethods && (
                           <button className="alt-price" onClick={() => chooseMethod(payWith === 'stars' ? 'gram' : 'stars')} aria-label="Switch currency">
-                            or <span className="amt"><Amount method={payWith === 'stars' ? 'gram' : 'stars'} gram={plan.gram} stars={plan.stars} size={13} /></span>
+                            or <span className="amt"><Amount method={payWith === 'stars' ? 'gram' : 'stars'} gram={term.gram} stars={term.stars} size={13} /></span>
                           </button>
                         )}
                       </motion.div>
@@ -312,8 +331,9 @@ export default function App() {
               {plans && <motion.div className="pullhint" {...rise(0.95)}>
                 <div className="chev" aria-hidden="true"><span /><span /></div>
                 <span>{needsWallet ? 'Pull the card down to connect your wallet' : 'Pull the card down to buy'}</span>
-                <button onClick={openReview} disabled={!plan?.available}>or tap here</button>
+                <button onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>
               </motion.div>}
+              </motion.div>
             </motion.main>
           )}
 
@@ -322,6 +342,7 @@ export default function App() {
               <motion.div className="pay-stage" initial={{ y: 160, scale: 0.8, rotate: -6 }} animate={{ y: 0, scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 140, damping: 18 }}>
                 <HoloCard
                   planId={order.plan.id}
+                  term={termLabel(order.months ?? 1)}
                   credit={fmtMoney(order.credit, order.currency)}
                   flipped
                   idle
@@ -382,6 +403,7 @@ export default function App() {
                   <HoloCard
                     className="md"
                     planId={order.plan.id}
+                  term={termLabel(order.months ?? 1)}
                     credit={fmtMoney(order.credit, order.currency)}
                     reveal={reveal}
                     flipped={flipped}
@@ -394,7 +416,7 @@ export default function App() {
                 <div style={{ width: '100%' }}>
                   <motion.div className="done-title" {...rise(0)}>
                     <h1>Your credit is ready</h1>
-                    <p>{fmtMoney(order.credit, order.currency)} for Claude {PLAN_LABEL[order.plan.id]}</p>
+                    <p>{fmtMoney(order.credit, order.currency)} for Claude {PLAN_LABEL[order.plan.id]}, {termLabel(order.months ?? 1)}</p>
                   </motion.div>
                   <div className="codes">
                     {order.codes.map((c, i) => (
@@ -450,28 +472,38 @@ export default function App() {
       </div>}
 
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
-        {plan?.available && (
+        {plan?.available && term && (
           <div className="st">
             <div className="summary">
               <motion.div initial={{ rotate: -14, y: 30, opacity: 0 }} animate={{ rotate: -6, y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 16, delay: 0.1 }}>
-                <HoloCard className="sm" planId={plan.id} credit={fmtMoney(plan.credit!, plan.currency!)} idle />
+                <HoloCard className="sm" planId={plan.id} credit={fmtMoney(term.credit, term.currency)} term={termLabel(term.months)} idle />
               </motion.div>
               <div className="what">
                 <b>Claude {plan.name}</b>
-                1 month · delivered instantly
+                {termLabel(term.months)} · delivered instantly
               </div>
             </div>
             <dl className="rows">
-              <div className="row"><dt>App Store credit</dt><dd>{fmtMoney(plan.credit!, plan.currency!)}{plan.codes! > 1 ? ` · ${plan.codes} codes` : ''}</dd></div>
-              <div className="row"><dt>In-app price</dt><dd>{fmtMoney(plan.appPrice!, plan.currency!)}</dd></div>
-              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={plan.gram} stars={plan.stars} size={17} /></dd></div>
+              <div className="row"><dt>App Store credit</dt><dd>{fmtMoney(term.credit, term.currency)}{term.codes > 1 ? ` · ${term.codes} codes` : ''}</dd></div>
+              <div className="row">
+                <dt>{term.annual ? 'Yearly plan in app' : 'In-app price'}</dt>
+                <dd>{term.months > 1 && !term.annual ? `${term.months} × ${fmtMoney(term.monthly, term.currency)}` : fmtMoney(term.appPrice, term.currency)}</dd>
+              </div>
+              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={term.gram} stars={term.stars} size={17} /></dd></div>
             </dl>
+            {term.months > 1 && (
+              <p className="term-note">
+                {term.annual
+                  ? "Apple's yearly Claude Pro plan. It renews once a year."
+                  : `Claude renews monthly. Apple takes each month from this credit, so it covers ${term.months} months.`}
+              </p>
+            )}
             {bothMethods && (
               <div className="paywith" role="radiogroup" aria-label="Pay with">
                 {(['gram', 'stars'] as const).map((m) => (
                   <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
                     {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
-                    <span className="pw-amt"><Amount method={m} gram={plan.gram} stars={plan.stars} size={15} /></span>
+                    <span className="pw-amt"><Amount method={m} gram={term.gram} stars={term.stars} size={15} /></span>
                     <span className="pw-sub">{m === 'gram' ? (wallet || config?.paymentMode === 'mock' ? 'Wallet' : 'Connect wallet') : 'Telegram Stars'}</span>
                   </button>
                 ))}
@@ -486,11 +518,11 @@ export default function App() {
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
               <motion.button className="btn btn-pearl" disabled={!agree || busy} onClick={pay} whileTap={{ scale: 0.97 }}>
-                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={plan.gram} stars={plan.stars} size={19} /></span></>}
+                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={term.gram} stars={term.stars} size={19} /></span></>}
               </motion.button>
             )}
             <p className="fine">
-              Price held for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+              Price held for <Countdown until={holdUntil} />
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
             </p>
           </div>
