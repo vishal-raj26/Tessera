@@ -1,6 +1,7 @@
 // Swipe sideways to pick a plan; pull the front card down to buy it.
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { SpeedLines } from './SpeedLines';
 import { HoloCard } from './HoloCard';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
@@ -18,9 +19,11 @@ interface Props {
 
 const PULL = 110;
 
-function Slot({ i, pos, pull, plan, active, onTap, months }: {
-  i: number; pos: MotionValue<number>; pull: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number;
+function Slot({ i, pos, pull, hold, plan, active, onTap, months }: {
+  i: number; pos: MotionValue<number>; pull: MotionValue<number>; hold: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number;
 }) {
+  // pressed in slightly while held
+  const press = useTransform(hold, [0, 1], [1, active ? 0.965 : 1]);
   const t = plan.terms?.find((x) => x.months === months) ?? plan.terms?.[0];
   const off = useTransform(pos, (p) => i - p);
   const x = useTransform(off, (o) => `${o * 74}%`);
@@ -38,7 +41,7 @@ function Slot({ i, pos, pull, plan, active, onTap, months }: {
         animate={{ y: 0, rotate: 0, opacity: 1, scale: 1 }}
         transition={{ type: 'spring', stiffness: 120, damping: 17, delay: 0.35 + i * 0.12 }}
       >
-        <div>
+        <motion.div style={{ scale: press }}>
           <HoloCard
             planId={plan.id}
             credit={t ? fmtMoney(t.credit, t.currency) : undefined}
@@ -46,7 +49,7 @@ function Slot({ i, pos, pull, plan, active, onTap, months }: {
             interactive={active}
             idle={active}
           />
-        </div>
+        </motion.div>
       </motion.div>
     </motion.div>
   );
@@ -57,6 +60,21 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
   const ownPull = useMotionValue(0);
   const pull = sharedPull ?? ownPull;
   const axis = useRef<'x' | 'y' | null>(null);
+  // holding the front card: speed lines appear and the card presses in
+  const hold = useMotionValue(0);
+  const [holding, setHolding] = useState(false);
+  const off = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const press = () => {
+    if (disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    clearTimeout(off.current);
+    setHolding(true);
+    animate(hold, 1, { duration: 0.18, ease: 'easeOut' });
+  };
+  const release = () => {
+    animate(hold, 0, { duration: 0.28, ease: 'easeOut' });
+    clearTimeout(off.current);
+    off.current = setTimeout(() => setHolding(false), 450); // pause the streaks once they've faded
+  };
   const width = useRef(260);
   const stage = useRef<HTMLDivElement>(null);
 
@@ -64,7 +82,10 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
   useEffect(() => { width.current = (stage.current?.querySelector('.card-wrap') as HTMLElement)?.offsetWidth || 260; });
 
   const onPan = (_: PointerEvent, info: PanInfo) => {
-    if (!axis.current) axis.current = Math.abs(info.offset.x) > Math.abs(info.offset.y) ? 'x' : 'y';
+    if (!axis.current) {
+      axis.current = Math.abs(info.offset.x) > Math.abs(info.offset.y) ? 'x' : 'y';
+      if (axis.current === 'x') release(); // swiping sideways, not pulling
+    }
     if (axis.current === 'x') {
       const step = width.current * 0.74;
       const p = index - info.offset.x / step;
@@ -103,6 +124,9 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
       className="carousel"
       onPan={onPan}
       onPanEnd={onPanEnd}
+      onPointerDown={press}
+      onPointerUp={release}
+      onPointerCancel={release}
       role="listbox"
       aria-label="Plans"
       tabIndex={0}
@@ -112,8 +136,9 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
         if (e.key === 'Enter' && !disabled) onPull();
       }}
     >
+      <SpeedLines hold={hold} pull={pull} max={PULL} on={holding} />
       {plans.map((p, i) => (
-        <Slot key={p.id} i={i} pos={pos} pull={pull} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} />
+        <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} />
       ))}
     </motion.div>
   );

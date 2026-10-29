@@ -810,3 +810,15 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 /* the codes wallet is exactly one screen tall and scrolls inside itself (its pile sits at the bottom) */
 .app.fit { height: 100dvh; overflow: hidden; }
 .app.fit .wallet-view { min-height: 0; }
+
+/* --- speed lines around the held card ------------------------------------ */
+.speed { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; --travel: calc(var(--card-w) / 0.63 + 220px); }
+.speed-layer { position: absolute; inset: 0; transform-origin: 50% 30%; }
+.speed i {
+  position: absolute; top: calc(50% - var(--travel) / 2); width: var(--w); height: var(--len); border-radius: 2px;
+  animation: streak var(--dur) linear var(--delay) infinite paused;
+}
+.speed.on i { animation-play-state: running; will-change: transform; }
+.speed:not(.on) { visibility: hidden; }
+@keyframes streak { from { transform: translate3d(0, calc(var(--len) * -1), 0); } to { transform: translate3d(0, var(--travel), 0); } }
+@media (prefers-reduced-motion: reduce) { .speed { display: none; } }
