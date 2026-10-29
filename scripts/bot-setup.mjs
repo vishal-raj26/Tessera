@@ -18,6 +18,30 @@ const exampleFile = path.join(root, 'server', '.env.example');
 
 // ---- .env helpers --------------------------------------------------------
 if (!fs.existsSync(envFile)) fs.copyFileSync(exampleFile, envFile);
+
+// .env.example is committed to a public repo; real values belong only in .env (git-ignored).
+// If secrets were pasted into the example, move them into .env and blank them in the example.
+const SECRET_KEYS = ['BOT_TOKEN', 'ADMIN_CHAT_IDS', 'TONCENTER_API_KEY', 'BITREFILL_API_ID', 'BITREFILL_API_SECRET', 'MERCHANT_WALLET'];
+{
+  let example = fs.readFileSync(exampleFile, 'utf8');
+  let env0 = fs.readFileSync(envFile, 'utf8');
+  const moved = [];
+  for (const key of SECRET_KEYS) {
+    const re = new RegExp(`^(\\s*${key}\\s*=)(.+)$`, 'm');
+    const m = example.match(re);
+    if (!m || !m[2].trim()) continue;
+    const inEnv = env0.match(new RegExp(`^\\s*${key}\\s*=(.*)$`, 'm'));
+    if (!inEnv) env0 += `${env0.endsWith('\n') ? '' : '\n'}${key}=${m[2].trim()}\n`;
+    else if (!inEnv[1].trim()) env0 = env0.replace(new RegExp(`^\\s*${key}\\s*=.*$`, 'm'), `${key}=${m[2].trim()}`);
+    example = example.replace(re, '$1');
+    moved.push(key);
+  }
+  if (moved.length) {
+    fs.writeFileSync(envFile, env0);
+    fs.writeFileSync(exampleFile, example);
+    console.log(`✓ Moved ${moved.join(', ')} from .env.example (public) into .env (private)`);
+  }
+}
 const readEnv = () => Object.fromEntries(
   fs.readFileSync(envFile, 'utf8').split('\n')
     .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)).filter(Boolean)
