@@ -3,21 +3,16 @@
 //  - "pending" (emulated) transfers are used only to tell the buyer "payment seen";
 //  - an order is paid and fulfilled only on "finalized" (committed in the masterchain).
 // The stream doesn't replay missed events, so the regular poller stays on as a backstop.
-import { Address } from '@ton/core';
-import { NETWORK, readComment } from './chain.js';
+import { NETWORK, readComment, isCreditedIncoming } from './chain.js';
 
 const SSE_URL = process.env.TON_STREAM_URL
   || (NETWORK === 'testnet' ? 'https://testnet.toncenter.com/api/streaming/v2/sse' : 'https://toncenter.com/api/streaming/v2/sse');
-
-const sameAddr = (a, b) => {
-  try { return Address.parse(a).equals(Address.parse(b)); } catch { return false; }
-};
 
 /** Pull incoming transfers to `merchant` out of a streaming "transactions" notification. */
 export function transfersFromNotification(n, merchant) {
   if (n?.type !== 'transactions' || !Array.isArray(n.transactions)) return [];
   return n.transactions
-    .filter((t) => t.in_msg?.source && sameAddr(t.account ?? t.in_msg.destination, merchant) && !t.description?.aborted && !t.in_msg.bounced)
+    .filter((t) => isCreditedIncoming(t, merchant))
     .map((t) => ({
       hash: t.hash,
       comment: readComment(t.in_msg.message_content),
