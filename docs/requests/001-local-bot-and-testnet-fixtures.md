@@ -1,6 +1,6 @@
 # 001: Move the bot token, set up the bot, and capture real testnet payloads
 
-**Status:** open
+**Status:** done (2026-10-30)
 **Base:** `main` @ latest (pull first). Includes PR #2 if it's merged; if not, do step 1 by hand.
 **Why Codex:** these steps need the owner's PC: the bot token in the local `.env`, the testnet wallet files, `cloudflared`, and a live Telegram session. Claude's workspace has none of these.
 
@@ -42,3 +42,10 @@
 - Step 2: the `bot:setup` output (it prints no secrets).
 - Step 3: each of the five checks, pass or fail, with the exact error text for any failure.
 - Step 4: the PR link, the merchant address, and the tx hash used.
+
+## Result (from Codex's report)
+- Token moved into `server/.env`; `.env.example` clean; no token in any history.
+- `bot:setup`: connected to the bot, profile and buyer commands set, admin set. Picture skipped by the owner.
+- Telegram checks: all five passed. No Stars payment was completed.
+- Fixtures: PR #4 (merchant `0QBYUd6v…H-I`, tx `XkWSH71V…bBE=`). Claude's tests against them are in PR #5.
+- Issues Codex found (mixed line endings, `live` shrinking the buyer menu, no Open button for the admin): fixed in PR #2.
