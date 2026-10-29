@@ -11,6 +11,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import readline from 'node:readline';
+import { parseEnv, setEnvText, moveSecrets } from './env-file.mjs';
+import { BUYER_COMMANDS, ADMIN_COMMANDS } from './bot-commands.mjs';
 
 const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
 const envFile = path.join(root, 'server', '.env');
@@ -21,38 +23,16 @@ if (!fs.existsSync(envFile)) fs.copyFileSync(exampleFile, envFile);
 
 // .env.example is committed to a public repo; real values belong only in .env (git-ignored).
 // If secrets were pasted into the example, move them into .env and blank them in the example.
-const SECRET_KEYS = ['BOT_TOKEN', 'ADMIN_CHAT_IDS', 'TONCENTER_API_KEY', 'BITREFILL_API_ID', 'BITREFILL_API_SECRET', 'MERCHANT_WALLET'];
 {
-  let example = fs.readFileSync(exampleFile, 'utf8');
-  let env0 = fs.readFileSync(envFile, 'utf8');
-  const moved = [];
-  for (const key of SECRET_KEYS) {
-    const re = new RegExp(`^(\\s*${key}\\s*=)(.+)$`, 'm');
-    const m = example.match(re);
-    if (!m || !m[2].trim()) continue;
-    const inEnv = env0.match(new RegExp(`^\\s*${key}\\s*=(.*)$`, 'm'));
-    if (!inEnv) env0 += `${env0.endsWith('\n') ? '' : '\n'}${key}=${m[2].trim()}\n`;
-    else if (!inEnv[1].trim()) env0 = env0.replace(new RegExp(`^\\s*${key}\\s*=.*$`, 'm'), `${key}=${m[2].trim()}`);
-    example = example.replace(re, '$1');
-    moved.push(key);
-  }
-  if (moved.length) {
-    fs.writeFileSync(envFile, env0);
-    fs.writeFileSync(exampleFile, example);
-    console.log(`✓ Moved ${moved.join(', ')} from .env.example (public) into .env (private)`);
+  const r = moveSecrets(fs.readFileSync(exampleFile, 'utf8'), fs.readFileSync(envFile, 'utf8'));
+  if (r.moved.length) {
+    fs.writeFileSync(envFile, r.env);
+    fs.writeFileSync(exampleFile, r.example);
+    console.log(`✓ Moved ${r.moved.join(', ')} from .env.example (public) into .env (private)`);
   }
 }
-const readEnv = () => Object.fromEntries(
-  fs.readFileSync(envFile, 'utf8').split('\n')
-    .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)).filter(Boolean)
-    .map((m) => [m[1], m[2].replace(/^['"]|['"]$/g, '')]),
-);
-function setEnv(key, value) {
-  let text = fs.readFileSync(envFile, 'utf8');
-  const re = new RegExp(`^\\s*${key}\\s*=.*$`, 'm');
-  text = re.test(text) ? text.replace(re, `${key}=${value}`) : `${text.replace(/\n?$/, '\n')}${key}=${value}\n`;
-  fs.writeFileSync(envFile, text);
-}
+const readEnv = () => parseEnv(fs.readFileSync(envFile, 'utf8'));
+const setEnv = (key, value) => fs.writeFileSync(envFile, setEnvText(fs.readFileSync(envFile, 'utf8'), key, value));
 
 const ok = (s) => console.log(`✓ ${s}`);
 const step = (s) => console.log(`\n▸ ${s}`);
@@ -112,13 +92,7 @@ for (const [m, body] of profile) {
 ok('Name, short description and description set');
 
 // ---- buyer commands ------------------------------------------------------
-await api('setMyCommands', {
-  commands: [
-    { command: 'start', description: 'Open Tessera' },
-    { command: 'paysupport', description: 'Help with a payment' },
-    { command: 'terms', description: 'Terms of sale' },
-  ],
-});
+await api('setMyCommands', { commands: BUYER_COMMANDS });
 ok('Buyer commands: /start /paysupport /terms');
 
 // ---- admin ---------------------------------------------------------------
@@ -149,13 +123,7 @@ if (admins.length) {
     try {
       await api('setMyCommands', {
         scope: { type: 'chat', chat_id: Number(id) },
-        commands: [
-          { command: 'issues', description: 'Orders that need you' },
-          { command: 'order', description: 'Look up an order by id or memo' },
-          { command: 'prices', description: 'In-app prices we sell against' },
-          { command: 'price', description: 'Change one: /price max5_m 129.99' },
-          { command: 'start', description: 'Admin help' },
-        ],
+        commands: ADMIN_COMMANDS,
       });
       await api('sendMessage', { chat_id: id, text: 'You are the Tessera admin. Order alerts and buyer messages will arrive here once the server is running.' });
     } catch (e) {
