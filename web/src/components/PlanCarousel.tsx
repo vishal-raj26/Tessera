@@ -2,7 +2,7 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import { HoloCard } from './HoloCard';
-import { fmtMoney, type Plan } from '../api';
+import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
 
 interface Props {
@@ -11,13 +11,15 @@ interface Props {
   onIndex: (i: number) => void;
   onPull: () => void;
   disabled?: boolean;
+  months: number;
 }
 
 const PULL = 110;
 
-function Slot({ i, pos, pull, plan, active, onTap }: {
-  i: number; pos: MotionValue<number>; pull: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void;
+function Slot({ i, pos, pull, plan, active, onTap, months }: {
+  i: number; pos: MotionValue<number>; pull: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number;
 }) {
+  const t = plan.terms?.find((x) => x.months === months) ?? plan.terms?.[0];
   const off = useTransform(pos, (p) => i - p);
   const x = useTransform(off, (o) => `${o * 74}%`);
   const scale = useTransform(off, (o) => 1 - Math.min(Math.abs(o), 1.2) * 0.2);
@@ -37,7 +39,8 @@ function Slot({ i, pos, pull, plan, active, onTap }: {
         <motion.div animate={active ? { y: [0, -8, 0] } : { y: 0 }} transition={active ? { duration: 4.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.4 }}>
           <HoloCard
             planId={plan.id}
-            credit={plan.available ? fmtMoney(plan.credit!, plan.currency!) : undefined}
+            credit={t ? fmtMoney(t.credit, t.currency) : undefined}
+            term={t ? termLabel(t.months) : undefined}
             interactive={active}
             idle={active}
           />
@@ -47,7 +50,7 @@ function Slot({ i, pos, pull, plan, active, onTap }: {
   );
 }
 
-export function PlanCarousel({ plans, index, onIndex, onPull, disabled }: Props) {
+export function PlanCarousel({ plans, index, onIndex, onPull, disabled, months }: Props) {
   const pos = useMotionValue(index);
   const pull = useMotionValue(0);
   const axis = useRef<'x' | 'y' | null>(null);
@@ -107,7 +110,7 @@ export function PlanCarousel({ plans, index, onIndex, onPull, disabled }: Props)
       }}
     >
       {plans.map((p, i) => (
-        <Slot key={p.id} i={i} pos={pos} pull={pull} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} />
+        <Slot key={p.id} i={i} pos={pos} pull={pull} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} />
       ))}
     </motion.div>
   );

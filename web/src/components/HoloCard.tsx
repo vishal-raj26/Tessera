@@ -12,11 +12,13 @@ interface Face {
   planId: PlanId;
   credit?: string;
   region?: string;
+  /** footer term, e.g. "3 months" */
+  term?: string;
   /** replaces the top line, e.g. date + status in the wallet stack */
   top?: ReactNode;
 }
 
-function FaceContent({ planId, credit, region, top }: Face) {
+function FaceContent({ planId, credit, region, term, top }: Face) {
   const name = PLAN_LABEL[planId];
   return (
     <div className="cc">
@@ -25,7 +27,7 @@ function FaceContent({ planId, credit, region, top }: Face) {
       <div className={`cc-name ${name.length > 4 ? 'long' : ''}`}>{name}</div>
       <div className="cc-foot">
         <span>{credit ? `Credit ${credit}` : 'Credit'}</span>
-        <span>{region ?? '1 month'}</span>
+        <span>{term ?? region ?? '1 month'}</span>
       </div>
     </div>
   );
@@ -40,7 +42,7 @@ interface Props extends Face {
   idle?: boolean; // slow automatic sway
 }
 
-export function HoloCard({ planId, credit, region, top, reveal = 0, flipped = false, interactive = false, back, className = '', idle = false }: Props) {
+export function HoloCard({ planId, credit, region, term, top, reveal = 0, flipped = false, interactive = false, back, className = '', idle = false }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const px = useMotionValue(0.5);
   const py = useMotionValue(0.5);
@@ -106,9 +108,9 @@ export function HoloCard({ planId, credit, region, top, reveal = 0, flipped = fa
         style={{ rotateX: rotX, rotateY: rotYTotal, ['--mx' as string]: mx, ['--my' as string]: my }}
       >
         <div className="face front">
-          <div className="layer base"><FaceContent planId={planId} credit={credit} region={region} top={top} /></div>
+          <div className="layer base"><FaceContent planId={planId} credit={credit} region={region} term={term} top={top} /></div>
           <motion.div className="layer pearl" style={{ WebkitMaskImage: mask, maskImage: mask }}>
-            <FaceContent planId={planId} credit={credit} region={region} top={top} />
+            <FaceContent planId={planId} credit={credit} region={region} term={term} top={top} />
           </motion.div>
           <div className="layer holo" />
           <div className="layer glare" />
