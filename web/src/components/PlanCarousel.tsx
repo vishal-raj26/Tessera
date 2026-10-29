@@ -1,6 +1,6 @@
 // Swipe sideways to pick a plan; pull the front card down to buy it.
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { HoloCard } from './HoloCard';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
@@ -36,7 +36,7 @@ function Slot({ i, pos, pull, plan, active, onTap, months }: {
         animate={{ y: 0, rotate: 0, opacity: 1, scale: 1 }}
         transition={{ type: 'spring', stiffness: 120, damping: 17, delay: 0.35 + i * 0.12 }}
       >
-        <motion.div animate={active ? { y: [0, -8, 0] } : { y: 0 }} transition={active ? { duration: 4.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.4 }}>
+        <div>
           <HoloCard
             planId={plan.id}
             credit={t ? fmtMoney(t.credit, t.currency) : undefined}
@@ -44,13 +44,13 @@ function Slot({ i, pos, pull, plan, active, onTap, months }: {
             interactive={active}
             idle={active}
           />
-        </motion.div>
+        </div>
       </motion.div>
     </motion.div>
   );
 }
 
-export function PlanCarousel({ plans, index, onIndex, onPull, disabled, months }: Props) {
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months }: Props) {
   const pos = useMotionValue(index);
   const pull = useMotionValue(0);
   const axis = useRef<'x' | 'y' | null>(null);
@@ -114,4 +114,4 @@ export function PlanCarousel({ plans, index, onIndex, onPull, disabled, months }
       ))}
     </motion.div>
   );
-}
+});

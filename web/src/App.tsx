@@ -25,6 +25,14 @@ const rise = (delay = 0) => ({
   transition: { type: 'spring' as const, stiffness: 200, damping: 24, delay },
 });
 
+/** Ticks on its own, so the rest of the app doesn't re-render every second. */
+function Countdown({ until }: { until: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  const left = Math.max(0, Math.floor((until - now) / 1000));
+  return <>{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</>;
+}
+
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [plans, setPlans] = useState<Plan[] | null>(null);
@@ -45,7 +53,6 @@ export default function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [walletSent, setWalletSent] = useState(false);
   const [holdUntil, setHoldUntil] = useState(0);
-  const [now, setNow] = useState(Date.now());
   const [flipped, setFlipped] = useState(true);
   const [settled, setSettled] = useState(false);
   const reveal = useMotionValue(0);
@@ -106,12 +113,6 @@ export default function App() {
   const toHome = useCallback(() => { setView('home'); setSheet(null); }, []);
   useEffect(() => (view === 'done' && !sheet ? tg.back(home) : undefined), [view, sheet, home]);
 
-  useEffect(() => {
-    if (sheet !== 'review') return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [sheet]);
-  const left = Math.max(0, Math.floor((holdUntil - now) / 1000));
 
   // don't let a stray swipe close the app while money is moving
   useEffect(() => { tg.guardClose(view === 'paying'); return () => tg.guardClose(false); }, [view]);
@@ -155,15 +156,18 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // stable handle for the memoised carousel, always calling the latest openReview
+  const reviewRef = useRef<() => void>(() => {});
+  const onPull = useCallback(() => reviewRef.current(), []);
   function openReview() {
     if (!plan?.available || !term) return;
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
     setHoldUntil(Date.now() + 20 * 60 * 1000);
-    setNow(Date.now());
     setSheet('review');
-  }
+  }  reviewRef.current = openReview;
+
 
   async function pay() {
     if (!plan || !term || !config) return;
@@ -274,7 +278,7 @@ export default function App() {
               <motion.div className="intro" {...rise(0.2)}><h1>Choose your Claude plan</h1></motion.div>
 
               {plans ? (
-                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={openReview} disabled={!plan?.available} months={term?.months ?? months} />
+                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -512,7 +516,7 @@ export default function App() {
               </motion.button>
             )}
             <p className="fine">
-              Price held for {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+              Price held for <Countdown until={holdUntil} />
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
             </p>
           </div>
