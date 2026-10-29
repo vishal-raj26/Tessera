@@ -18,7 +18,7 @@ cd web && npx tsc -b --noEmit && npx vite build
 
 ## Rules that must hold
 - **Payments:** two methods, `gram` (on-chain, matched by memo) and `stars` (Telegram invoice). A GRAM transfer never pays a Stars order. A transfer is applied once per tx hash and a Stars payment once per charge id; a GRAM order is only paid on a *finalized* transfer; never re-buy automatically after an interrupted purchase. Keep tests green; add a test for any engine/payment change.
-- **Secrets:** never commit `server/.env`, `server/data/`, or `scripts/.testnet-*.json` (wallet keys).
+- **Secrets:** never commit `server/.env`, `server/data/`, or `scripts/.testnet-*.json` (wallet keys). The repo is public: `server/.env.example` stays blank (a test fails if a secret is filled in); real values go only in `server/.env`.
 - **Wording:** users see "App Store credit". Don't mention gift cards or the supplier anywhere in the UI. Never show the App Store country/region.
 
 ## Design rules
