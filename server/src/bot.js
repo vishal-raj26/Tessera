@@ -162,7 +162,7 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     if (cmd.startsWith('/start')) {
       return send(chat, isAdmin
         ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices — in-app prices we sell against\n/price &lt;plan&gt; &lt;amount&gt; — change one\n\nBuyer messages land here. Reply to one to answer that buyer.'
-        : 'Claude Pro and Max, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', isAdmin ? undefined : openApp);
+        : 'Claude Pro and Max, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', openApp);
     }
     if (cmd.startsWith('/terms')) return send(chat, TERMS);
     if (cmd.startsWith('/paysupport') || cmd.startsWith('/help')) {
