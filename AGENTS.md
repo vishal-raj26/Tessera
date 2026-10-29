@@ -27,3 +27,9 @@ cd web && npx tsc -b --noEmit && npx vite build
 - Amounts: number first, then the mark: the gem `<GramIcon />` for GRAM, the gold `<StarIcon />` for Stars (use `<Amount />`). No ticker text next to them.
 - Motion is purposeful (springs via framer-motion, haptics via `tg`). No decorative filler: no floating sparkles, badge pills, gradient blobs, orbiting icons, emoji.
 - Mobile first at 390px wide; respect the Telegram safe-area CSS variables.
+
+## Roles (set by the project owner; takes precedence over other workflow notes)
+- **Claude implements** every main task: features, fixes, refactors, docs. It works on `claude/<task>` branches and opens a PR for each one.
+- **Codex reviews** Claude's PRs, and does only the tasks Claude can't do from its cloud workspace. Typical examples: anything on the owner's Windows PC, live Telegram or testnet runs with local wallets and `.env`, tools that need local logins.
+- Claude sends those tasks as written requests in `docs/requests/NNN-<slug>.md`, using the template in `docs/requests/README.md`. The owner passes them to Codex.
+- Codex does exactly what a request asks, on `codex/<request-slug>` branches, and answers in the request's **Report back** format. If a request turns out to need code changes beyond its scope, Codex reports that instead of making the changes, and Claude implements them.
