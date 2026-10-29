@@ -74,6 +74,8 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       case 'extra':
         if (e.stars != null) return toAdmins(`➕ <b>Unexpected Stars payment</b> of ${e.stars} ⭐\nCharge <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
         return toAdmins(`➕ <b>Extra payment</b> of ${fromNano(e.valueNano)} GRAM\nTx <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
+      case 'credit_unrecognised':
+        return toAdmins(`🔎 <b>Payment not recognised</b>: ${esc(e.reason)}\n${fromNano(e.valueNano)} GRAM · memo <code>${esc(e.comment)}</code>\nFrom <code>${esc(e.source)}</code>\nTx <code>${esc(e.hash)}</code>\nCheck it in an explorer. If the money arrived, fulfil or refund by hand.${o ? `\n\n${describe(o)}` : ''}`, o ? buttons(o) : undefined);
       case 'stars_unmatched':
         return toAdmins(`❓ <b>Stars payment for an unknown order</b>\n${e.amount} ⭐ from <a href="tg://user?id=${esc(e.userId)}">${esc(e.userId)}</a>\nOrder <code>${esc(e.orderId)}</code>\nCharge <code>${esc(e.chargeId)}</code>`);
       case 'unmatched':

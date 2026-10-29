@@ -218,9 +218,18 @@ const engine = createEngine({
   orders,
   payments,
   supplier: SUPPLIER,
-  fetchIncoming: PAYMENT_MODE === 'chain' ? () => recentIncoming(MERCHANT) : null,
+  fetchIncoming: PAYMENT_MODE === 'chain' ? () => recentIncoming(MERCHANT, 100, flagRejected) : null,
   notify: (e) => bot.notify(e),
 });
+
+// A transfer with an order memo that the strict credit check rejected: tell a person once, never auto-pay.
+function flagRejected(t) {
+  const key = `rejected:${t.hash}`;
+  if (settings.get(key)) return;
+  settings.set(key, Date.now());
+  console.warn(`[payments] unrecognised credit ${t.hash} memo ${t.comment}: ${t.reason}`);
+  bot.notify({ type: 'credit_unrecognised', ...t, valueNano: String(t.valueNano), order: orders.byMemo(t.comment) });
+}
 
 // Instant detection via the streaming API; the poller catches anything the stream missed.
 // While the stream is connected we poll every 15s; while it's down, every 5s.
@@ -230,6 +239,7 @@ if (PAYMENT_MODE === 'chain' && process.env.TON_STREAM !== 'off') {
     merchant: MERCHANT,
     onPending: (t) => engine.seePending(t),
     onFinal: (t) => engine.applyTransfer(t).catch(console.error),
+    onRejected: flagRejected,
     onState: (up) => { streamUp = up; },
   });
 }
