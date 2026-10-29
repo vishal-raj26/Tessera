@@ -201,7 +201,9 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     }
     if (cmd.startsWith('/prices') && prices) {
       const rows = prices.list().map((p) => `${p.plan} · Claude ${p.name}: <b>${p.price} ${p.currency}</b> (${p.source ?? (p.overridden ? 'set by you' : 'default')})`);
-      return send(chat, `In-app prices (${prices.region}):\n${rows.join('\n')}\n\nChange one: /price max5_m 129.99`);
+      const r = prices.rate?.();
+      const gram = r ? `\n\nGRAM: <b>$${Number(r.usd).toFixed(4)}</b> (${esc(r.source)}${r.ageSec != null ? `, ${r.ageSec}s ago` : ''})${r.error ? `\n⚠️ Live feed failing: ${esc(r.error)}` : ''}` : '';
+      return send(chat, `In-app prices (${prices.region}):\n${rows.join('\n')}${gram}\n\nChange one: /price max5_m 129.99`);
     }
     if (cmd === '/price' && prices) {
       const [, plan, amount] = m.text.trim().split(/\s+/);

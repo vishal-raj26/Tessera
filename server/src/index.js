@@ -8,7 +8,7 @@ import { PLANS, REGIONS, TERMS, pickPackages, round2, termLabel } from './catalo
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
-import { gramUsd, refreshRate, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, normalize, friendly, NETWORK } from './chain.js';
+import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, normalize, friendly, NETWORK } from './chain.js';
 import { createEngine } from './engine.js';
 import { startApplePriceSync } from './applePrices.js';
 import { startPaymentStream } from './stream.js';
@@ -112,7 +112,7 @@ app.get('/tonconnect-manifest.json', (req, res) => {
   res.json({ url, name: 'Tessera', iconUrl: `${url}/icon-512.png`, termsOfUseUrl: `${url}/terms`, privacyPolicyUrl: `${url}/privacy` });
 });
 
-app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE }));
+app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE, gram: rateStatus() }));
 
 app.get('/api/config', (req, res) => {
   res.json({ paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS });
@@ -274,7 +274,9 @@ const prices = {
     return null;
   },
   region: STORE_REGION,
+  rate: () => rateStatus(),
 };
+startRateFeed();
 const bot = startAdminBot({ getEngine: () => engine, orders, prices, publicUrl: process.env.PUBLIC_URL });
 
 // Keep in-app prices in step with the App Store (APPLE_PRICE_SYNC=off to stop it).

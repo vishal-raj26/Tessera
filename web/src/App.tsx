@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtMoney, groupCode, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote } from './api';
 import { tg } from './tg';
@@ -58,7 +58,8 @@ export default function App() {
   const reveal = useMotionValue(0);
   // how far the front card is pulled down; the price, terms and hint below make way as it comes
   const pull = useMotionValue(0);
-  const belowOpacity = useTransform(pull, [0, 60], [1, 0]);
+  const hold = useMotionValue(0); // pressing the card already dims what's below, as the portal opens
+  const belowOpacity = useTransform([pull, hold] as MotionValue<number>[], ([p, h]: number[]) => Math.min(1 - Math.min(1, p / 60), 1 - h * 0.6));
   const belowY = useTransform(pull, [0, 140], [0, 48]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
   const [canHome, setCanHome] = useState(false);
@@ -304,7 +305,7 @@ export default function App() {
               <motion.div className="intro" {...rise(0.2)}><h1>Choose your Claude plan</h1></motion.div>
 
               {plans ? (
-                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} />
+                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
