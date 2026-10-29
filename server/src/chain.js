@@ -57,6 +57,24 @@ export function readComment(content) {
 export const NETWORK = process.env.TON_NETWORK === 'testnet' ? 'testnet' : 'mainnet';
 const TONCENTER = process.env.TONCENTER_URL || (NETWORK === 'testnet' ? 'https://testnet.toncenter.com/api/v3' : 'https://toncenter.com/api/v3');
 
+/** A fresh wallet can retain a non-bounceable credit despite skipping execution. */
+export function isCreditedIncoming(t, merchant) {
+  const m = t.in_msg;
+  const expected = normalize(merchant);
+  if (!expected || !m?.source || m.bounced) return false;
+  const destinations = [t.account, m.destination].filter(a => a != null);
+  if (!destinations.length || destinations.some(a => normalize(a) !== expected)) return false;
+  const d = t.description;
+  if (!d?.aborted) return true;
+  try {
+    return d.type === 'ord' && d.destroyed === false && d.credit_first === true
+      && t.end_status === 'uninit' && m.bounce === false && m.bounced === false
+      && !d.bounce && d.compute_ph?.skipped === true && d.compute_ph.reason === 'no_state'
+      && BigInt(d.credit_ph?.credit ?? 0) > 0n
+      && BigInt(d.credit_ph.credit) === BigInt(m.value);
+  } catch { return false; }
+}
+
 /** Recent incoming transfers to the merchant wallet: [{ hash, comment, valueNano, source }] */
 export async function recentIncoming(merchant, limit = 100) {
   const url = `${TONCENTER}/transactions?account=${encodeURIComponent(merchant)}&limit=${limit}&sort=desc`;
@@ -67,7 +85,7 @@ export async function recentIncoming(merchant, limit = 100) {
   if (!res.ok) throw new Error(`toncenter ${res.status}`);
   const j = await res.json();
   return (j.transactions || [])
-    .filter((t) => t.in_msg && t.in_msg.source && !t.description?.aborted)
+    .filter((t) => isCreditedIncoming(t, merchant))
     .map((t) => ({
       hash: t.hash,
       comment: readComment(t.in_msg.message_content),

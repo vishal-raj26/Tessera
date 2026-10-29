@@ -2,6 +2,13 @@
 
 Notes for coding agents (Codex, Claude, etc.) and contributors. Read README.md for what the app does.
 
+## Shared work between agents
+- Read this file, `docs/HANDOFF.md`, `git status`, and the recent commits before editing. Fetch the current remote state before starting a new task; preserve local changes.
+- Use a separate branch for each task, such as `codex/<task>` or `claude/<task>`. One agent owns a branch while implementing; another can review its diff. Coordinate before editing the same files in parallel.
+- Keep changes focused and preserve features added by the other agent. A handoff should name the branch and base commit, explain changes, list checks actually run and their results, and identify unfinished work.
+- Update `docs/HANDOFF.md` when handing work over. Record facts and remaining decisions there; never put credentials, wallet phrases, or private configuration in it.
+- Use pull requests for shared review. Do not merge, deploy, or switch payment networks without authorization from the user; existing authorization for the task still applies.
+
 ## Layout
 - `web/` React 19 + Vite + TypeScript Mini App. Entry `src/App.tsx`; Telegram wrapper `src/tg.ts`; API client `src/api.ts`; styles in one file `src/index.css`.
 - `server/` Node 22 (ESM, no build step). `src/index.js` routes, `engine.js` order state machine, `stream.js` + `chain.js` TON payment detection, `bot.js` admin/buyer bot and Stars checkout (pre-checkout, successful_payment, refunds), `supplier/` mock and Bitrefill adapters, `db.js` node:sqlite store.
