@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "setup": "npm --prefix server install && npm --prefix web install",
+    "bot:setup": "node scripts/bot-setup.mjs",
     "testnet:setup": "node scripts/testnet-setup.mjs",
     "live": "node scripts/live.mjs",
     "testnet:buy": "node scripts/testnet-buy.mjs",

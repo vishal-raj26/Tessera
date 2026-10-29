@@ -4,6 +4,22 @@
 //
 // Env: BOT_TOKEN (same bot as the Mini App), ADMIN_CHAT_IDS (comma-separated user or group ids).
 // Admin commands: /issues — orders that need attention; /order <id or memo> — one order.
+// Buyer commands: /start, /paysupport (required by Telegram for Stars), /terms.
+// Support inbox: anything a buyer writes is forwarded to the admins; an admin replies to that
+// forwarded message and the bot sends the answer back to the buyer.
+
+export const TERMS = [
+  '<b>Tessera terms of sale</b>',
+  '',
+  '• Tessera sells App Store credit. You use it to pay for a Claude plan in the Claude iOS app.',
+  '• Codes work only on Apple accounts from the App Store country they are issued for.',
+  '• Once a code is issued it cannot be refunded or exchanged.',
+  '• If payment arrives but we can\'t issue your code, we refund you in the currency you paid with.',
+  '• Claude plans renew monthly through Apple. Manage or cancel them in your Apple account settings.',
+  '• Tessera is independent and not affiliated with Anthropic or Apple.',
+  '',
+  'Questions or a problem with a payment: /paysupport',
+].join('\n');
 
 const fromNano = (n) => (Number(BigInt(n ?? 0)) / 1e9).toFixed(2);
 const PLAN = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
@@ -143,10 +159,31 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     const [cmd, arg] = m.text.trim().split(/\s+/);
     if (cmd.startsWith('/start')) {
       return send(chat, isAdmin
-        ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices — in-app prices we sell against\n/price &lt;plan&gt; &lt;amount&gt; — change one'
-        : 'Open Tessera to buy Claude with GRAM.', isAdmin ? undefined : openApp);
+        ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices — in-app prices we sell against\n/price &lt;plan&gt; &lt;amount&gt; — change one\n\nBuyer messages land here. Reply to one to answer that buyer.'
+        : 'Claude Pro and Max, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', isAdmin ? undefined : openApp);
     }
-    if (!isAdmin) return undefined;
+    if (cmd.startsWith('/terms')) return send(chat, TERMS);
+    if (cmd.startsWith('/paysupport') || cmd.startsWith('/help')) {
+      return send(chat, 'Tell us what went wrong in one message, and include the memo of your order (it starts with TS-) if you have it. A person will reply here.');
+    }
+
+    // admin answering a forwarded buyer message
+    const replyTo = m.reply_to_message?.text ?? '';
+    const target = isAdmin && replyTo.match(/#u(\d+)/)?.[1];
+    if (target && !cmd.startsWith('/')) {
+      await send(target, `<b>Tessera support</b>\n${esc(m.text)}`);
+      return send(chat, 'Sent.');
+    }
+
+    if (!isAdmin) {
+      // buyer wrote something: hand it to a person with their recent orders
+      if (m.chat?.type !== 'private' || cmd.startsWith('/')) return undefined;
+      const recent = (orders.byUser?.(from) ?? []).slice(0, 3)
+        .map((o) => `• ${PLAN[o.plan_id] ?? o.plan_id} · ${esc(o.status)} · <code>${esc(o.comment)}</code>`).join('\n');
+      const who = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || from;
+      await toAdmins(`💬 <b>${esc(who)}</b>${m.from?.username ? ` @${esc(m.from.username)}` : ''} #u${from}\n${esc(m.text)}${recent ? `\n\n${recent}` : ''}\n\n<i>Reply to this message to answer.</i>`);
+      return send(chat, 'Got it. A person will reply here soon.');
+    }
     if (cmd.startsWith('/issues')) {
       const list = orders.byStatus('failed', 'underpaid');
       if (!list.length) return send(chat, 'Nothing needs attention.');
