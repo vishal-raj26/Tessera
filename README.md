@@ -18,7 +18,14 @@ Requires Node 22+ and [`cloudflared`](https://developers.cloudflare.com/cloudfla
 npm run setup          # installs server and web
 npm run testnet:setup  # creates a testnet merchant wallet and writes server/.env for testnet
 ```
-Paste your bot token (from @BotFather → /newbot) after `BOT_TOKEN=` in `server/.env`, and your Telegram user id after `ADMIN_CHAT_IDS=`. A TON Center key in `TONCENTER_API_KEY=` is optional but makes payment detection instant.
+Create a bot in Telegram with @BotFather → /newbot, then:
+
+```bash
+npm run bot:setup      # paste the token when asked, then send /start to your bot when it says so
+```
+This saves the token and makes you the admin in `server/.env`, sets the bot's name, description and command menus (buyers: /start /paysupport /terms; you: /issues /order /prices /price), and sends you a confirmation message. Safe to run again. Afterwards, in @BotFather, set the picture with /setuserpic (`web/public/icon-512.png`).
+
+A TON Center key in `TONCENTER_API_KEY=` is optional but makes payment detection instant.
 
 ```bash
 npm run live           # builds, opens a public HTTPS tunnel, starts the server, points your bot's menu button at it
@@ -107,7 +114,9 @@ Uses the same bot as the Mini App. Set `BOT_TOKEN` and `ADMIN_CHAT_IDS` (your Te
 - **Renewal reminders:** about 27 days after delivery, the buyer gets a message that their month renews soon, with a button back into the app.
 - **Buyers** get a message when their code is ready, when it's delayed, when they underpaid (with the amount still owed), and when they're refunded.
 
-Refunds themselves are sent by you from the merchant wallet. The bot only records them.
+- **Support inbox:** anything a buyer writes to the bot is forwarded to you with their recent orders. Reply to that message and the bot sends your answer to the buyer. `/paysupport` and `/terms` (both required by Telegram for bots that take Stars) are answered automatically.
+
+GRAM refunds are sent by you from the merchant wallet; the bot only records them. Stars refunds are sent by the bot itself.
 
 ## Going live
 
