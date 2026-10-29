@@ -75,8 +75,27 @@ export function isCreditedIncoming(t, merchant) {
   } catch { return false; }
 }
 
+/**
+ * A transfer to the merchant that carries an order memo but that isCreditedIncoming rejected.
+ * Never paid automatically; returned so a person is told instead of it vanishing silently.
+ */
+export function unrecognisedCredit(t, merchant) {
+  const m = t?.in_msg;
+  const expected = normalize(merchant);
+  if (!expected || !m?.source || m.bounced || isCreditedIncoming(t, merchant)) return null;
+  if ([t.account, m.destination].some((a) => a != null && normalize(a) !== expected)) return null;
+  const comment = readComment(m.message_content)?.trim();
+  let valueNano = 0n;
+  try { valueNano = BigInt(m.value || 0); } catch { /* malformed */ }
+  if (!comment?.startsWith('TS-') || valueNano <= 0n) return null;
+  return {
+    hash: t.hash, comment, valueNano, source: m.source,
+    reason: t.description?.bounce ? 'bounced back to the sender' : 'not recognised as a completed credit',
+  };
+}
+
 /** Recent incoming transfers to the merchant wallet: [{ hash, comment, valueNano, source }] */
-export async function recentIncoming(merchant, limit = 100) {
+export async function recentIncoming(merchant, limit = 100, onRejected = null) {
   const url = `${TONCENTER}/transactions?account=${encodeURIComponent(merchant)}&limit=${limit}&sort=desc`;
   const res = await fetch(url, {
     headers: process.env.TONCENTER_API_KEY ? { 'X-API-Key': process.env.TONCENTER_API_KEY } : {},
@@ -84,6 +103,7 @@ export async function recentIncoming(merchant, limit = 100) {
   });
   if (!res.ok) throw new Error(`toncenter ${res.status}`);
   const j = await res.json();
+  if (onRejected) for (const t of j.transactions || []) { const r = unrecognisedCredit(t, merchant); if (r) onRejected(r); }
   return (j.transactions || [])
     .filter((t) => isCreditedIncoming(t, merchant))
     .map((t) => ({

@@ -1,6 +1,14 @@
 # Codex / Claude handoff
 
-## Current task
+## Latest: `claude/payment-followups` (Claude)
+
+- Base: `codex/payment-repair-handoff` (PR #1) merged with `codex/testnet-fixtures` (PR #4). Merge those two first; this PR's own diff is then just the follow-ups.
+- **Real-payload tests** (`server/test/real-fixtures.test.js`): both readers accept Codex's captured fresh-wallet credit (`TS-628AF91308`, 0.209933333 GRAM). The stream payload has **no pre-decoded comment**, and the memo is decoded from the raw body. Both readers give the same hash, so the engine buys once.
+- **Review finding 1 fixed:** a transfer to the merchant with a `TS-` memo that `isCreditedIncoming` rejects (missing field, active/frozen account, bounced back) now sends one admin alert, "Payment not recognised", deduped by tx hash in `settings`. It is never paid automatically. The stream only flags *finalized* rejections. Bounced messages, other accounts and memo-less transfers are ignored.
+- Checks: 67 unit tests and `test:e2e` pass.
+- Not covered by tests: the `flagRejected` dedupe in `index.js` (index.js isn't importable in tests).
+
+## Earlier: `codex/payment-repair-handoff` (Codex)
 
 - Branch: `codex/payment-repair-handoff`.
 - Base: `87cbf3b` (`Add Telegram Stars checkout next to GRAM`). This branch preserves that work.

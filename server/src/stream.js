@@ -3,14 +3,18 @@
 //  - "pending" (emulated) transfers are used only to tell the buyer "payment seen";
 //  - an order is paid and fulfilled only on "finalized" (committed in the masterchain).
 // The stream doesn't replay missed events, so the regular poller stays on as a backstop.
-import { NETWORK, readComment, isCreditedIncoming } from './chain.js';
+import { NETWORK, readComment, isCreditedIncoming, unrecognisedCredit } from './chain.js';
 
 const SSE_URL = process.env.TON_STREAM_URL
   || (NETWORK === 'testnet' ? 'https://testnet.toncenter.com/api/streaming/v2/sse' : 'https://toncenter.com/api/streaming/v2/sse');
 
 /** Pull incoming transfers to `merchant` out of a streaming "transactions" notification. */
-export function transfersFromNotification(n, merchant) {
+export function transfersFromNotification(n, merchant, onRejected = null) {
   if (n?.type !== 'transactions' || !Array.isArray(n.transactions)) return [];
+  // only finalized transactions are worth a person's attention; pending ones may still change
+  if (onRejected && n.finality === 'finalized') {
+    for (const t of n.transactions) { const r = unrecognisedCredit(t, merchant); if (r) onRejected(r); }
+  }
   return n.transactions
     .filter((t) => isCreditedIncoming(t, merchant))
     .map((t) => ({
@@ -43,7 +47,7 @@ async function* sse(res) {
   }
 }
 
-export function startPaymentStream({ merchant, onPending, onFinal, onState = () => {}, log = console }) {
+export function startPaymentStream({ merchant, onPending, onFinal, onRejected = null, onState = () => {}, log = console }) {
   const key = process.env.TONCENTER_API_KEY;
   let stopped = false;
   let backoff = 2000;
@@ -62,7 +66,7 @@ export function startPaymentStream({ merchant, onPending, onFinal, onState = () 
         backoff = 2000;
         for await (const n of sse(res)) {
           if (stopped) return;
-          for (const t of transfersFromNotification(n, merchant)) {
+          for (const t of transfersFromNotification(n, merchant, onRejected)) {
             if (t.finality === 'finalized') await onFinal(t);
             else onPending(t);
           }
