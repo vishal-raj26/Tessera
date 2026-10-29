@@ -74,7 +74,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
   mask-image: linear-gradient(to top, #000 10%, transparent 75%);
 }
 
-.app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; overflow-x: clip; }
+/* short screens: the page scrolls rather than cutting off buttons */
 
 /* --- top bar ---------------------------------------------------------- */
 .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 18px 0; }
@@ -100,10 +101,23 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .intro { text-align: center; padding: 26px 24px 0; }
 .intro h1 { font-size: 15px; font-weight: 500; color: var(--mute); margin: 0; letter-spacing: -0.01em; }
 
+/* The plan card is sized from the screen height as well as its width, so the term picker, price
+   and hint always fit below it: iPhone SE and small Androids included, and Telegram full screen
+   (its safe-area insets) too. ~400px is what the header, title, picker, price and hint need. */
+.home {
+  --safe-y: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)
+    + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
+  --card-w: min(62vw, 250px, max(150px, calc((100dvh - 400px - var(--safe-y)) * 0.63)));
+}
+.carousel .card-wrap, .carousel .card-ghost { width: var(--card-w); }
 .carousel {
   position: relative;
+  /* above the price and picker, as its own layer: Safari otherwise lets 3D-tilted cards
+     interleave with flat siblings */
+  z-index: 2;
+  isolation: isolate;
   flex: 1;
-  min-height: 400px;
+  min-height: calc(var(--card-w) / 0.63 + 28px);
   display: grid;
   place-items: center;
   perspective: 1200px;
@@ -419,6 +433,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 
 /* paying: pulse rings radiate behind the card */
 .pay-stage { position: relative; display: grid; place-items: center; }
+/* cards on the payment and success screens also size from the screen height (see .home) */
+.app { --safe-y: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)
+    + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px)); }
+.pay-stage .card-wrap { width: min(62vw, 250px, max(140px, calc((100dvh - 340px - var(--safe-y)) * 0.63))); }
+.reveal-stage .card-wrap.md { width: min(54vw, 210px, max(120px, calc((100dvh - 480px - var(--safe-y)) * 0.63))); }
 .rings { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .rings i { position: absolute; width: 70%; aspect-ratio: 1; border-radius: 50%; border: 1px solid rgba(217, 119, 87, 0.45); animation: ring 2.4s var(--ease) infinite; opacity: 0; }
 .rings i:nth-child(2) { animation-delay: 0.8s; } .rings i:nth-child(3) { animation-delay: 1.6s; }
@@ -786,3 +805,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .terms .term-bg { position: absolute; inset: 0; border-radius: 99px; background: var(--panel-2); border: 1px solid rgba(217, 119, 87, 0.45); }
 .price .save { color: var(--clay); }
 .term-note { margin: -4px 0 14px; color: var(--mute); font-size: 13px; line-height: 1.45; }
+
+.below { position: relative; z-index: 1; }
+/* the codes wallet is exactly one screen tall and scrolls inside itself (its pile sits at the bottom) */
+.app.fit { height: 100dvh; overflow: hidden; }
+.app.fit .wallet-view { min-height: 0; }

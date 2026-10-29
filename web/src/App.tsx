@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, animate, motion, useMotionValue } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtMoney, groupCode, termLabel, type AppConfig, type Order, type PayMethod, type Plan } from './api';
 import { tg } from './tg';
@@ -56,6 +56,10 @@ export default function App() {
   const [flipped, setFlipped] = useState(true);
   const [settled, setSettled] = useState(false);
   const reveal = useMotionValue(0);
+  // how far the front card is pulled down; the price, terms and hint below make way as it comes
+  const pull = useMotionValue(0);
+  const belowOpacity = useTransform(pull, [0, 60], [1, 0]);
+  const belowY = useTransform(pull, [0, 140], [0, 48]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
   const [canHome, setCanHome] = useState(false);
   useEffect(() => {
@@ -263,7 +267,7 @@ export default function App() {
 
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
-      {intro === false && <div className="app">
+      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
         <Header
           wallet={wallet}
           onCodes={openOrders}
@@ -278,7 +282,7 @@ export default function App() {
               <motion.div className="intro" {...rise(0.2)}><h1>Choose your Claude plan</h1></motion.div>
 
               {plans ? (
-                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} />
+                <PlanCarousel plans={plans} index={index} onIndex={setIndex} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -292,6 +296,7 @@ export default function App() {
                 <div className="carousel"><div className="card-ghost" /></div>
               )}
 
+              <motion.div className="below" style={{ opacity: belowOpacity, y: belowY }}>
               <motion.div className="price" aria-live="polite" {...rise(0.75)}>
                 {plan?.available && term && (plan.terms?.length ?? 0) > 1 && (
                   <TermPicker terms={plan.terms!} months={term.months} onChange={pickTerm} />
@@ -328,6 +333,7 @@ export default function App() {
                 <span>{needsWallet ? 'Pull the card down to connect your wallet' : 'Pull the card down to buy'}</span>
                 <button onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>
               </motion.div>}
+              </motion.div>
             </motion.main>
           )}
 

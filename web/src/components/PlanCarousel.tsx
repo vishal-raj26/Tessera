@@ -12,6 +12,8 @@ interface Props {
   onPull: () => void;
   disabled?: boolean;
   months: number;
+  /** optional shared pull distance, so the page can react while the card is pulled */
+  pull?: MotionValue<number>;
 }
 
 const PULL = 110;
@@ -50,9 +52,10 @@ function Slot({ i, pos, pull, plan, active, onTap, months }: {
   );
 }
 
-export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months }: Props) {
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull }: Props) {
   const pos = useMotionValue(index);
-  const pull = useMotionValue(0);
+  const ownPull = useMotionValue(0);
+  const pull = sharedPull ?? ownPull;
   const axis = useRef<'x' | 'y' | null>(null);
   const width = useRef(260);
   const stage = useRef<HTMLDivElement>(null);
