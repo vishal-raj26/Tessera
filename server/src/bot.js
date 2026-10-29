@@ -26,10 +26,11 @@ const PLAN = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 const isStars = (o) => o?.method === 'stars';
+const term = (o) => (o?.months === 12 ? '1 year' : (o?.months ?? 1) === 1 ? '1 month' : `${o.months} months`);
 
 function describe(o) {
   return [
-    `<b>Claude ${PLAN[o.plan_id] ?? o.plan_id}</b> · ${o.currency} ${o.face_value} credit`,
+    `<b>Claude ${PLAN[o.plan_id] ?? o.plan_id}, ${term(o)}</b> · ${o.currency} ${o.face_value} credit`,
     `Status: <b>${esc(o.status)}</b>`,
     isStars(o)
       ? `Paid with Stars: ${o.stars} ⭐${o.charge_id ? '' : ' (not paid yet)'}`
@@ -83,7 +84,9 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       case 'refunded':
         return toBuyer(o, isStars(o) ? `Your ${o.stars} Stars were refunded. Sorry it didn’t work out this time.` : 'Your order was refunded. Sorry it didn’t work out this time.');
       case 'renewal':
-        return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} month renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up with GRAM in Tessera.`);
+        if (o.months === 12) return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} year renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up in Tessera.`);
+        if ((o.months ?? 1) > 1) return toBuyer(o, `The credit you bought for ${term(o)} of Claude ${PLAN[o.plan_id]} runs out in about 3 days. After that Apple charges your card for each month. You can top up in Tessera.`);
+        return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} month renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up in Tessera.`);
       case 'rate_stale':
         return toAdmins(`⏸ <b>GRAM price feed is stale</b> (${e.minutes} min). New orders are paused until it recovers.`);
       case 'rate_ok':
@@ -96,11 +99,11 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
   /** Stars invoice link for an order, opened in the Mini App with Telegram.WebApp.openInvoice. */
   function createInvoice(o) {
     return api('createInvoiceLink', {
-      title: `Claude ${PLAN[o.plan_id]}`,
-      description: `${o.currency} ${o.face_value} App Store credit for one month of Claude ${PLAN[o.plan_id]}. Code delivered in the app.`,
+      title: `Claude ${PLAN[o.plan_id]}, ${term(o)}`,
+      description: `${o.currency} ${o.face_value} App Store credit for ${o.months === 12 ? 'a year' : term(o)} of Claude ${PLAN[o.plan_id]}. Code delivered in the app.`,
       payload: o.id,
       currency: 'XTR',
-      prices: [{ label: `Claude ${PLAN[o.plan_id]}, 1 month`, amount: o.stars }],
+      prices: [{ label: `Claude ${PLAN[o.plan_id]}, ${term(o)}`, amount: o.stars }],
     });
   }
 

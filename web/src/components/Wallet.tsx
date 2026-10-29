@@ -2,7 +2,7 @@
 // top while the rest settle into a pile at the bottom. Pull the lifted card down to put it back.
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { fmtMoney, groupCode, type Order } from '../api';
+import { fmtMoney, termLabel, groupCode, type Order } from '../api';
 import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import { Amount } from './Amount';
@@ -144,6 +144,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
                 className="wlc"
                 planId={o.plan.id}
                 credit={fmtMoney(o.credit, o.currency)}
+                term={termLabel(o.months ?? 1)}
                 reveal={o.status === 'delivered' ? 1 : 0}
                 interactive={isLifted}
                 top={<><span><b>{PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{st.label}</span></>}
@@ -164,7 +165,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
             exit={{ opacity: 0, y: 12, transition: { duration: 0.15 } }}
           >
             <div className="wl-meta">
-              <span>Claude {PLAN_LABEL[lifted.plan.id]} · {fmtMoney(lifted.credit, lifted.currency)}</span>
+              <span>Claude {PLAN_LABEL[lifted.plan.id]}, {termLabel(lifted.months ?? 1)} · {fmtMoney(lifted.credit, lifted.currency)}</span>
               <span className="amt"><Amount method={lifted.method} gram={lifted.gram} stars={lifted.stars} size={12} /></span>
             </div>
             {lifted.codes?.length ? (
