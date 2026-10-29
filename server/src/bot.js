@@ -75,6 +75,10 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       case 'extra':
         if (e.stars != null) return toAdmins(`➕ <b>Unexpected Stars payment</b> of ${e.stars} ⭐\nCharge <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
         return toAdmins(`➕ <b>Extra payment</b> of ${fromNano(e.valueNano)} GRAM\nTx <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
+      case 'apple_prices_changed':
+        return toAdmins(`🏷 <b>App Store prices changed</b> (${esc(e.region)})\n${e.changed.map((c) => `${esc(c.key)}: ${c.from ?? '–'} → <b>${c.to}</b>`).join('\n')}\nNew quotes use them now. A price you set with /price still wins.`);
+      case 'apple_prices_problem':
+        return toAdmins(`⚠️ <b>App Store price check</b> (${esc(e.region)}): ${esc(e.problem)}.\nPrices were left as they were. Check ${esc(e.url)} and use /price if needed.`);
       case 'credit_unrecognised':
         return toAdmins(`🔎 <b>Payment not recognised</b>: ${esc(e.reason)}\n${fromNano(e.valueNano)} GRAM · memo <code>${esc(e.comment)}</code>\nFrom <code>${esc(e.source)}</code>\nTx <code>${esc(e.hash)}</code>\nCheck it in an explorer. If the money arrived, fulfil or refund by hand.${o ? `\n\n${describe(o)}` : ''}`, o ? buttons(o) : undefined);
       case 'stars_unmatched':
@@ -196,7 +200,7 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       return undefined;
     }
     if (cmd.startsWith('/prices') && prices) {
-      const rows = prices.list().map((p) => `${p.plan} · Claude ${p.name}: <b>${p.price} ${p.currency}</b>${p.overridden ? ' (set by you)' : ''}`);
+      const rows = prices.list().map((p) => `${p.plan} · Claude ${p.name}: <b>${p.price} ${p.currency}</b> (${p.source ?? (p.overridden ? 'set by you' : 'default')})`);
       return send(chat, `In-app prices (${prices.region}):\n${rows.join('\n')}\n\nChange one: /price max5_m 129.99`);
     }
     if (cmd === '/price' && prices) {

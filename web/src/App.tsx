@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtMoney, groupCode, termLabel, type AppConfig, type Order, type PayMethod, type Plan } from './api';
+import { api, fmtGram, fmtMoney, groupCode, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote } from './api';
 import { tg } from './tg';
 import { HoloCard, PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -52,7 +52,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [walletSent, setWalletSent] = useState(false);
-  const [holdUntil, setHoldUntil] = useState(0);
+  const [held, setHeld] = useState<Quote | null>(null); // price locked while the review sheet is open
   const [flipped, setFlipped] = useState(true);
   const [settled, setSettled] = useState(false);
   const reveal = useMotionValue(0);
@@ -82,6 +82,20 @@ export default function App() {
   }, []);
   useEffect(() => { tg.boot(); load(); }, [load]);
 
+  // Live prices: refresh every 30s on the home screen and whenever the app comes back to the
+  // front; the price rolls to its new value. Paused while the review sheet holds a price.
+  useEffect(() => {
+    if (!config || view !== 'home' || sheet) return;
+    const refresh = () => {
+      if (document.hidden) return;
+      api.catalog(config.region).then((c) => { setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating); }).catch(() => {});
+    };
+    const id = setInterval(refresh, 30_000);
+    const onShow = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onShow); };
+  }, [config, view, sheet]);
+
   // connection state: show a quiet bar when offline, reload what failed when it comes back
   useEffect(() => {
     const up = () => { setOnline(true); setLost(0); if (!plans) load(); };
@@ -96,6 +110,8 @@ export default function App() {
   const [months, setMonths] = useState(1);
   const term = plan?.terms?.find((t) => t.months === months)
     ?? [...(plan?.terms ?? [])].reverse().find((t) => t.months < months) ?? plan?.terms?.[0];
+  // in the review sheet, the held quote once it has arrived
+  const shown = sheet === 'review' && held ? held : term;
   const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
@@ -168,9 +184,15 @@ export default function App() {
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
-    setHoldUntil(Date.now() + 20 * 60 * 1000);
+    setHeld(null);
     setSheet('review');
-  }  reviewRef.current = openReview;
+    // lock this price for 20 minutes; the sheet shows it and the order uses it
+    const want = `${plan.id}:${term.months}`;
+    api.quote(config!.region, plan.id, term.months)
+      .then((q) => setHeld((cur) => (cur ? cur : `${plan.id}:${q.months}` === want ? q : null)))
+      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
+  }
+  reviewRef.current = openReview;
 
 
   async function pay() {
@@ -178,7 +200,7 @@ export default function App() {
     setBusy(true);
     setErr(null);
     try {
-      const o = await api.createOrder(config.region, plan.id, term.months, payWith, wallet || undefined);
+      const o = await api.createOrder(config.region, plan.id, term.months, payWith, wallet || undefined, held?.id);
       setOrder(o);
       setWalletSent(false);
       if (payWith === 'stars' && o.invoiceLink) {
@@ -472,30 +494,30 @@ export default function App() {
       </div>}
 
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
-        {plan?.available && term && (
+        {plan?.available && term && shown && (
           <div className="st">
             <div className="summary">
               <motion.div initial={{ rotate: -14, y: 30, opacity: 0 }} animate={{ rotate: -6, y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 16, delay: 0.1 }}>
-                <HoloCard className="sm" planId={plan.id} credit={fmtMoney(term.credit, term.currency)} term={termLabel(term.months)} idle />
+                <HoloCard className="sm" planId={plan.id} credit={fmtMoney(shown.credit, shown.currency)} term={termLabel(shown.months)} idle />
               </motion.div>
               <div className="what">
                 <b>Claude {plan.name}</b>
-                {termLabel(term.months)} · delivered instantly
+                {termLabel(shown.months)} · delivered instantly
               </div>
             </div>
             <dl className="rows">
-              <div className="row"><dt>App Store credit</dt><dd>{fmtMoney(term.credit, term.currency)}{term.codes > 1 ? ` · ${term.codes} codes` : ''}</dd></div>
+              <div className="row"><dt>App Store credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` · ${shown.codes} codes` : ''}</dd></div>
               <div className="row">
-                <dt>{term.annual ? 'Yearly plan in app' : 'In-app price'}</dt>
-                <dd>{term.months > 1 && !term.annual ? `${term.months} × ${fmtMoney(term.monthly, term.currency)}` : fmtMoney(term.appPrice, term.currency)}</dd>
+                <dt>{shown.annual ? 'Yearly plan in app' : 'In-app price'}</dt>
+                <dd>{shown.months > 1 && !shown.annual ? `${shown.months} × ${fmtMoney(shown.monthly, shown.currency)}` : fmtMoney(shown.appPrice, shown.currency)}</dd>
               </div>
-              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={term.gram} stars={term.stars} size={17} /></dd></div>
+              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={17} /></dd></div>
             </dl>
-            {term.months > 1 && (
+            {shown.months > 1 && (
               <p className="term-note">
-                {term.annual
+                {shown.annual
                   ? "Apple's yearly Claude Pro plan. It renews once a year."
-                  : `Claude renews monthly. Apple takes each month from this credit, so it covers ${term.months} months.`}
+                  : `Claude renews monthly. Apple takes each month from this credit, so it covers ${shown.months} months.`}
               </p>
             )}
             {bothMethods && (
@@ -503,7 +525,7 @@ export default function App() {
                 {(['gram', 'stars'] as const).map((m) => (
                   <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
                     {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
-                    <span className="pw-amt"><Amount method={m} gram={term.gram} stars={term.stars} size={15} /></span>
+                    <span className="pw-amt"><Amount method={m} gram={shown.gram} stars={shown.stars} size={15} /></span>
                     <span className="pw-sub">{m === 'gram' ? (wallet || config?.paymentMode === 'mock' ? 'Wallet' : 'Connect wallet') : 'Telegram Stars'}</span>
                   </button>
                 ))}
@@ -517,12 +539,12 @@ export default function App() {
             {needsWallet ? (
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
-              <motion.button className="btn btn-pearl" disabled={!agree || busy} onClick={pay} whileTap={{ scale: 0.97 }}>
-                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={term.gram} stars={term.stars} size={19} /></span></>}
+              <motion.button className="btn btn-pearl" disabled={!agree || busy || !held} onClick={pay} whileTap={{ scale: 0.97 }}>
+                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={19} /></span></>}
               </motion.button>
             )}
             <p className="fine">
-              Price held for <Countdown until={holdUntil} />
+              {held ? <>Price held for <Countdown until={held.expiresAt} /></> : 'Locking your price…'}
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
             </p>
           </div>

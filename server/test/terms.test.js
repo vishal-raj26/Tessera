@@ -43,7 +43,7 @@ test('renewal reminder lands ~3 days before the credit runs out', () => {
 // API: the real server in demo mode
 const PORT = 8911;
 const srv = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
-  env: { ...process.env, PORT: String(PORT), DB_PATH: ':memory:', PAYMENT_MODE: 'mock', BOT_TOKEN: '', SUPPLIER: 'mock', STORE_REGION: 'US' },
+  env: { ...process.env, PORT: String(PORT), DB_PATH: ':memory:', PAYMENT_MODE: 'mock', BOT_TOKEN: '', SUPPLIER: 'mock', STORE_REGION: 'US', APPLE_PRICE_SYNC: 'off' },
   stdio: 'ignore',
 });
 after(() => srv.kill());

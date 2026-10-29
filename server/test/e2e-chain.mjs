@@ -58,7 +58,7 @@ const server = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
   env: {
     ...process.env, PORT: String(API), DB_PATH: ':memory:', PAYMENT_MODE: 'chain', TON_NETWORK: 'testnet',
     MERCHANT_WALLET: MERCHANT, TON_STREAM_URL: `http://localhost:${FAKE}/api/streaming/v2/sse`,
-    TONCENTER_URL: `http://localhost:${FAKE}/api/v3`, RATE_URL: `http://localhost:${FAKE}/rates`, BOT_TOKEN: '', SUPPLIER: 'mock',
+    TONCENTER_URL: `http://localhost:${FAKE}/api/v3`, RATE_URL: `http://localhost:${FAKE}/rates`, BOT_TOKEN: '', SUPPLIER: 'mock', APPLE_PRICE_SYNC: 'off',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });

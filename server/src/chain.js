@@ -8,7 +8,7 @@ let rate = { usd: Number(process.env.GRAM_USD_FALLBACK || 1.5), fresh: 0, tried:
 export const RATE_MAX_AGE_MS = Number(process.env.RATE_MAX_AGE_MIN || 10) * 60e3;
 
 export async function refreshRate(fetchImpl = fetch) {
-  if (Date.now() - rate.tried < 60_000) return rate;
+  if (Date.now() - rate.tried < 30_000) return rate; // the app shows live prices; refresh every 30s at most
   rate.tried = Date.now();
   try {
     const res = await fetchImpl(process.env.RATE_URL || 'https://tonapi.io/v2/rates?tokens=ton&currencies=usd', { signal: AbortSignal.timeout(4000) });

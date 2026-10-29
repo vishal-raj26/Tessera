@@ -7,6 +7,8 @@ export interface Term {
   months: number; label: string; annual: boolean; monthly: number; appPrice: number; currency: string;
   credit: number; codes: number; gram: number | null; stars: number | null; usd: number;
 }
+/** A price held for 20 minutes while the buyer reviews it. */
+export interface Quote extends Term { id: string; expiresAt: number }
 export interface Plan {
   id: PlanId; name: string; term: string; blurb: string; available: boolean;
   terms?: Term[];
@@ -41,8 +43,10 @@ export const api = {
   config: () => req<AppConfig>('/api/config'),
   regions: () => req<{ regions: Region[] }>('/api/regions').then((r) => r.regions),
   catalog: (region: string) => req<{ plans: Plan[]; pricesUpdating?: boolean }>(`/api/catalog?region=${region}`),
-  createOrder: (region: string, planId: PlanId, months: number, method: PayMethod, wallet?: string) =>
-    req<Order>('/api/orders', { method: 'POST', body: JSON.stringify({ region, planId, months, method, wallet }) }),
+  quote: (region: string, planId: PlanId, months: number) =>
+    req<Quote>('/api/quotes', { method: 'POST', body: JSON.stringify({ region, planId, months }) }),
+  createOrder: (region: string, planId: PlanId, months: number, method: PayMethod, wallet?: string, quoteId?: string) =>
+    req<Order>('/api/orders', { method: 'POST', body: JSON.stringify({ region, planId, months, method, wallet, quoteId }) }),
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
   mockPay: (id: string) => req<Order>(`/api/orders/${id}/mock-pay`, { method: 'POST' }),
