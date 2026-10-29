@@ -58,7 +58,7 @@ export default function App() {
   const reveal = useMotionValue(0);
   // how far the front card is pulled down; the price, terms and hint below make way as it comes
   const pull = useMotionValue(0);
-  const hold = useMotionValue(0); // pressing the card already dims what's below, as the portal opens
+  const hold = useMotionValue(0); // pressing the card already dims what's below, so the rays stand out
   const belowOpacity = useTransform([pull, hold] as MotionValue<number>[], ([p, h]: number[]) => Math.min(1 - Math.min(1, p / 60), 1 - h * 0.6));
   const belowY = useTransform(pull, [0, 140], [0, 48]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
