@@ -812,7 +812,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .app.fit .wallet-view { min-height: 0; }
 
 /* --- rays around the held card ------------------------------------------ */
-/* from the card's top down to where the pull ends (card bottom + the 110px pull + a little) */
+/* from the card's top down to the bottom of the screen (--travel is measured on press) */
 .rays {
   --travel: calc(var(--card-w) / 0.63 + 150px);
   position: absolute; left: 0; right: 0; top: calc(50% - var(--card-w) / 0.63 / 2); height: var(--travel);

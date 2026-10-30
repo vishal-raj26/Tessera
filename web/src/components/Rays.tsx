@@ -2,6 +2,7 @@
 // out from under it) from the card's top to where the pull ends. A calmer set on press, a faster,
 // longer set that grows with the pull. Transform-only animation; paused and hidden when not held.
 import { motion, useTransform, type MotionValue } from 'framer-motion';
+import { useLayoutEffect, useRef } from 'react';
 
 // side: -1 left of the card, 1 right of it, 0 behind it (seen only once it leaves the card's bottom)
 interface Ray { side: -1 | 0 | 1; at: number; len: number; w: number; dur: number; delay: number; tint: 0 | 1 | 2 }
@@ -35,8 +36,16 @@ export function Rays({ hold, pull, max, on }: { hold: MotionValue<number>; pull:
   const calm = useTransform([hold, p] as MotionValue<number>[], ([h, q]: number[]) => h * 0.85 * (1 - Math.min(1, q * 1.4)));
   const rush = useTransform(p, [0, 0.12, 1], [0, 0.6, 1]);
   const stretch = useTransform(p, [0, 1, 1.5], [0.75, 1.3, 1.5]);
+  // the rays run from the card's top all the way to the bottom of the screen, whatever its height
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!on || !el) return;
+    const top = el.getBoundingClientRect().top;
+    el.style.setProperty('--travel', `${Math.max(200, Math.round((window.visualViewport?.height ?? window.innerHeight) - top))}px`);
+  }, [on]);
   return (
-    <div className={`rays ${on ? 'on' : ''}`} aria-hidden="true">
+    <div ref={ref} className={`rays ${on ? 'on' : ''}`} aria-hidden="true">
       <motion.div className="rays-layer" style={{ opacity: calm }}>
         {CALM.map((r, i) => <i key={i} style={vars(r)} />)}
       </motion.div>
