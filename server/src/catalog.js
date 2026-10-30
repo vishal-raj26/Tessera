@@ -9,11 +9,19 @@ export const PLANS = [
   { id: 'max20_m', name: 'Max 20x', term: 'month', blurb: '20x the usage of Pro' },
 ];
 
+// How long a purchase covers. Longer than a month is credit for that many monthly renewals
+// (Apple renews from the balance), except Pro for a year, which is Apple's own yearly plan
+// (price key pro_y; only offered where we have that storefront's yearly price).
+export const TERMS = [1, 3, 6, 12];
+export const termsFor = (planId, region) =>
+  TERMS.filter((m) => m !== 12 || (planId === 'pro_m' && region?.prices?.pro_y));
+export const termLabel = (months) => (months === 12 ? '1 year' : months === 1 ? '1 month' : `${months} months`);
+
 // taxBuffer: storefronts whose prices exclude sales tax (US, CA) need extra credit,
 // otherwise Apple charges tax at checkout and the balance falls short.
 // Any credit left over stays in the user's Apple balance.
 export const REGIONS = {
-  US: { name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.1, prices: { pro_m: 20, max5_m: 124.99, max20_m: 249.99 } },
+  US: { name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.1, prices: { pro_m: 20, pro_y: 214.99, max5_m: 124.99, max20_m: 249.99 } },
   GB: { name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', taxBuffer: 0, prices: { pro_m: 20, max5_m: 119.99, max20_m: 249.99 } },
   CA: { name: 'Canada', flag: '🇨🇦', currency: 'CAD', taxBuffer: 0.15, prices: { pro_m: 28, max5_m: 179.99, max20_m: 349.99 } },
   AU: { name: 'Australia', flag: '🇦🇺', currency: 'AUD', taxBuffer: 0, prices: { pro_m: 30, max5_m: 199.99, max20_m: 399.99 } },
@@ -30,31 +38,34 @@ export const REGIONS = {
 };
 
 /**
- * Pick the cheapest combination (max 3 codes) of available denominations
- * whose total face value covers `needed`.
+ * Pick the cheapest combination of available denominations whose total face value covers
+ * `needed`, using as few codes as sensible. maxCodes defaults to 3, raised just enough when even
+ * the biggest card can't cover it in 3 (long Max terms), up to 6.
  * packages: [{ id, value, costUsd }]
  */
-export function pickPackages(packages, needed, maxCodes = 3) {
+export function pickPackages(packages, needed, maxCodes) {
   const sorted = [...packages].sort((a, b) => a.value - b.value);
+  if (!sorted.length) return null;
+  const biggest = sorted.at(-1).value;
+  const limit = maxCodes ?? Math.min(6, Math.max(3, Math.ceil(needed / biggest)));
   let best = null;
-  const consider = (combo) => {
-    const face = combo.reduce((s, p) => s + p.value, 0);
-    if (face + 1e-9 < needed) return;
-    const cost = combo.reduce((s, p) => s + p.costUsd, 0);
-    // One code is much easier for users to redeem: treat each extra code as 4% more expensive.
-    const score = cost * (1 + 0.04 * (combo.length - 1));
-    if (!best || score < best.score - 1e-9) best = { combo, face, cost, score };
-  };
-  const n = sorted.length;
-  for (let i = 0; i < n; i++) {
-    consider([sorted[i]]);
-    if (maxCodes < 2) continue;
-    for (let j = i; j < n; j++) {
-      consider([sorted[i], sorted[j]]);
-      if (maxCodes < 3) continue;
-      for (let k = j; k < n; k++) consider([sorted[i], sorted[j], sorted[k]]);
+  const combo = [];
+  // combos in non-decreasing order; stop extending once the face value covers the need,
+  // because adding another code only adds cost
+  (function walk(from, face, cost) {
+    if (face + 1e-9 >= needed) {
+      // One code is much easier to redeem: treat each extra code as 4% more expensive.
+      const score = cost * (1 + 0.04 * (combo.length - 1));
+      if (!best || score < best.score - 1e-9) best = { combo: [...combo], face, cost, score };
+      return;
     }
-  }
+    if (combo.length === limit) return;
+    for (let i = from; i < sorted.length; i++) {
+      combo.push(sorted[i]);
+      walk(i, face + sorted[i].value, cost + sorted[i].costUsd);
+      combo.pop();
+    }
+  })(0, 0, 0);
   return best && { packages: best.combo, faceValue: round2(best.face), costUsd: round2(best.cost) };
 }
 
