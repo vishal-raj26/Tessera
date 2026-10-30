@@ -78,7 +78,10 @@ async function quote(regionCode, planId, months = 1) {
   if (!pick) return null;
   // demo and testnet tolerate an old rate (no real value moves); mainnet refuses to quote GRAM on a stale one
   const rate = await gramUsd({ allowStale: PAYMENT_MODE === 'mock' || NETWORK === 'testnet' });
-  const stars = STARS ? starsFor(pick.costUsd) : null;
+  // On testnet everything is charged at TEST_PRICE_SCALE, Stars included: Telegram Stars are real money
+  // even while GRAM is on testnet, so a test purchase must not cost the real Stars price.
+  const testScale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
+  const stars = STARS ? Math.max(1, Math.ceil(starsFor(pick.costUsd) * testScale)) : null;
   if (!rate && !stars) return { stale: true };
   // On testnet, TEST_PRICE_SCALE shrinks the GRAM amount so a faucet's few GRAM cover several test buys.
   const scale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
@@ -115,7 +118,8 @@ app.get('/tonconnect-manifest.json', (req, res) => {
 app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE, gram: rateStatus() }));
 
 app.get('/api/config', (req, res) => {
-  res.json({ paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS });
+  const testScale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
+  res.json({ paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS, testScale });
 });
 
 // Regions the supplier can actually fulfil right now, intersected with regions we have Claude prices for.

@@ -107,6 +107,8 @@ export default function App() {
   }, [plans, load]);
 
   const plan = plans?.[index];
+  // testnet charges a fraction of the real price (TEST_PRICE_SCALE); the app says so next to the price
+  const testScale = config?.network === 'testnet' ? (config.testScale ?? 1) : 1;
   // how long: kept across plan swipes; a plan without that term (Max has no yearly plan) shows its closest one
   const [months, setMonths] = useState(1);
   const term = plan?.terms?.find((t) => t.months === months)
@@ -332,7 +334,9 @@ export default function App() {
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
-                        ≈ ${term.usd.toFixed(2)} · Claude {plan.name}, {termLabel(term.months)}
+                        {testScale < 1
+                          ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)} · Claude {plan.name}, {termLabel(term.months)}</>
+                          : <>≈ ${term.usd.toFixed(2)} · Claude {plan.name}, {termLabel(term.months)}</>}
                         {term.annual && term.monthly > 0 && <span className="save"> · {Math.round((1 - term.appPrice / (term.monthly * 12)) * 100)}% less than monthly</span>}
                         {bothMethods && (
                           <button className="alt-price" onClick={() => chooseMethod(payWith === 'stars' ? 'gram' : 'stars')} aria-label="Switch currency">
@@ -547,6 +551,7 @@ export default function App() {
             <p className="fine">
               {held ? <>Price held for <Countdown until={held.expiresAt} /></> : 'Locking your price…'}
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
+              {testScale < 1 ? ` · Testnet: you pay ${Math.round(testScale * 100)}% of the real price` : ''}
             </p>
           </div>
         )}

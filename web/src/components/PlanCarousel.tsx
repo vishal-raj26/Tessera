@@ -29,14 +29,18 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months }: {
   const t = plan.terms?.find((x) => x.months === months) ?? plan.terms?.[0];
   const off = useTransform(pos, (p) => i - p);
   const x = useTransform(off, (o) => `${o * 74}%`);
-  const scale = useTransform(off, (o) => 1 - Math.min(Math.abs(o), 1.2) * 0.2);
+  // Side cards sit further back (real depth), so they look smaller through the perspective and Safari,
+  // which stacks tilted elements by depth rather than z-index, never draws them over the front card.
+  const depth = useTransform(off, (o) => -Math.min(Math.abs(o), 2) * 190);
+  const scale = useTransform(off, (o) => 1 - Math.min(Math.abs(o), 1.2) * 0.07);
   const rotateY = useTransform(off, (o) => o * -26);
   const rotateZ = useTransform(off, (o) => o * 4);
-  const opacity = useTransform(off, (o) => 1 - Math.min(Math.abs(o), 2) * 0.38);
+  // every visible card is solid; only a third card further out fades
+  const opacity = useTransform(off, (o) => (Math.abs(o) <= 1.2 ? 1 : Math.max(0, 1 - (Math.abs(o) - 1.2) * 1.2)));
   const z = useTransform(off, (o) => 10 - Math.round(Math.abs(o) * 3));
   const y = useTransform([off, pull] as MotionValue<number>[], ([o, p]: number[]) => (Math.abs(o) < 0.5 ? p : 0) + Math.abs(o) * 18);
   return (
-    <motion.div className="slot" style={{ x, y, scale, rotateY, rotateZ, opacity, zIndex: z }} onTap={active ? undefined : onTap}>
+    <motion.div className="slot" style={{ x, y, z: depth, scale, rotateY, rotateZ, opacity, zIndex: z }} onTap={active ? undefined : onTap}>
       {/* dealt in like a hand of cards on first load */}
       <motion.div
         initial={{ y: 320, rotate: -18 + i * 14, opacity: 0, scale: 0.85 }}
