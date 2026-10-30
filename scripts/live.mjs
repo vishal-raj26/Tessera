@@ -34,8 +34,15 @@ function run(cmd, args, cwd) {
 }
 
 console.log('▸ Installing and building…');
-if (!fs.existsSync(path.join(server, 'node_modules'))) run('npm', ['install'], server);
-if (!fs.existsSync(path.join(web, 'node_modules'))) run('npm', ['install'], web);
+// install when node_modules is missing or older than the lockfile (a pull added or changed packages)
+const stale = (dir) => {
+  const installed = path.join(dir, 'node_modules', '.package-lock.json');
+  const lock = path.join(dir, 'package-lock.json');
+  if (!fs.existsSync(installed)) return true;
+  return fs.existsSync(lock) && fs.statSync(lock).mtimeMs > fs.statSync(installed).mtimeMs;
+};
+if (stale(server)) run('npm', ['install'], server);
+if (stale(web)) run('npm', ['install'], web);
 run('npm', ['run', 'build'], web);
 
 const has = spawnSync('cloudflared', ['--version'], { shell: process.platform === 'win32' });
