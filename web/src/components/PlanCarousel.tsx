@@ -2,7 +2,7 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Rays } from './Rays';
-import { HoloCard } from './HoloCard';
+import { Card3D } from './Card3D';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
 
@@ -44,7 +44,7 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months }: {
         transition={{ type: 'spring', stiffness: 120, damping: 17, delay: 0.35 + i * 0.12 }}
       >
         <motion.div style={{ scale: press }}>
-          <HoloCard
+          <Card3D
             planId={plan.id}
             credit={t ? fmtMoney(t.credit, t.currency) : undefined}
             term={t ? termLabel(t.months) : undefined}
