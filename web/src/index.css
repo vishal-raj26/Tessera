@@ -60,7 +60,6 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .beam:nth-child(1) { left: 8%; transform: rotate(18deg); opacity: 0.55; }
 .beam:nth-child(2) { left: 38%; transform: rotate(6deg); opacity: 0.35; animation-delay: -3s; }
 .beam:nth-child(3) { left: 66%; transform: rotate(-14deg); opacity: 0.45; animation-delay: -6s; }
-@keyframes sway { to { translate: 6vw 0; rotate: -4deg; } }
 .floor {
   position: absolute;
   left: -50%; right: -50%;
@@ -75,7 +74,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
   mask-image: linear-gradient(to top, #000 10%, transparent 75%);
 }
 
-.app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.app { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; overflow-x: clip; }
+/* short screens: the page scrolls rather than cutting off buttons */
 
 /* --- top bar ---------------------------------------------------------- */
 .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 18px 0; }
@@ -93,7 +93,6 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
   color: var(--ink);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--line);
-  backdrop-filter: blur(10px);
 }
 .pill .flag { font-size: 15px; }
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #7fd18b; }
@@ -102,10 +101,23 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .intro { text-align: center; padding: 26px 24px 0; }
 .intro h1 { font-size: 15px; font-weight: 500; color: var(--mute); margin: 0; letter-spacing: -0.01em; }
 
+/* The plan card is sized from the screen height as well as its width, so the term picker, price
+   and hint always fit below it: iPhone SE and small Androids included, and Telegram full screen
+   (its safe-area insets) too. ~400px is what the header, title, picker, price and hint need. */
+.home {
+  --safe-y: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)
+    + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
+  --card-w: min(62vw, 250px, max(150px, calc((100dvh - 400px - var(--safe-y)) * 0.63)));
+}
+.carousel .card-wrap, .carousel .card-ghost { width: var(--card-w); }
 .carousel {
   position: relative;
+  /* above the price and picker, as its own layer: Safari otherwise lets 3D-tilted cards
+     interleave with flat siblings */
+  z-index: 2;
+  isolation: isolate;
   flex: 1;
-  min-height: 400px;
+  min-height: calc(var(--card-w) / 0.63 + 28px);
   display: grid;
   place-items: center;
   perspective: 1200px;
@@ -161,7 +173,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
     radial-gradient(120% 70% at 50% -10%, rgba(255, 255, 255, 0.07), transparent 60%),
     linear-gradient(160deg, #262524, #121211 60%);
 }
-.pearl { background: var(--pearl); background-size: 140% 140%; background-position: var(--mx) var(--my); }
+.card-wrap.live .card, .card-wrap.live .pearl-bg, .card-wrap.live .holo, .card-wrap.live .glare { will-change: transform; }
+.holo.still { transform: translate(-30.75%, -30.75%); }
+.pearl { overflow: hidden; }
+.pearl-bg { position: absolute; inset: -20%; background: var(--pearl); }
+.pearl .cc { z-index: 1; }
 .holo {
   /* a soft light sweep that follows tilt; tinted with the pearl palette, never saturated */
   pointer-events: none;
@@ -173,10 +189,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
     rgba(246, 211, 180, 0.08) 53%,
     rgba(255, 236, 214, 0.06) 58%,
     transparent 70%);
-  background-size: 260% 260%;
-  background-position: calc(100% - var(--mx)) var(--my);
+  position: absolute; left: 0; top: 0; width: 260%; height: 260%;
 }
-.glare { pointer-events: none; mix-blend-mode: soft-light; background: radial-gradient(45% 35% at var(--mx) var(--my), rgba(255, 255, 255, 0.55), transparent 70%); }
+.glare { position: absolute; left: -50%; top: -50%; width: 200%; height: 200%; pointer-events: none; mix-blend-mode: soft-light; background: radial-gradient(22.5% 17.5% at 50% 50%, rgba(255, 255, 255, 0.55), transparent 70%); }
 .rim { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.18); }
 
 /* card content */
@@ -232,7 +247,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 @keyframes spin { to { rotate: 360deg; } }
 
 /* --- sheets ----------------------------------------------------------- */
-.scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px); }
+.scrim { position: fixed; inset: 0; z-index: 30; background: rgba(10, 10, 9, 0.66); }
 .sheet {
   position: fixed;
   z-index: 31;
@@ -351,32 +366,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(250, 249, 245, 0.07), rgba(250, 249, 245, 0.025));
+  /* solid, no backdrop blur: blurring what's behind on every frame is the costliest effect on phones */
+  background: linear-gradient(180deg, #2a2927, #201f1e);
   border: 1px solid rgba(250, 249, 245, 0.09);
   box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(250, 249, 245, 0.08);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
   overflow: hidden;
   z-index: 5;
 }
-/* (removed glow line) */
-.hdr-unused::after {
-  /* the bar casts a soft warm light down into the scene */
-  content: '';
-  position: absolute;
-  left: 20%; right: 20%; bottom: -1px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(217, 119, 87, 0.7), transparent);
-}
-.hdr-sheen {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(105deg, transparent 35%, rgba(250, 249, 245, 0.08) 50%, transparent 65%);
-  translate: -100% 0;
-  animation: hdrsheen 7s var(--ease) 1.4s infinite;
-}
-@keyframes hdrsheen { 0%, 70% { translate: -100% 0; } 100% { translate: 100% 0; } }
 .hdr-mark { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; letter-spacing: -0.035em; color: var(--ink); }
 .hdr-mark svg { color: var(--clay); }
 .hdr-btn {
@@ -437,6 +433,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 
 /* paying: pulse rings radiate behind the card */
 .pay-stage { position: relative; display: grid; place-items: center; }
+/* cards on the payment and success screens also size from the screen height (see .home) */
+.app { --safe-y: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)
+    + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px)); }
+.pay-stage .card-wrap { width: min(62vw, 250px, max(140px, calc((100dvh - 340px - var(--safe-y)) * 0.63))); }
+.reveal-stage .card-wrap.md { width: min(54vw, 210px, max(120px, calc((100dvh - 480px - var(--safe-y)) * 0.63))); }
 .rings { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .rings i { position: absolute; width: 70%; aspect-ratio: 1; border-radius: 50%; border: 1px solid rgba(217, 119, 87, 0.45); animation: ring 2.4s var(--ease) infinite; opacity: 0; }
 .rings i:nth-child(2) { animation-delay: 0.8s; } .rings i:nth-child(3) { animation-delay: 1.6s; }
@@ -467,7 +468,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .st > *:nth-child(3) { animation-delay: 0.18s; } .st > *:nth-child(4) { animation-delay: 0.24s; }
 .st > *:nth-child(5) { animation-delay: 0.3s; } .st > *:nth-child(6) { animation-delay: 0.36s; }
 .guide li { animation: rise 0.5s var(--ease) both; }
-@keyframes rise { from { opacity: 0; translate: 0 14px; filter: blur(4px); } to { opacity: 1; translate: 0 0; filter: blur(0); } }
+@keyframes rise { from { opacity: 0; translate: 0 14px; } to { opacity: 1; translate: 0 0; } }
 
 .code { transition: border-color 0.25s, background 0.25s; }
 .code.is-copied { border-color: rgba(217, 119, 87, 0.6); background: rgba(217, 119, 87, 0.1); }
@@ -591,22 +592,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .ob-bd-wrap { position: absolute; inset: 0; max-width: none; margin: 0; pointer-events: none; z-index: 0; }
 .ob-bd { position: absolute; inset: 0; overflow: hidden; }
 .ob > *:not(.ob-bd-wrap) { position: relative; z-index: 1; }
-.blob { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.85; }
-.blob.b0 { width: 70vw; height: 70vw; left: -20vw; top: -10vw; animation: drift 14s ease-in-out infinite alternate; }
-.blob.b1 { width: 80vw; height: 80vw; right: -30vw; bottom: 0; animation: drift 17s ease-in-out -5s infinite alternate-reverse; }
-.blob.b2 { width: 50vw; height: 50vw; left: 30vw; top: 38%; opacity: 0.55; animation: drift 12s ease-in-out -3s infinite alternate; }
-@keyframes drift { to { translate: 8vw 6vh; scale: 1.12; } }
 .ob-emblem { position: absolute; left: 50%; top: 60%; translate: -50% -50%; opacity: 0.55; animation: slowspin 80s linear infinite; }
 @keyframes slowspin { to { rotate: 360deg; } }
 .ob-arcs { position: absolute; left: 50%; top: 60%; width: 150vw; max-width: 720px; translate: -50% -50%; opacity: 0.8; animation: slowspin 120s linear infinite reverse; }
 .ob-star { position: absolute; display: block; }
-.ob-grain {
-  position: absolute; inset: -50%;
-  opacity: 0.16; mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  animation: grain 1.2s steps(4) infinite;
-}
-@keyframes grain { 25% { translate: -3% 2%; } 50% { translate: 2% -3%; } 75% { translate: -2% -1%; } }
 
 .shot { perspective: 1100px; }
 .ph-wrap { position: relative; transform-style: preserve-3d; z-index: 2; }
@@ -752,7 +741,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
   transform-origin: 50% 0; touch-action: pan-y; -webkit-tap-highlight-color: transparent;
 }
 .wl { container-type: inline-size; }
-.wl-card .card-wrap.wlc { width: 100%; filter: drop-shadow(0 -10px 24px rgba(0, 0, 0, 0.45)); }
+.wl-card { will-change: transform; }
+.wl-card .card-wrap.wlc { width: 100%; }
+.wl-card .face { box-shadow: 0 -12px 28px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04); }
 .cc-top.split { display: flex; justify-content: space-between; align-items: center; text-align: left; opacity: 1; }
 .cc-top.split > span:first-child { opacity: 0.7; }
 .wl-tag { font-size: 3.8cqw; padding: 0.8cqw 2.6cqw; border-radius: 99px; background: rgba(250, 249, 245, 0.1); }
@@ -805,3 +796,35 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .alt-price { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 0; background: none; border: 0; color: var(--mute); font: inherit; text-decoration: underline; text-decoration-color: var(--dim); text-underline-offset: 3px; }
 .alt-price .amt { display: inline-flex; align-items: center; gap: 3px; }
 .star-ic { flex: none; }
+
+/* --- how long ----------------------------------------------------------- */
+.terms { display: flex; justify-content: center; gap: 2px; margin: 0 auto 14px; padding: 3px; width: max-content; max-width: calc(100% - 32px); border-radius: 99px; background: rgba(250, 249, 245, 0.05); border: 1px solid var(--line); }
+.terms button { position: relative; padding: 7px 13px; border: 0; background: none; border-radius: 99px; color: var(--mute); font: inherit; font-size: 13px; font-weight: 500; letter-spacing: -0.01em; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
+.terms button.on { color: var(--ink); }
+.terms button span { position: relative; }
+.terms .term-bg { position: absolute; inset: 0; border-radius: 99px; background: var(--panel-2); border: 1px solid rgba(217, 119, 87, 0.45); }
+.price .save { color: var(--clay); }
+.term-note { margin: -4px 0 14px; color: var(--mute); font-size: 13px; line-height: 1.45; }
+
+.below { position: relative; z-index: 1; }
+/* the codes wallet is exactly one screen tall and scrolls inside itself (its pile sits at the bottom) */
+.app.fit { height: 100dvh; overflow: hidden; }
+.app.fit .wallet-view { min-height: 0; }
+
+/* --- rays around the held card ------------------------------------------ */
+/* from the card's top down to the bottom of the screen (--travel is measured on press) */
+.rays {
+  --travel: calc(var(--card-w) / 0.63 + 150px);
+  position: absolute; left: 0; right: 0; top: calc(50% - var(--card-w) / 0.63 / 2); height: var(--travel);
+  z-index: 0; pointer-events: none; overflow: hidden;
+}
+.rays:not(.on) { visibility: hidden; }
+.rays:not(.on) i { animation-play-state: paused; }
+.rays-layer { position: absolute; inset: 0; transform-origin: 50% 0; }
+.rays i {
+  position: absolute; top: 0; width: var(--w); height: var(--len); border-radius: 3px;
+  animation: ray var(--dur) linear var(--delay) infinite;
+}
+.rays.on i { will-change: transform; }
+@keyframes ray { from { transform: translate3d(0, calc(var(--len) * -1), 0); } to { transform: translate3d(0, var(--travel), 0); } }
+@media (prefers-reduced-motion: reduce) { .rays { display: none; } }
