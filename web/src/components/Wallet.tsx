@@ -2,7 +2,7 @@
 // top while the rest settle into a pile at the bottom. Pull the lifted card down to put it back.
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { fmtMoney, groupCode, type Order } from '../api';
+import { fmtMoney, redeemUrl, termLabel, groupCode, type Order } from '../api';
 import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import { Amount } from './Amount';
@@ -98,12 +98,14 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
   }
 
   const lifted = orders.find((o) => o.id === sel) ?? null;
+  // on short screens the lifted card shrinks so its codes and buttons (~230px) stay in view
+  const liftScale = Math.min(LIFT, Math.max(0.45, (h - PILE - 240) / cardH));
   const others = orders.filter((o) => o.id !== sel);
   const stackH = (orders.length - 1) * PEEK + cardH + 24;
 
   function place(o: Order, i: number) {
     if (!lifted) return { y: i * PEEK, scale: 1, opacity: 1, z: i };
-    if (o.id === lifted.id) return { y: 0, scale: LIFT, opacity: 1, z: 100 };
+    if (o.id === lifted.id) return { y: 0, scale: liftScale, opacity: 1, z: 100 };
     const k = Math.min(others.indexOf(o), 3);
     return { y: h - PILE + k * 7, scale: 0.92 - k * 0.03, opacity: k > 2 ? 0 : 1, z: 10 - k };
   }
@@ -137,16 +139,20 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
               dragElastic={{ top: 0.05, bottom: 0.6 }}
               onDragEnd={release}
               onClick={() => (lifted && !isLifted ? setSel(null) : lift(o.id))}
-              aria-label={`Claude ${PLAN_LABEL[o.plan.id]}, ${fmtMoney(o.credit, o.currency)}, ${st.label}`}
+              aria-label={`${o.product?.name ?? 'Claude'} ${o.plan.label ?? PLAN_LABEL[o.plan.id]}, ${fmtMoney(o.credit, o.currency)}, ${st.label}`}
               aria-expanded={isLifted}
             >
               <HoloCard
                 className="wlc"
                 planId={o.plan.id}
+                label={o.plan.label}
+                product={o.product?.name}
+                store={o.store?.label}
                 credit={fmtMoney(o.credit, o.currency)}
+                term={termLabel(o.months ?? 1)}
                 reveal={o.status === 'delivered' ? 1 : 0}
                 interactive={isLifted}
-                top={<><span><b>{PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{st.label}</span></>}
+                top={<><span><b>{o.product?.name ?? 'Claude'} {o.plan.label ?? PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{st.label}</span></>}
               />
             </motion.button>
           );
@@ -158,13 +164,13 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
           <motion.div
             key={lifted.id}
             className="wl-detail"
-            style={{ top: cardH * LIFT + 14, bottom: PILE + 10 }}
+            style={{ top: cardH * liftScale + 14, bottom: PILE + 10 }}
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0, transition: { delay: 0.12, type: 'spring', stiffness: 260, damping: 26 } }}
             exit={{ opacity: 0, y: 12, transition: { duration: 0.15 } }}
           >
             <div className="wl-meta">
-              <span>Claude {PLAN_LABEL[lifted.plan.id]} · {fmtMoney(lifted.credit, lifted.currency)}</span>
+              <span>{lifted.product?.name ?? 'Claude'} {lifted.plan.label ?? PLAN_LABEL[lifted.plan.id]}, {termLabel(lifted.months ?? 1)} · {fmtMoney(lifted.credit, lifted.currency)}</span>
               <span className="amt"><Amount method={lifted.method} gram={lifted.gram} stars={lifted.stars} size={12} /></span>
             </div>
             {lifted.codes?.length ? (
@@ -180,7 +186,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
                   ))}
                 </div>
                 <div className="wl-actions">
-                  <button className="btn btn-pearl" onClick={() => { tg.tap('medium'); tg.openLink(`https://apps.apple.com/redeem?code=${lifted.codes![0].code}`); }}>Redeem</button>
+                  <button className="btn btn-pearl" onClick={() => { tg.tap('medium'); tg.openLink(redeemUrl(lifted.store?.id, lifted.codes![0].code)); }}>Redeem</button>
                   <button className="btn btn-quiet" onClick={() => onGuide(lifted)}>How to activate</button>
                 </div>
               </>

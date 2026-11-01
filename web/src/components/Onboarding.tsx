@@ -20,8 +20,8 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     bg: '#d97757', ink: '#fff8f2', sub: 'rgba(255,248,242,0.82)', btn: '#141413', btnInk: '#faf9f5',
-    title: ['Claude,', 'paid in GRAM.'],
-    body: 'Buy Claude Pro or Max with GRAM from your Telegram wallet.',
+    title: ['Your subscriptions,', 'paid in GRAM.'],
+    body: 'Pay for the apps you use with GRAM from your Telegram wallet, or with Stars.',
     glow: ['#f2b393', '#c4603d'],
   },
   {
@@ -32,8 +32,8 @@ const SLIDES: Slide[] = [
   },
   {
     bg: '#1f1e1d', ink: '#faf9f5', sub: 'rgba(250,249,245,0.64)', btn: '#d97757', btnInk: '#fff8f2',
-    title: ['Code in seconds.', 'Claude in minutes.'],
-    body: 'You get an App Store code. Redeem it, then upgrade in the Claude app.',
+    title: ['Code in seconds.', 'Subscribed in minutes.'],
+    body: 'You get an App Store or Google Play code. Redeem it, then subscribe in the app.',
     glow: ['#5a3527', '#2b2421'],
   },
 ];
@@ -98,7 +98,7 @@ function ShotHome() {
       </Phone>
       <Phone tilt={-5} ry={10} x={-30} depth={10}>
         <MiniHeader />
-        <div className="mini-title">Choose your Claude plan</div>
+        <div className="mini-title">Choose your plan</div>
         <div className="mini-carousel">
           <div className="mini-side l"><HoloCard className="mini-card" planId="pro_m" /></div>
           <div className="mini-side r"><HoloCard className="mini-card" planId="max20_m" /></div>
@@ -166,7 +166,7 @@ function ShotPull() {
     <div className="shot">
       <Phone tilt={4} ry={-14} depth={10}>
         <MiniHeader />
-        <div className="mini-title">Choose your Claude plan</div>
+        <div className="mini-title">Choose your plan</div>
         <div className="mini-carousel">
           <div className="mini-side l"><HoloCard className="mini-card" planId="pro_m" /></div>
           <div className="mini-side r"><HoloCard className="mini-card" planId="max20_m" /></div>

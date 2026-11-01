@@ -1,6 +1,6 @@
 // Bitrefill Business API adapter (https://docs.bitrefill.com).
 // Needs a Business account (API ID + secret) with a prefunded balance.
-// Flow: cache App Store products per country -> POST /invoices with payment_method "balance", auto_pay
+// Flow: cache store-credit products (App Store or Google Play) per country -> POST /invoices with payment_method "balance", auto_pay
 // -> GET /orders/:id for redemption_info.code.
 // NOTE: written against the public docs; verify field names against your account's API reference
 // and run it with Bitrefill's test products before going live.
@@ -24,22 +24,24 @@ async function api(path, init = {}) {
   return body.data ?? body;
 }
 
-const cache = new Map(); // regionCode -> { at, packages }
+const cache = new Map(); // `${regionCode}:${store}` -> { at, packages }
 const TTL = 10 * 60 * 1000;
 
-function isAppStoreProduct(p) {
-  const s = `${p.id} ${p.name}`.toLowerCase();
-  return (s.includes('itunes') || s.includes('app-store') || s.includes('app store')) && p.in_stock !== false;
-}
+const MATCH = {
+  appstore: (s) => s.includes('itunes') || s.includes('app-store') || s.includes('app store') || s.includes('apple-gift'),
+  play: (s) => s.includes('google-play') || s.includes('google play') || s.includes('googleplay'),
+};
+const isStoreProduct = (store) => (p) => MATCH[store](`${p.id} ${p.name}`.toLowerCase()) && p.in_stock !== false;
 
 export const bitrefillSupplier = {
   name: 'bitrefill',
-  async listPackages(regionCode) {
-    const hit = cache.get(regionCode);
+  async listPackages(regionCode, store = 'appstore') {
+    const ck = `${regionCode}:${store}`;
+    const hit = cache.get(ck);
     if (hit && Date.now() - hit.at < TTL) return hit.packages;
     const products = await api(`/products?country=${regionCode}&type=gift_card&limit=200`);
-    const product = (Array.isArray(products) ? products : products.products || []).find(isAppStoreProduct);
-    if (!product) { cache.set(regionCode, { at: Date.now(), packages: [] }); return []; }
+    const product = (Array.isArray(products) ? products : products.products || []).find(isStoreProduct(store));
+    if (!product) { cache.set(ck, { at: Date.now(), packages: [] }); return []; }
     const detail = await api(`/products/${encodeURIComponent(product.id)}`);
     const packages = (detail.packages || []).map((pk) => ({
       id: pk.package_id ?? pk.id,
@@ -48,7 +50,7 @@ export const bitrefillSupplier = {
       // Bitrefill returns the price you pay; adjust the field name to your API response.
       costUsd: Number(pk.price_usd ?? pk.usd_price ?? pk.price),
     })).filter((p) => p.value > 0 && p.costUsd > 0);
-    cache.set(regionCode, { at: Date.now(), packages });
+    cache.set(ck, { at: Date.now(), packages });
     return packages;
   },
   async purchase({ packages, reference }) {

@@ -1,6 +1,6 @@
 # Tessera
 
-A Telegram Mini App for buying **App Store credit for a Claude Pro / Max plan with GRAM or Telegram Stars**. The user picks a plan and pays from their TON wallet or with Stars. They get the code(s) and a short guide to redeem them and subscribe inside the Claude iOS app. The App Store country is a server setting and isn't shown to users.
+A Telegram Mini App for buying **subscriptions to the apps people use, paid with GRAM or Telegram Stars**. Claude (Pro, Max) is the first product; ChatGPT and other AI apps are next. Each purchase is App Store or Google Play credit: the buyer redeems the code and subscribes inside the app. The store country is a server setting and isn't shown to users.
 
 ```
 web/     React + Vite Mini App: TON Connect, Framer Motion (swipe plans, pull the card down to buy),
@@ -98,7 +98,7 @@ Telegram's rules say digital goods sold inside bots and Mini Apps must be paid i
 - **Before the charge:** Telegram sends a `pre_checkout_query`. The bot approves it only if the order belongs to that buyer, the amount matches and the 20-minute price hold hasn't run out.
 - **After the charge:** the `successful_payment` message pays the order. Its charge id is recorded once, so a repeated update never buys twice.
 - **Refunds:** for a Stars order, the admin bot's **Refund Stars** button really refunds through `refundStarPayment`, then marks the order refunded. Delivered orders can't be refunded.
-- **Pricing:** `stars = cost × (1 + STARS_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it, not what buyers pay for Stars, so the price covers your cost. Buyers pay noticeably more in Stars than in GRAM because of Telegram's and the app stores' cut.
+- **Pricing:** Stars are priced to cost the buyer about the same as GRAM (`GRAM price in USD ÷ STAR_BUYER_USD`), but never below `cost × (1 + STARS_MIN_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it. Because Telegram and the app stores keep a cut, the floor usually wins, so Stars stay somewhat dearer than GRAM; they never sell at a loss.
 - Stars you earn are withdrawn to TON through Fragment after Telegram's holding period, so you pay for codes before that money arrives.
 - Without `BOT_TOKEN` (local demo) Stars runs in demo mode: no invoice, the payment is simulated.
 
@@ -148,10 +148,29 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 | `RATE_MAX_AGE_MIN` | Mainnet only: pause new orders when the rate is older than this (default 10) |
 | `STARS` | `off` to hide the Stars option (default on) |
 | `STAR_USD` | What one Star is worth to you on withdrawal, in USD (default `0.013`) |
-| `STARS_MARGIN` | Markup for Stars orders (defaults to `MARGIN`) |
+| `PRODUCTS` | Products on sale, comma-separated (default `claude`; e.g. `claude,chatgpt`) |
+| `APPLE_PRICE_SYNC` | `off` to stop syncing in-app prices from the App Store (default on) |
+| `STAR_BUYER_USD` | Roughly what a buyer pays per Star, in USD (default `0.02`), used to match the GRAM price |
+| `STARS_MIN_MARGIN` | Smallest markup on Stars orders at the payout rate (default `0.03`) |
 | `TEST_PRICE_SCALE` | Testnet only: multiply GRAM amounts (e.g. `0.01`) so faucet coins cover test buys |
 
+## Products and stores
+
+- **Catalog:** `server/src/catalog.js` → `PRODUCTS`. Each product has an App Store id with the App Store's name for each in-app purchase (used by the price sync), a Google Play package, and plans. A plan has a monthly price key and, where the store sells one, a yearly key. Keys are unique across products.
+- **On sale:** `PRODUCTS=claude,chatgpt` in `server/.env`; the default is `claude`. With more than one product, the app shows a product switch.
+- **Stores:** every quote and order is for `appstore` or `play`.
+  - App Store prices sync automatically (see below).
+  - Google Play doesn't publish in-app prices, so you set them in the admin bot: `/prices play` lists them and `/price play pro_m 19.99` sets one.
+  - Once any Play price is set, the app shows an iPhone / Android switch (defaulting to the buyer's phone), and Android buyers see only the plans priced for Play.
+  - The supplier delivers the matching card: App Store or Google Play.
+- **Adding a product:** add it to `PRODUCTS` (App Store id and slug, IAP names, Play package, plans) and its default App Store prices to `REGIONS`, then add it to `PRODUCTS` in `.env`. Card faces, the guide, the bot, Stars invoices and the wallet all read names from the catalog.
+
 ## How pricing works
+
+- **App Store prices sync automatically.** At startup and every 6 hours, the server reads each product's App Store page for `STORE_REGION` and picks up its plans' prices (Claude: Pro monthly and yearly, Max 5×, Max 20×; ChatGPT: Go, Plus monthly and yearly, Pro). A change is applied to new quotes and posted to the admin bot. A page it can't read, a missing plan, or a price that more than doubles or halves changes nothing and alerts you instead. `/price` still overrides, and `/prices` shows where each price comes from (set by you, App Store, or default). Set `APPLE_PRICE_SYNC=off` to stop it.
+- **GRAM prices are live.** The rate refreshes every 30 s, and the app refreshes its prices every 30 s and when it comes back to the front.
+- **Held quotes:** opening the review sheet locks the price for 20 minutes (`POST /api/quotes`), and the order uses exactly that price.
+
 
 - `server/src/catalog.js` holds the Claude in-app price for each App Store country (October 2026 data). Re-check these regularly.
 - The credit needed is the in-app price, plus a tax buffer for the US (+10%) and Canada (+15%), where App Store prices exclude sales tax.
