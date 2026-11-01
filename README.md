@@ -1,6 +1,6 @@
 # Tessera
 
-A Telegram Mini App for buying **subscriptions to the apps people use, paid with GRAM or Telegram Stars**. Claude (Pro, Max) is the first product; ChatGPT and other AI apps are next. Each purchase is App Store or Google Play credit: the buyer redeems the code and subscribes inside the app. The store country is a server setting and isn't shown to users.
+A Telegram Mini App for buying **subscriptions to the apps people use, paid with GRAM or Telegram Stars**. Claude (Pro, Max) is the first product; more apps will follow. Each purchase is App Store or Google Play credit: the buyer redeems the code and subscribes inside the app. The store country is a server setting and isn't shown to users.
 
 ```
 web/     React + Vite Mini App: TON Connect, Framer Motion (swipe plans, pull the card down to buy),
@@ -148,7 +148,7 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 | `RATE_MAX_AGE_MIN` | Mainnet only: pause new orders when the rate is older than this (default 10) |
 | `STARS` | `off` to hide the Stars option (default on) |
 | `STAR_USD` | What one Star is worth to you on withdrawal, in USD (default `0.013`) |
-| `PRODUCTS` | Products on sale, comma-separated (default `claude`; e.g. `claude,chatgpt`) |
+| `PRODUCTS` | Products on sale, comma-separated catalog ids (default `claude`) |
 | `APPLE_PRICE_SYNC` | `off` to stop syncing in-app prices from the App Store (default on) |
 | `STAR_BUYER_USD` | Roughly what a buyer pays per Star, in USD (default `0.02`), used to match the GRAM price |
 | `STARS_MIN_MARGIN` | Smallest markup on Stars orders at the payout rate (default `0.03`) |
@@ -156,8 +156,8 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 
 ## Products and stores
 
-- **Catalog:** `server/src/catalog.js` → `PRODUCTS`. Each product has an App Store id with the App Store's name for each in-app purchase (used by the price sync), a Google Play package, and plans. A plan has a monthly price key and, where the store sells one, a yearly key. Keys are unique across products.
-- **On sale:** `PRODUCTS=claude,chatgpt` in `server/.env`; the default is `claude`. With more than one product, the app shows a product switch.
+- **Catalog:** `server/src/catalog.js` → `PRODUCTS`. Each product has an App Store id with the App Store's name for each in-app purchase (used by the price sync), a Google Play package, and plans. A plan has a monthly price key and, where the store sells one, a yearly key. Keys are unique across products. When two of an app's purchases share a name (a plan's monthly and yearly price), its IAP entry can say which to take: `{ name, pick: 'min' }` for monthly, `{ name, pick: 'max', yearlyOf }` for yearly.
+- **On sale:** the `PRODUCTS` list in `server/.env` (comma-separated ids); the default is `claude`. With more than one product, the app shows a product switch.
 - **Stores:** every quote and order is for `appstore` or `play`.
   - App Store prices sync automatically (see below).
   - Google Play doesn't publish in-app prices, so you set them in the admin bot: `/prices play` lists them and `/price play pro_m 19.99` sets one.
@@ -167,7 +167,7 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 
 ## How pricing works
 
-- **App Store prices sync automatically.** At startup and every 6 hours, the server reads each product's App Store page for `STORE_REGION` and picks up its plans' prices (Claude: Pro monthly and yearly, Max 5×, Max 20×; ChatGPT: Go, Plus monthly and yearly, Pro). A change is applied to new quotes and posted to the admin bot. A page it can't read, a missing plan, or a price that more than doubles or halves changes nothing and alerts you instead. `/price` still overrides, and `/prices` shows where each price comes from (set by you, App Store, or default). Set `APPLE_PRICE_SYNC=off` to stop it.
+- **App Store prices sync automatically.** At startup and every 6 hours, the server reads each product's App Store page for `STORE_REGION` and picks up its plans' prices (for Claude: Pro monthly and yearly, Max 5× and Max 20×). A change is applied to new quotes and posted to the admin bot. A page it can't read, a missing plan, or a price that more than doubles or halves changes nothing and alerts you instead. `/price` still overrides, and `/prices` shows where each price comes from (set by you, App Store, or default). Set `APPLE_PRICE_SYNC=off` to stop it.
 - **GRAM prices are live.** The rate refreshes every 30 s, and the app refreshes its prices every 30 s and when it comes back to the front.
 - **Held quotes:** opening the review sheet locks the price for 20 minutes (`POST /api/quotes`), and the order uses exactly that price.
 

@@ -115,3 +115,11 @@ test('API: a held quote is what the order gets, for that buyer only', async () =
   assert.equal(mismatched.status, 200);
   assert.notEqual(mismatched.body.gram, q.body.gram, 'a quote for another plan is ignored');
 });
+
+test('a price never swallows the next item, even a whole number followed by "100 Credits"', () => {
+  const name = { pro_m: /Claude\s+Pro\s*[-–—]\s*Monthly/i };
+  assert.deepEqual(extractPrices('<li><span>Claude Pro - Monthly</span><span>¥3,000</span></li><li><span>100 Credits</span></li>', name), { pro_m: 3000 });
+  assert.deepEqual(extractPrices('<li><span>Claude Pro - Monthly</span><span>$20</span></li><li><span>100 Credits</span><span>$4.00</span></li>', name), { pro_m: 20 });
+  assert.deepEqual(extractPrices('<li>Claude Pro - Monthly <span>1&nbsp;299,00&nbsp;₽</span></li>', name), { pro_m: 1299 });
+  assert.equal(parsePrice('29.99 100'), 29.99);
+});

@@ -1,6 +1,6 @@
 import { tg } from './tg';
 
-/** A plan id from the server's catalog, e.g. 'pro_m' (Claude Pro) or 'chatgpt_plus'. */
+/** A plan id from the server's catalog, e.g. 'pro_m' (Claude Pro). */
 export type PlanId = string;
 export type StoreId = 'appstore' | 'play';
 export interface Store { id: StoreId; label: string; device: string }

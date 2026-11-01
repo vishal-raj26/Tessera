@@ -24,7 +24,7 @@ export const TERMS = [
 const fromNano = (n) => (Number(BigInt(n ?? 0)) / 1e9).toFixed(2);
 import { findPlan, STORES } from './catalog.js';
 
-/** "Claude Pro", "ChatGPT Plus": the product and plan an order is for. */
+/** e.g. "Claude Pro": the product and plan an order is for. */
 const planName = (o) => { const f = findPlan(o?.plan_id); return f ? `${f.product.name} ${f.plan.label}` : String(o?.plan_id ?? ''); };
 const storeOf = (o) => STORES[o?.store ?? 'appstore'] ?? STORES.appstore;
 const storeOwner = (o) => (storeOf(o).id === 'play' ? 'Google' : 'Apple');

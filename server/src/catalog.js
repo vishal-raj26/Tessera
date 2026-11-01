@@ -1,5 +1,7 @@
 // What Tessera sells: subscriptions to apps, delivered as store credit (App Store or Google Play) that
 // the buyer redeems and then subscribes with inside the app. Claude is the first product; more follow.
+// To add one: an entry in PRODUCTS (plans, App Store ids and IAP names, Play package) and its default
+// App Store prices in REGIONS.
 //
 // Products: each has plans; a plan has a monthly price key (`key`) and, if the store sells a yearly plan,
 // `yearlyKey`. Price keys are unique across products. Prices per region and store live in REGIONS
@@ -33,26 +35,14 @@ export const PRODUCTS = [
       { id: 'max20_m', key: 'max20_m', name: 'Max 20x', label: 'Max 20×', blurb: '20x the usage of Pro' },
     ],
   },
-  {
-    id: 'chatgpt', name: 'ChatGPT', app: 'ChatGPT',
-    appstore: {
-      appId: '6448311069', slug: 'chatgpt',
-      // Plus monthly and yearly share a name on the App Store: the cheaper is monthly, the dearer yearly
-      iap: {
-        chatgpt_go: /ChatGPT\s+Go\b/i,
-        chatgpt_plus: { name: /ChatGPT\s+Plus\b/i, pick: 'min' },
-        chatgpt_plus_y: { name: /ChatGPT\s+Plus\b/i, pick: 'max', yearlyOf: 'chatgpt_plus' },
-        chatgpt_pro: /ChatGPT\s+Pro\s+200\b/i,
-      },
-    },
-    play: { package: 'com.openai.chatgpt' },
-    plans: [
-      { id: 'chatgpt_go', key: 'chatgpt_go', name: 'Go', label: 'Go', blurb: 'More of ChatGPT, for less' },
-      { id: 'chatgpt_plus', key: 'chatgpt_plus', yearlyKey: 'chatgpt_plus_y', name: 'Plus', label: 'Plus', blurb: 'The most popular plan' },
-      { id: 'chatgpt_pro', key: 'chatgpt_pro', name: 'Pro', label: 'Pro', blurb: 'The highest limits' },
-    ],
-  },
 ];
+
+// Extra products without a code change (and for tests): EXTRA_PRODUCTS_JSON, a JSON array of
+// { id, name, app, plans: [{ id, key, yearlyKey?, name, label, blurb }] }. Their App Store prices come
+// from /price (or the sync, which needs IAP names and so a catalog entry).
+if (process.env.EXTRA_PRODUCTS_JSON) {
+  try { PRODUCTS.push(...JSON.parse(process.env.EXTRA_PRODUCTS_JSON)); } catch (e) { console.error('EXTRA_PRODUCTS_JSON is not valid JSON:', e.message); }
+}
 
 /** Products on sale: PRODUCTS env (comma list), default Claude only. */
 export const enabledProducts = () => {
@@ -89,7 +79,7 @@ export const termLabel = (months) => (months === 12 ? '1 year' : months === 1 ? 
 export const REGIONS = {
   US: {
     name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.1,
-    prices: { pro_m: 20, pro_y: 214.99, max5_m: 124.99, max20_m: 249.99, chatgpt_go: 8, chatgpt_plus: 19.99, chatgpt_plus_y: 200, chatgpt_pro: 200 },
+    prices: { pro_m: 20, pro_y: 214.99, max5_m: 124.99, max20_m: 249.99 },
   },
   GB: { name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', taxBuffer: 0, prices: { pro_m: 20, max5_m: 119.99, max20_m: 249.99 } },
   CA: { name: 'Canada', flag: '🇨🇦', currency: 'CAD', taxBuffer: 0.15, prices: { pro_m: 28, max5_m: 179.99, max20_m: 349.99 } },

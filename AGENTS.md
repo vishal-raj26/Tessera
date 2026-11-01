@@ -3,7 +3,7 @@
 Notes for coding agents (Codex, Claude, etc.) and contributors. Read README.md for what the app does.
 
 ## Product direction (from the owner)
-Tessera sells **subscriptions to many apps**, not just Claude. Claude is the first product; ChatGPT and other AI apps are next, delivered as **App Store or Google Play credit**. Never add Claude-only assumptions:
+Tessera sells **subscriptions to many apps**, not just Claude. Claude is the first product; more apps will follow, delivered as **App Store or Google Play credit**. Never add Claude-only assumptions:
 - Products, plans and price keys live in `server/src/catalog.js` (`PRODUCTS`). Read names and labels from there (server) or from the API's `plan.product`, `plan.label`, `order.product` and `order.store` (app). Don't hard-code "Claude", plan names or "App Store" in UI or bot text.
 - The store is part of every quote and order (`appstore` | `play`). Store-specific wording (redeem link, guide steps, "Apple"/"Google") comes from the order's store.
 - Which products are on sale: the `PRODUCTS` env (default `claude`). Google Play prices are set by the admin (`/price play …`); a plan shows for Android only once priced.

@@ -9,22 +9,35 @@ import { PRODUCTS, findPlan, priceKeys } from '../src/catalog.js';
 import { openStore } from '../src/db.js';
 import { createBot } from '../src/bot.js';
 
-const chatgpt = PRODUCTS.find((p) => p.id === 'chatgpt');
+// A made-up second app, so these tests don't depend on which real products are in the catalog.
+const NOTELY = {
+  id: 'notely', name: 'Notely', app: 'Notely Notes',
+  plans: [
+    { id: 'notely_plus', key: 'notely_plus', yearlyKey: 'notely_plus_y', name: 'Plus', label: 'Plus', blurb: 'More notes' },
+    { id: 'notely_team', key: 'notely_team', name: 'Team', label: 'Team', blurb: 'For teams' },
+  ],
+};
+const NOTELY_IAP = {
+  notely_plus: { name: /Notely\s+Plus\b/i, pick: 'min' },
+  notely_plus_y: { name: /Notely\s+Plus\b/i, pick: 'max', yearlyOf: 'notely_plus' },
+  notely_team: /Notely\s+Team\b/i,
+};
 
 test('catalog: plans belong to products, price keys are unique across products', () => {
   const keys = PRODUCTS.flatMap(priceKeys);
   assert.equal(new Set(keys).size, keys.length);
   assert.equal(findPlan('pro_m').product.id, 'claude');
-  assert.equal(findPlan('chatgpt_plus').product.name, 'ChatGPT');
+  assert.equal(findPlan('pro_m').plan.label, 'Pro');
 });
 
-test('ChatGPT page: Plus monthly and yearly share a name; the cheaper is monthly, the dearer yearly', () => {
-  const page = `<ul>${[['ChatGPT Plus', '$19.99'], ['ChatGPT Go', '$8.00'], ['ChatGPT Pro 100', '$100.00'], ['100 Credits', '$4.00'],
-    ['ChatGPT Pro 200', '$200.00'], ['ChatGPT Plus', '$200.00'], ['ChatGPT Pro 500', '$500.00']].map(([n, p]) => `<li><span>${n}</span><span>${p}</span></li>`).join('')}</ul>`;
-  assert.deepEqual(extractPrices(page, chatgpt.appstore.iap), { chatgpt_go: 8, chatgpt_plus: 19.99, chatgpt_plus_y: 200, chatgpt_pro: 200 });
+test('App Store page where monthly and yearly share a name: the cheaper is monthly, the dearer yearly', () => {
+  const page = `<ul>${[['Notely Plus', '$9.99'], ['Notely Team', '$29.99'], ['100 Credits', '$4.00'], ['Notely Plus', '$99.99']]
+    .map(([n, p]) => `<li><span>${n}</span><span>${p}</span></li>`).join('')}</ul>`;
+  assert.deepEqual(extractPrices(page, NOTELY_IAP), { notely_plus: 9.99, notely_plus_y: 99.99, notely_team: 29.99 });
   // only one Plus listed: no yearly price is guessed
-  const one = '<li>ChatGPT Plus $19.99</li><li>ChatGPT Go $8.00</li>';
-  assert.equal(extractPrices(one, chatgpt.appstore.iap).chatgpt_plus_y, undefined);
+  assert.equal(extractPrices('<li>Notely Plus $9.99</li>', NOTELY_IAP).notely_plus_y, undefined);
+  // a "yearly" price under 6x the monthly one is a misread, so it's dropped
+  assert.equal(extractPrices('<li>Notely Plus $9.99</li><li>Notely Plus $19.99</li>', NOTELY_IAP).notely_plus_y, undefined);
 });
 
 test('admin: /prices play and /price play set Google Play prices separately', async () => {
@@ -50,10 +63,14 @@ test('admin: /prices play and /price play set Google Play prices separately', as
 // The real server with two products, and a Google Play price set for one Claude plan.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tessera-mp-'));
 const dbFile = path.join(dir, 'db.sqlite');
-openStore(dbFile).settings.set('price:US:play:pro_m', 19.99);
+const seed = openStore(dbFile).settings;
+seed.set('price:US:play:pro_m', 19.99);  // one Google Play price, for Claude Pro
+seed.set('apple:US:notely_plus', 9.99);   // Notely's App Store prices, as if synced
+seed.set('apple:US:notely_plus_y', 99.99);
+seed.set('apple:US:notely_team', 29.99);
 const PORT = 8944;
 const srv = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
-  env: { ...process.env, PORT: String(PORT), DB_PATH: dbFile, PAYMENT_MODE: 'mock', BOT_TOKEN: '', SUPPLIER: 'mock', STORE_REGION: 'US', APPLE_PRICE_SYNC: 'off', PRODUCTS: 'claude,chatgpt' },
+  env: { ...process.env, PORT: String(PORT), DB_PATH: dbFile, PAYMENT_MODE: 'mock', BOT_TOKEN: '', SUPPLIER: 'mock', STORE_REGION: 'US', APPLE_PRICE_SYNC: 'off', PRODUCTS: 'claude,notely', EXTRA_PRODUCTS_JSON: JSON.stringify([NOTELY]) },
   stdio: 'ignore',
 });
 after(() => { srv.kill(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -69,13 +86,15 @@ const call = async (p, body) => {
 
 test('API: both products on sale, each plan tagged with its product', async () => {
   const cfg = (await call('/api/config')).body;
-  assert.deepEqual(cfg.products.map((p) => p.id), ['claude', 'chatgpt']);
+  assert.deepEqual(cfg.products.map((p) => p.id), ['claude', 'notely']);
   const { body } = await call('/api/catalog');
-  assert.deepEqual(body.plans.map((p) => p.id), ['pro_m', 'max5_m', 'max20_m', 'chatgpt_go', 'chatgpt_plus', 'chatgpt_pro']);
-  const plus = body.plans.find((p) => p.id === 'chatgpt_plus');
-  assert.equal(plus.product.name, 'ChatGPT');
-  assert.deepEqual(plus.terms.map((t) => t.months), [1, 3, 6, 12], 'ChatGPT Plus has a yearly plan');
-  assert.equal(plus.terms.at(-1).appPrice, 200);
+  assert.deepEqual(body.plans.map((p) => p.id), ['pro_m', 'max5_m', 'max20_m', 'notely_plus', 'notely_team']);
+  const plus = body.plans.find((p) => p.id === 'notely_plus');
+  assert.equal(plus.product.name, 'Notely');
+  assert.deepEqual(plus.terms.map((t) => t.months), [1, 3, 6, 12], 'a yearly price means a 1-year term');
+  assert.equal(plus.terms.at(-1).appPrice, 99.99);
+  const team = body.plans.find((p) => p.id === 'notely_team');
+  assert.deepEqual(team.terms.map((t) => t.months), [1, 3, 6]);
 });
 
 test('API: Google Play shows only plans with a Play price set', async () => {
@@ -87,7 +106,7 @@ test('API: Google Play shows only plans with a Play price set', async () => {
   assert.deepEqual(body.plans.find((p) => p.id === 'pro_m').terms.map((t) => t.months), [1, 3, 6], 'no Play yearly price set');
 });
 
-test('API: a Google Play order keeps its store; a plan not on sale is refused', async () => {
+test('API: a Google Play order keeps its store; a plan without a Play price is refused', async () => {
   const o = await call('/api/orders', { planId: 'pro_m', months: 1, store: 'play', method: 'gram' });
   assert.equal(o.status, 200);
   assert.equal(o.body.store.id, 'play');
