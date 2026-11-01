@@ -8,19 +8,19 @@ import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import type { CardScene } from '../three/cardScene';
 
-interface Props { planId: PlanId; credit?: string; term?: string; interactive?: boolean; idle?: boolean; className?: string }
+interface Props { planId: PlanId; label?: string; product?: string; store?: string; credit?: string; term?: string; interactive?: boolean; idle?: boolean; className?: string }
 
 const webgl = (() => {
   try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; }
 })();
 
-export const Card3D = memo(function Card3D({ planId, credit, term, interactive = false, idle = false, className = '' }: Props) {
+export const Card3D = memo(function Card3D({ planId, label, product, store, credit, term, interactive = false, idle = false, className = '' }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<CardScene | null>(null);
   const [ready, setReady] = useState(false);
-  const face = { name: PLAN_LABEL[planId], credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month' };
-  const faceKey = `${face.name}|${face.credit}|${face.term}`;
+  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}` };
+  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}`;
 
   const px = useMotionValue(0);
   const py = useMotionValue(0);
@@ -97,7 +97,7 @@ export const Card3D = memo(function Card3D({ planId, credit, term, interactive =
 
   return (
     <div ref={wrap} className={`card-wrap card3d ${ready ? 'is-ready' : ''} ${className}`}>
-      {!ready && <HoloCard planId={planId} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
+      {!ready && <HoloCard planId={planId} label={label} product={product} store={store} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
       <canvas ref={canvas} className="card3d-canvas" aria-hidden="true" />
       <span className="card3d-shadow" aria-hidden="true" />
     </div>

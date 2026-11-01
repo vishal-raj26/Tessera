@@ -4,7 +4,7 @@ import cors from 'cors';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
-import { PLANS, REGIONS, TERMS, pickPackages, round2, termLabel } from './catalog.js';
+import { REGIONS, TERMS, STORES, enabledProducts, findPlan, priceKeys, pickPackages, round2, termLabel } from './catalog.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
@@ -45,33 +45,48 @@ const NANO = 1_000_000_000n;
 const toNano = (gram) => BigInt(Math.ceil(gram * 100)) * (NANO / 100n); // round up to 0.01 GRAM
 const fromNano = (n) => Number(BigInt(n)) / 1e9;
 
-/** In-app price: an admin override (/price), else the App Store price synced by applePrices.js, else catalog.js. */
-function inAppPrice(regionCode, planId) {
-  const override = settings.get(`price:${regionCode}:${planId}`);
+/**
+ * In-app price of a price key in a store: an admin override (/price), else the App Store price synced by
+ * applePrices.js, else the default in catalog.js. Google Play has no defaults: Play prices come from /price.
+ */
+const overrideKey = (regionCode, key, store) => (store === 'play' ? `price:${regionCode}:play:${key}` : `price:${regionCode}:${key}`);
+function inAppPrice(regionCode, key, store = 'appstore') {
+  const override = settings.get(overrideKey(regionCode, key, store));
   if (override != null) return Number(override);
-  const synced = settings.get(`apple:${regionCode}:${planId}`);
+  if (store !== 'appstore') return null;
+  const synced = settings.get(`apple:${regionCode}:${key}`);
   if (synced != null) return Number(synced);
-  return REGIONS[regionCode]?.prices?.[planId];
+  return REGIONS[regionCode]?.prices?.[key] ?? null;
 }
-const priceSource = (regionCode, key) =>
-  settings.get(`price:${regionCode}:${key}`) != null ? 'set by you'
-    : settings.get(`apple:${regionCode}:${key}`) != null ? 'App Store' : 'default';
+const priceSource = (regionCode, key, store = 'appstore') =>
+  settings.get(overrideKey(regionCode, key, store)) != null ? 'set by you'
+    : store !== 'appstore' ? 'not set'
+      : settings.get(`apple:${regionCode}:${key}`) != null ? 'App Store' : 'default';
 
-/** Price for a term: Apple's yearly Pro plan for 12 months, else that many monthly renewals. */
-// terms on offer: Pro yearly wherever we have a yearly price (synced, set by you, or built in)
-const termsAt = (regionCode, planId) => TERMS.filter((m) => m !== 12 || (planId === 'pro_m' && !!inAppPrice(regionCode, 'pro_y')));
-function termPrice(regionCode, planId, months) {
-  if (!termsAt(regionCode, planId).includes(months)) return null;
-  if (months === 12) return inAppPrice(regionCode, 'pro_y');
-  const monthly = inAppPrice(regionCode, planId);
+// Terms on offer for a plan in a store: 1, 3 and 6 months wherever it has a monthly price, and 12 months
+// wherever the store has a yearly price for it (its own yearly plan).
+const termsAt = (regionCode, planId, store = 'appstore') => {
+  const plan = findPlan(planId)?.plan;
+  if (!plan || !inAppPrice(regionCode, plan.key, store)) return [];
+  return TERMS.filter((m) => m !== 12 || !!(plan.yearlyKey && inAppPrice(regionCode, plan.yearlyKey, store)));
+};
+/** Price for a term: the store's yearly plan for 12 months, else that many monthly renewals. */
+function termPrice(regionCode, planId, months, store = 'appstore') {
+  const plan = findPlan(planId)?.plan;
+  if (!plan || !termsAt(regionCode, planId, store).includes(months)) return null;
+  if (months === 12) return inAppPrice(regionCode, plan.yearlyKey, store);
+  const monthly = inAppPrice(regionCode, plan.key, store);
   return monthly ? round2(monthly * months) : null;
 }
+const storeOf = (s) => (STORES[s] ? s : 'appstore');
+const onSale = (planId) => { const f = findPlan(planId); return f && enabledProducts().some((p) => p.id === f.product.id) ? f : null; };
 
-async function quote(regionCode, planId, months = 1) {
+async function quote(regionCode, planId, months = 1, store = 'appstore') {
   const region = REGIONS[regionCode];
-  const price = termPrice(regionCode, planId, months);
+  if (!onSale(planId)) return null;
+  const price = termPrice(regionCode, planId, months, store);
   if (!price) return null;
-  const packages = await SUPPLIER.listPackages(regionCode);
+  const packages = await SUPPLIER.listPackages(regionCode, store);
   if (!packages.length) return null;
   const needed = price * (1 + (region.taxBuffer || 0));
   const pick = pickPackages(packages, needed);
@@ -89,9 +104,9 @@ async function quote(regionCode, planId, months = 1) {
   return {
     stale: !rate, // GRAM is paused, Stars still works
     stars,
-    regionCode, planId, months,
+    regionCode, planId, months, store,
     annual: months === 12,
-    monthly: inAppPrice(regionCode, planId),
+    monthly: inAppPrice(regionCode, findPlan(planId).plan.key, store),
     appPrice: price,
     currency: region.currency,
     credit: pick.faceValue,
@@ -119,10 +134,14 @@ app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payment
 
 app.get('/api/config', (req, res) => {
   const testScale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
-  res.json({ paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS, testScale });
+  res.json({
+    paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS, testScale,
+    products: enabledProducts().map((p) => ({ id: p.id, name: p.name, app: p.app })),
+    stores: Object.values(STORES),
+  });
 });
 
-// Regions the supplier can actually fulfil right now, intersected with regions we have Claude prices for.
+// Regions the supplier can actually fulfil right now (App Store credit), intersected with regions we have prices for.
 app.get('/api/regions', async (req, res) => {
   const list = await Promise.all(Object.entries(REGIONS).map(async ([code, r]) => {
     const pk = await SUPPLIER.listPackages(code).catch(() => []);
@@ -131,20 +150,30 @@ app.get('/api/regions', async (req, res) => {
   res.json({ regions: list.filter(Boolean) });
 });
 
+// Every plan of every product on sale, priced for one store (?store=appstore|play). `storesPriced` says
+// which stores have any priced plan, so the app only offers Google Play once Play prices are set.
 app.get('/api/catalog', async (req, res) => {
   const code = String(req.query.region || STORE_REGION).toUpperCase();
   if (!REGIONS[code]) return res.status(400).json({ error: 'Unknown region' });
+  const store = storeOf(req.query.store);
   let stale = false;
   const pick = (q) => ({ months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
-  const plans = await Promise.all(PLANS.map(async (p) => {
-    const quotes = await Promise.all(termsAt(code, p.id).map((m) => quote(code, p.id, m).catch(() => null)));
+  const all = enabledProducts().flatMap((product) => product.plans.map((plan) => ({ product, plan })));
+  const plans = await Promise.all(all.map(async ({ product, plan }) => {
+    const quotes = await Promise.all(termsAt(code, plan.id, store).map((m) => quote(code, plan.id, m, store).catch(() => null)));
     if (quotes.some((q) => q?.stale)) stale = true;
     const terms = quotes.filter((q) => q && (q.gram || q.stars)).map(pick);
     const one = terms.find((t) => t.months === 1);
-    // top-level fields keep describing one month, for older clients
-    return { ...p, available: terms.length > 0, terms, ...(one && { appPrice: one.appPrice, currency: one.currency, credit: one.credit, codes: one.codes, gram: one.gram, stars: one.stars, usd: one.usd }) };
+    return {
+      id: plan.id, name: plan.name, label: plan.label, blurb: plan.blurb, term: 'month',
+      product: { id: product.id, name: product.name, app: product.app },
+      available: terms.length > 0, terms,
+      // top-level fields keep describing one month, for older clients
+      ...(one && { appPrice: one.appPrice, currency: one.currency, credit: one.credit, codes: one.codes, gram: one.gram, stars: one.stars, usd: one.usd }),
+    };
   }));
-  res.json({ region: { code, ...REGIONS[code], prices: undefined }, plans, pricesUpdating: stale });
+  const storesPriced = Object.fromEntries(Object.keys(STORES).map((s) => [s, all.some(({ plan }) => termsAt(code, plan.id, s).length > 0)]));
+  res.json({ region: { code, ...REGIONS[code], prices: undefined }, store, storesPriced, plans, pricesUpdating: stale });
 });
 
 const publicOrder = (o) => o && {
@@ -152,7 +181,9 @@ const publicOrder = (o) => o && {
   region: o.region,
   regionName: REGIONS[o.region]?.name,
   flag: REGIONS[o.region]?.flag,
-  plan: PLANS.find((p) => p.id === o.plan_id),
+  plan: (({ id, name, label }) => ({ id, name, label, term: 'month' }))(findPlan(o.plan_id)?.plan ?? { id: o.plan_id, name: o.plan_id, label: o.plan_id }),
+  product: (({ id, name, app }) => ({ id, name, app }))(findPlan(o.plan_id)?.product ?? { id: 'unknown', name: '', app: '' }),
+  store: STORES[o.store ?? 'appstore'],
   months: o.months ?? 1,
   annual: o.months === 12,
   credit: o.face_value,
@@ -184,11 +215,12 @@ app.post('/api/quotes', telegramAuth, async (req, res) => {
   const { region, planId } = req.body || {};
   const months = Number(req.body?.months ?? 1);
   const code = String(region || STORE_REGION).toUpperCase();
+  const store = storeOf(req.body?.store);
   // use the held quote when it's this buyer's, for this plan and term, and still valid
   const held = quotes.get(String(req.body?.quoteId || ''));
   const useHeld = held && held.user === String(req.tgUser.id) && held.planId === planId && held.months === months
-    && held.regionCode === code && held.expiresAt > Date.now();
-  const q = useHeld ? held : await quote(code, planId, months).catch((e) => { console.error(e); return null; });
+    && held.regionCode === code && held.store === store && held.expiresAt > Date.now();
+  const q = useHeld ? held : await quote(code, planId, months, store).catch((e) => { console.error(e); return null; });
   if (!q || (!q.gram && !q.stars)) return res.status(q?.stale ? 503 : 400).json({ error: q?.stale ? 'Prices are updating. Try again in a minute.' : 'This plan is not available right now.' });
   const id = crypto.randomUUID();
   const expiresAt = Date.now() + QUOTE_TTL_MS;
@@ -201,11 +233,12 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
   const method = req.body?.method === 'stars' ? 'stars' : 'gram';
   const months = Number(req.body?.months ?? 1);
   const code = String(region || STORE_REGION).toUpperCase();
+  const store = storeOf(req.body?.store);
   // use the held quote when it's this buyer's, for this plan and term, and still valid
   const held = quotes.get(String(req.body?.quoteId || ''));
   const useHeld = held && held.user === String(req.tgUser.id) && held.planId === planId && held.months === months
-    && held.regionCode === code && held.expiresAt > Date.now();
-  const q = useHeld ? held : await quote(code, planId, months).catch((e) => { console.error(e); return null; });
+    && held.regionCode === code && held.store === store && held.expiresAt > Date.now();
+  const q = useHeld ? held : await quote(code, planId, months, store).catch((e) => { console.error(e); return null; });
   if (!q || (!q.gram && !q.stars)) return res.status(q?.stale ? 503 : 400).json({ error: q?.stale ? 'Prices are updating. Try again in a minute.' : 'This plan is not available right now.' });
   if (method === 'gram' && !q.gram) return res.status(503).json({ error: 'GRAM prices are updating. Pay with Stars, or try again in a minute.' });
   if (method === 'stars' && !q.stars) return res.status(400).json({ error: 'Stars payments are off right now.' });
@@ -218,7 +251,7 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
     // a held quote keeps its own deadline, but the buyer always gets at least 10 minutes to pay
     amountNano: method === 'gram' ? q.amountNano : '0', comment: memo, createdAt: now,
     expiresAt: useHeld ? Math.max(held.expiresAt, now + 10 * 60e3) : now + QUOTE_TTL_MS,
-    method, stars: method === 'stars' ? q.stars : null, months,
+    method, stars: method === 'stars' ? q.stars : null, months, store,
   });
   let invoiceLink = null;
   if (method === 'stars') {
@@ -265,16 +298,23 @@ if (PAYMENT_MODE === 'mock') {
 // ---- background workers -------------------------------------------------
 
 const prices = {
-  // pro_y is Apple's yearly Pro price; the others are monthly
-  keys: (region = STORE_REGION) => [...PLANS.map((p) => p.id), ...(inAppPrice(region, 'pro_y') ? ['pro_y'] : [])],
-  list(region = STORE_REGION) {
-    return this.keys(region).map((k) => ({ plan: k, name: k === 'pro_y' ? 'Pro, yearly' : PLANS.find((p) => p.id === k).name, price: inAppPrice(region, k), currency: REGIONS[region]?.currency, overridden: settings.get(`price:${region}:${k}`) != null, source: priceSource(region, k) }));
+  // every price key of every product on sale; monthly plus yearly where the plan has one
+  keys: () => enabledProducts().flatMap(priceKeys),
+  name(k) {
+    for (const p of enabledProducts()) for (const pl of p.plans) {
+      if (pl.key === k) return `${p.name} ${pl.name}`;
+      if (pl.yearlyKey === k) return `${p.name} ${pl.name}, yearly`;
+    }
+    return k;
   },
-  set(region, plan, value) {
+  list(region = STORE_REGION, store = 'appstore') {
+    return this.keys().map((k) => ({ plan: k, name: this.name(k), price: inAppPrice(region, k, store), currency: REGIONS[region]?.currency, overridden: settings.get(overrideKey(region, k, store)) != null, source: priceSource(region, k, store) }));
+  },
+  set(region, plan, value, store = 'appstore') {
     if (!REGIONS[region]) return 'Unknown region';
-    if (!this.keys(region).includes(plan)) return `Unknown plan. Use one of: ${this.keys(region).join(', ')}`;
+    if (!this.keys().includes(plan)) return `Unknown plan. Use one of: ${this.keys().join(', ')}`;
     if (!(value > 0)) return 'Price must be a positive number';
-    settings.set(`price:${region}:${plan}`, value);
+    settings.set(overrideKey(region, plan, store), value);
     return null;
   },
   region: STORE_REGION,
@@ -283,17 +323,23 @@ const prices = {
 startRateFeed();
 const bot = startAdminBot({ getEngine: () => engine, orders, prices, publicUrl: process.env.PUBLIC_URL });
 
-// Keep in-app prices in step with the App Store (APPLE_PRICE_SYNC=off to stop it).
+// Keep each product's in-app prices in step with the App Store (APPLE_PRICE_SYNC=off to stop it).
 if (process.env.APPLE_PRICE_SYNC !== 'off') {
-  startApplePriceSync({
-    region: STORE_REGION,
-    keys: () => ['pro_m', 'pro_y', 'max5_m', 'max20_m'], // looks for all four, so a new yearly plan is picked up too
-    // compare against the App Store price we last synced (or the default), not an admin override
-    get: (k) => Number(settings.get(`apple:${STORE_REGION}:${k}`) ?? REGIONS[STORE_REGION]?.prices?.[k]) || null,
-    save: (k, v) => settings.set(`apple:${STORE_REGION}:${k}`, v),
-    notify: (e) => bot.notify(e),
-    url: process.env.APPLE_PAGE_URL, // tests point this at a fake page
-  });
+  for (const product of enabledProducts().filter((p) => p.appstore)) {
+    startApplePriceSync({
+      region: STORE_REGION,
+      product: product.name,
+      appId: product.appstore.appId,
+      slug: product.appstore.slug,
+      iap: product.appstore.iap,
+      keys: () => Object.keys(product.appstore.iap), // all of them, so a new yearly plan is picked up too
+      // compare against the App Store price we last synced (or the default), not an admin override
+      get: (k) => Number(settings.get(`apple:${STORE_REGION}:${k}`) ?? REGIONS[STORE_REGION]?.prices?.[k]) || null,
+      save: (k, v) => settings.set(`apple:${STORE_REGION}:${k}`, v),
+      notify: (e) => bot.notify(e),
+      url: process.env.APPLE_PAGE_URL, // tests point this at a fake page
+    });
+  }
 }
 const engine = createEngine({
   orders,

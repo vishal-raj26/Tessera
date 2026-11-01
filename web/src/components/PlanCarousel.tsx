@@ -15,14 +15,16 @@ interface Props {
   months: number;
   /** optional shared pull distance, so the page can react while the card is pulled */
   pull?: MotionValue<number>;
+  /** store label for the card's top line, e.g. "App Store" */
+  storeLabel?: string;
   /** optional shared hold amount (0…1 while the front card is pressed) */
   hold?: MotionValue<number>;
 }
 
 const PULL = 110;
 
-function Slot({ i, pos, pull, hold, plan, active, onTap, months }: {
-  i: number; pos: MotionValue<number>; pull: MotionValue<number>; hold: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number;
+function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel }: {
+  i: number; pos: MotionValue<number>; pull: MotionValue<number>; hold: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number; storeLabel?: string;
 }) {
   // pressed in slightly while held
   const press = useTransform(hold, (h) => (active ? 1 - h * 0.035 : 1));
@@ -50,6 +52,9 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months }: {
         <motion.div style={{ scale: press }}>
           <Card3D
             planId={plan.id}
+            label={plan.label}
+            product={plan.product?.name}
+            store={storeLabel}
             credit={t ? fmtMoney(t.credit, t.currency) : undefined}
             term={t ? termLabel(t.months) : undefined}
             interactive={active}
@@ -61,7 +66,7 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months }: {
   );
 }
 
-export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold }: Props) {
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel }: Props) {
   const pos = useMotionValue(index);
   const ownPull = useMotionValue(0);
   const pull = sharedPull ?? ownPull;
@@ -153,7 +158,7 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
     >
       <Rays hold={hold} pull={pull} max={PULL} on={holding} />
       {plans.map((p, i) => (
-        <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} />
+        <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} storeLabel={storeLabel} />
       ))}
     </motion.div>
   );

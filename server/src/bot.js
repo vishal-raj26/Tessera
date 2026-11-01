@@ -11,18 +11,23 @@
 export const TERMS = [
   '<b>Tessera terms of sale</b>',
   '',
-  '• Tessera sells App Store credit. You use it to pay for a Claude plan in the Claude iOS app.',
-  '• Codes work only on Apple accounts from the App Store country they are issued for.',
+  '• Tessera sells App Store and Google Play credit. You use it to pay for a subscription in the app it\'s for.',
+  '• Codes work only on accounts from the store country they are issued for (an Apple ID or a Google account).',
   '• Once a code is issued it cannot be refunded or exchanged.',
   '• If payment arrives but we can\'t issue your code, we refund you in the currency you paid with.',
-  '• Claude plans renew monthly through Apple. Manage or cancel them in your Apple account settings.',
-  '• Tessera is independent and not affiliated with Anthropic or Apple.',
+  '• Subscriptions renew through the store. Manage or cancel them in your Apple or Google account settings.',
+  '• Tessera is independent and not affiliated with Apple, Google, or the apps whose subscriptions it sells.',
   '',
   'Questions or a problem with a payment: /paysupport',
 ].join('\n');
 
 const fromNano = (n) => (Number(BigInt(n ?? 0)) / 1e9).toFixed(2);
-const PLAN = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
+import { findPlan, STORES } from './catalog.js';
+
+/** "Claude Pro", "ChatGPT Plus": the product and plan an order is for. */
+const planName = (o) => { const f = findPlan(o?.plan_id); return f ? `${f.product.name} ${f.plan.label}` : String(o?.plan_id ?? ''); };
+const storeOf = (o) => STORES[o?.store ?? 'appstore'] ?? STORES.appstore;
+const storeOwner = (o) => (storeOf(o).id === 'play' ? 'Google' : 'Apple');
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 const isStars = (o) => o?.method === 'stars';
@@ -30,7 +35,7 @@ const term = (o) => (o?.months === 12 ? '1 year' : (o?.months ?? 1) === 1 ? '1 m
 
 function describe(o) {
   return [
-    `<b>Claude ${PLAN[o.plan_id] ?? o.plan_id}, ${term(o)}</b> · ${o.currency} ${o.face_value} credit`,
+    `<b>${esc(planName(o))}, ${term(o)}</b> · ${o.currency} ${o.face_value} ${storeOf(o).label} credit`,
     `Status: <b>${esc(o.status)}</b>`,
     isStars(o)
       ? `Paid with Stars: ${o.stars} ⭐${o.charge_id ? '' : ' (not paid yet)'}`
@@ -65,7 +70,7 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     const o = e.order;
     switch (e.type) {
       case 'delivered':
-        return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} credit is ready. Open Tessera to copy the code and redeem it.`);
+        return toBuyer(o, `Your ${planName(o)} credit is ready. Open Tessera to copy the code and redeem it.`);
       case 'failed':
         await toAdmins(`⚠️ <b>Fulfilment failed</b>\n${esc(e.reason ?? '')}\n\n${describe(o)}`, buttons(o));
         return toBuyer(o, 'We received your payment, but your code is taking longer than usual. We are on it and will message you here.');
@@ -76,9 +81,9 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
         if (e.stars != null) return toAdmins(`➕ <b>Unexpected Stars payment</b> of ${e.stars} ⭐\nCharge <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
         return toAdmins(`➕ <b>Extra payment</b> of ${fromNano(e.valueNano)} GRAM\nTx <code>${esc(e.hash)}</code>\n\n${describe(o)}`, buttons(o));
       case 'apple_prices_changed':
-        return toAdmins(`🏷 <b>App Store prices changed</b> (${esc(e.region)})\n${e.changed.map((c) => `${esc(c.key)}: ${c.from ?? '–'} → <b>${c.to}</b>`).join('\n')}\nNew quotes use them now. A price you set with /price still wins.`);
+        return toAdmins(`🏷 <b>App Store prices changed</b>${e.product ? ` · ${esc(e.product)}` : ''} (${esc(e.region)})\n${e.changed.map((c) => `${esc(c.key)}: ${c.from ?? '–'} → <b>${c.to}</b>`).join('\n')}\nNew quotes use them now. A price you set with /price still wins.`);
       case 'apple_prices_problem':
-        return toAdmins(`⚠️ <b>App Store price check</b> (${esc(e.region)}): ${esc(e.problem)}.\nPrices were left as they were. Check ${esc(e.url)} and use /price if needed.`);
+        return toAdmins(`⚠️ <b>App Store price check</b>${e.product ? ` · ${esc(e.product)}` : ''} (${esc(e.region)}): ${esc(e.problem)}.\nPrices were left as they were. Check ${esc(e.url)} and use /price if needed.`);
       case 'credit_unrecognised':
         return toAdmins(`🔎 <b>Payment not recognised</b>: ${esc(e.reason)}\n${fromNano(e.valueNano)} GRAM · memo <code>${esc(e.comment)}</code>\nFrom <code>${esc(e.source)}</code>\nTx <code>${esc(e.hash)}</code>\nCheck it in an explorer. If the money arrived, fulfil or refund by hand.${o ? `\n\n${describe(o)}` : ''}`, o ? buttons(o) : undefined);
       case 'stars_unmatched':
@@ -88,9 +93,9 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       case 'refunded':
         return toBuyer(o, isStars(o) ? `Your ${o.stars} Stars were refunded. Sorry it didn’t work out this time.` : 'Your order was refunded. Sorry it didn’t work out this time.');
       case 'renewal':
-        if (o.months === 12) return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} year renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up in Tessera.`);
-        if ((o.months ?? 1) > 1) return toBuyer(o, `The credit you bought for ${term(o)} of Claude ${PLAN[o.plan_id]} runs out in about 3 days. After that Apple charges your card for each month. You can top up in Tessera.`);
-        return toBuyer(o, `Your Claude ${PLAN[o.plan_id]} month renews in about 3 days. If your Apple balance won't cover it, Apple charges your card. You can top up in Tessera.`);
+        if (o.months === 12) return toBuyer(o, `Your ${planName(o)} year renews in about 3 days. If your ${storeOwner(o)} balance won't cover it, ${storeOwner(o)} charges your card. You can top up in Tessera.`);
+        if ((o.months ?? 1) > 1) return toBuyer(o, `The credit you bought for ${term(o)} of ${planName(o)} runs out in about 3 days. After that ${storeOwner(o)} charges your card for each month. You can top up in Tessera.`);
+        return toBuyer(o, `Your ${planName(o)} month renews in about 3 days. If your ${storeOwner(o)} balance won't cover it, ${storeOwner(o)} charges your card. You can top up in Tessera.`);
       case 'rate_stale':
         return toAdmins(`⏸ <b>GRAM price feed is stale</b> (${e.minutes} min). New orders are paused until it recovers.`);
       case 'rate_ok':
@@ -103,11 +108,11 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
   /** Stars invoice link for an order, opened in the Mini App with Telegram.WebApp.openInvoice. */
   function createInvoice(o) {
     return api('createInvoiceLink', {
-      title: `Claude ${PLAN[o.plan_id]}, ${term(o)}`,
-      description: `${o.currency} ${o.face_value} App Store credit for ${o.months === 12 ? 'a year' : term(o)} of Claude ${PLAN[o.plan_id]}. Code delivered in the app.`,
+      title: `${planName(o)}, ${term(o)}`,
+      description: `${o.currency} ${o.face_value} ${storeOf(o).label} credit for ${o.months === 12 ? 'a year' : term(o)} of ${planName(o)}. Code delivered in the app.`,
       payload: o.id,
       currency: 'XTR',
-      prices: [{ label: `Claude ${PLAN[o.plan_id]}, ${term(o)}`, amount: o.stars }],
+      prices: [{ label: `${planName(o)}, ${term(o)}`, amount: o.stars }],
     });
   }
 
@@ -168,8 +173,8 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     const [cmd, arg] = m.text.trim().split(/\s+/);
     if (cmd.startsWith('/start')) {
       return send(chat, isAdmin
-        ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices — in-app prices we sell against\n/price &lt;plan&gt; &lt;amount&gt; — change one\n\nBuyer messages land here. Reply to one to answer that buyer.'
-        : 'Claude Pro and Max, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', openApp);
+        ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices [play] — in-app prices we sell against (App Store, or Google Play)\n/price [play] &lt;plan&gt; &lt;amount&gt; — set one\n\nBuyer messages land here. Reply to one to answer that buyer.'
+        : 'Subscriptions to the apps you use, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', openApp);
     }
     if (cmd.startsWith('/terms')) return send(chat, TERMS);
     if (cmd.startsWith('/paysupport') || cmd.startsWith('/help')) {
@@ -188,7 +193,7 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       // buyer wrote something: hand it to a person with their recent orders
       if (m.chat?.type !== 'private' || cmd.startsWith('/')) return undefined;
       const recent = (orders.byUser?.(from) ?? []).slice(0, 3)
-        .map((o) => `• ${PLAN[o.plan_id] ?? o.plan_id} · ${esc(o.status)} · <code>${esc(o.comment)}</code>`).join('\n');
+        .map((o) => `• ${esc(planName(o))} · ${esc(o.status)} · <code>${esc(o.comment)}</code>`).join('\n');
       const who = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' ') || from;
       await toAdmins(`💬 <b>${esc(who)}</b>${m.from?.username ? ` @${esc(m.from.username)}` : ''} #u${from}\n${esc(m.text)}${recent ? `\n\n${recent}` : ''}\n\n<i>Reply to this message to answer.</i>`);
       return send(chat, 'Got it. A person will reply here soon.');
@@ -200,15 +205,23 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
       return undefined;
     }
     if (cmd.startsWith('/prices') && prices) {
-      const rows = prices.list().map((p) => `${p.plan} · Claude ${p.name}: <b>${p.price} ${p.currency}</b> (${p.source ?? (p.overridden ? 'set by you' : 'default')})`);
+      // /prices = App Store, /prices play = Google Play
+      const store = arg === 'play' ? 'play' : 'appstore';
+      const rows = prices.list(prices.region, store).map((p) => `${p.plan} · ${p.name}: <b>${p.price == null ? '—' : `${p.price} ${p.currency}`}</b> (${p.source ?? (p.overridden ? 'set by you' : 'default')})`);
       const r = prices.rate?.();
       const gram = r ? `\n\nGRAM: <b>$${Number(r.usd).toFixed(4)}</b> (${esc(r.source)}${r.ageSec != null ? `, ${r.ageSec}s ago` : ''})${r.error ? `\n⚠️ Live feed failing: ${esc(r.error)}` : ''}` : '';
-      return send(chat, `In-app prices (${prices.region}):\n${rows.join('\n')}${gram}\n\nChange one: /price max5_m 129.99`);
+      const how = store === 'play'
+        ? '\n\nGoogle Play doesn\'t publish these, so set each plan you sell on Play: /price play pro_m 19.99. A plan appears for Android buyers once its price is set.'
+        : '\n\nChange one: /price max5_m 129.99 · Google Play: /prices play';
+      return send(chat, `${store === 'play' ? 'Google Play' : 'App Store'} prices (${prices.region}):\n${rows.join('\n')}${gram}${how}`);
     }
     if (cmd === '/price' && prices) {
-      const [, plan, amount] = m.text.trim().split(/\s+/);
-      const err = prices.set(prices.region, plan, Number(amount));
-      return send(chat, err ?? `Updated: ${plan} is now ${Number(amount)} ${prices.list().find((p) => p.plan === plan)?.currency}. New quotes use it right away.`);
+      // /price <plan> <amount> (App Store) or /price play <plan> <amount> (Google Play)
+      const parts = m.text.trim().split(/\s+/).slice(1);
+      const store = parts[0] === 'play' ? 'play' : 'appstore';
+      const [plan, amount] = store === 'play' ? parts.slice(1) : parts;
+      const err = prices.set(prices.region, plan, Number(amount), store);
+      return send(chat, err ?? `Updated: ${plan} on ${store === 'play' ? 'Google Play' : 'the App Store'} is now ${Number(amount)} ${prices.list(prices.region, store).find((p) => p.plan === plan)?.currency}. New quotes use it right away.`);
     }
     if (cmd.startsWith('/order')) {
       const o = arg && (orders.get(arg) || orders.byMemo(arg));

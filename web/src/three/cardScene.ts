@@ -64,7 +64,7 @@ function paintFace(face: Face, back = false) {
     return { albedo, detail };
   }
 
-  ink(text(face.top ?? 'App Store credit for Claude', W / 2, u * 10.5, u * 4.3, 500, 'center', u * 0.05), 'rgba(214, 208, 198, 0.82)', 140, 90, 160);
+  ink(text(face.top ?? 'Store credit', W / 2, u * 10.5, u * 4.3, 500, 'center', u * 0.05), 'rgba(214, 208, 198, 0.82)', 140, 90, 160);
   ink(emblem(W / 2, H * 0.43, u * 22, u * 1.25), '#e3ddd2', 255, 35, 255);
   // the plan name, big and bleeding off the right edge, in polished foil
   const size = u * (face.name.length > 4 ? 25 : 31);

@@ -8,6 +8,8 @@ const USD_PER_UNIT = {
   TRY: 0.029, BRL: 0.18, MXN: 0.054, KRW: 0.00072, PHP: 0.0172, IDR: 0.000061,
 };
 
+// Typical card denominations per currency: App Store, and Google Play (fewer, larger).
+const PLAY_USD = [5, 10, 15, 25, 50, 100, 200];
 // Typical App Store card denominations per currency.
 const DENOMS = {
   USD: [2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 250, 300, 500],
@@ -29,11 +31,12 @@ const FEE = 1.02; // assumed supplier spread over face value
 
 export const mockSupplier = {
   name: 'mock',
-  async listPackages(regionCode) {
+  async listPackages(regionCode, store = 'appstore') {
     const r = REGIONS[regionCode];
     if (!r) return [];
-    return (DENOMS[r.currency] || []).map((value) => ({
-      id: `mock-${regionCode}<&>${value}`,
+    const denoms = store === 'play' && r.currency === 'USD' ? PLAY_USD : DENOMS[r.currency] || [];
+    return denoms.map((value) => ({
+      id: `mock-${store}-${regionCode}<&>${value}`,
       value,
       costUsd: value * USD_PER_UNIT[r.currency] * FEE,
     }));

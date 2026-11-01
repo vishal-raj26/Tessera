@@ -6,23 +6,29 @@ import { Emblem } from './Emblem';
 import type { PlanId } from '../api';
 import { tg } from '../tg';
 
+/** Fallback labels for Claude's plans; the catalog's `label` is used whenever a caller has it. */
 export const PLAN_LABEL: Record<PlanId, string> = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
 
 interface Face {
   planId: PlanId;
   credit?: string;
   region?: string;
+  /** the plan's name on the card, e.g. "Pro" or "Plus" (else looked up from Claude's plans) */
+  label?: string;
+  /** which app and which store the credit is for, for the top line */
+  product?: string;
+  store?: string;
   /** footer term, e.g. "3 months" */
   term?: string;
   /** replaces the top line, e.g. date + status in the wallet stack */
   top?: ReactNode;
 }
 
-function FaceContent({ planId, credit, region, term, top }: Face) {
-  const name = PLAN_LABEL[planId];
+function FaceContent({ planId, credit, region, term, top, label, product, store }: Face) {
+  const name = label ?? PLAN_LABEL[planId] ?? planId;
   return (
     <div className="cc">
-      <div className={`cc-top ${top ? 'split' : ''}`}>{top ?? 'App Store credit for Claude'}</div>
+      <div className={`cc-top ${top ? 'split' : ''}`}>{top ?? `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`}</div>
       <div className="cc-mark"><Emblem /></div>
       <div className={`cc-name ${name.length > 4 ? 'long' : ''}`}>{name}</div>
       <div className="cc-foot">
@@ -42,7 +48,7 @@ interface Props extends Face {
   idle?: boolean; // slow automatic sway
 }
 
-export const HoloCard = memo(function HoloCard({ planId, credit, region, term, top, reveal = 0, flipped = false, interactive = false, back, className = '', idle = false }: Props) {
+export const HoloCard = memo(function HoloCard({ planId, credit, region, term, top, label, product, store, reveal = 0, flipped = false, interactive = false, back, className = '', idle = false }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const px = useMotionValue(0.5);
   const py = useMotionValue(0.5);
@@ -112,7 +118,7 @@ export const HoloCard = memo(function HoloCard({ planId, credit, region, term, t
   const live = interactive || idle;
   const pearlShown = typeof reveal !== 'number' || reveal > 0;
   const fullPearl = reveal === 1;
-  const face = <FaceContent planId={planId} credit={credit} region={region} term={term} top={top} />;
+  const face = <FaceContent planId={planId} credit={credit} region={region} term={term} top={top} label={label} product={product} store={store} />;
 
   return (
     <div ref={ref} className={`card-wrap ${live ? 'live' : ''} ${className}`}>

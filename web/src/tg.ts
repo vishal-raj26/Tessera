@@ -63,6 +63,8 @@ const inTelegram = !!wa?.initData;
 export const tg = {
   inTelegram,
   initData: wa?.initData ?? '',
+  /** 'ios', 'android', 'tdesktop', 'web'… (empty outside Telegram) */
+  platform: inTelegram ? wa?.platform ?? '' : '',
   main: inTelegram ? wa?.MainButton : undefined,
   secondary: inTelegram && wa?.isVersionAtLeast?.('7.10') ? wa?.SecondaryButton : undefined,
   boot() {

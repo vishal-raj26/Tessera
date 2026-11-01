@@ -835,3 +835,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .card3d-canvas { position: absolute; left: -12.5%; top: -12.5%; width: 125%; height: 125%; pointer-events: none; opacity: 0; transition: opacity 0.4s ease; }
 .card3d.is-ready .card3d-canvas { opacity: 1; }
 .card3d-shadow { position: absolute; left: 10%; right: 10%; bottom: -6%; height: 9%; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.6), transparent); pointer-events: none; }
+
+/* product and phone switches above the cards */
+.intro .seg { margin: 0 auto; }
+.intro .seg + .seg { margin-top: 8px; }
+.intro .seg button { padding: 6px 14px; }

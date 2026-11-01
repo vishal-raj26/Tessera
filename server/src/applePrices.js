@@ -1,4 +1,4 @@
-// Keeps the Claude in-app prices we sell against in sync with the App Store.
+// Keeps the in-app prices we sell against in sync with the App Store, for any product in the catalog.
 //
 // Source: the public App Store page for the Claude app in our storefront, which lists its in-app
 // purchases ("Claude Pro - Monthly $20.00", "Claude Pro - Annual $214.99", …). We read it at
@@ -7,9 +7,9 @@
 // Anything odd (page unreadable, a plan missing, a price that jumps more than 2x) changes nothing
 // and alerts the admin instead.
 
-export const APP_ID = '6473753684'; // Claude by Anthropic
+export const APP_ID = '6473753684'; // Claude by Anthropic (the default; products pass their own)
 
-// Our price keys and the App Store's names for them.
+// Claude's price keys and the App Store's names for them (the default spec; see catalog.js PRODUCTS).
 export const IAP_NAMES = {
   pro_m: /Claude\s+Pro\s*[-–—]\s*Monthly/i,
   pro_y: /Claude\s+Pro\s*[-–—]\s*(?:Annual|Yearly)/i,
@@ -46,19 +46,35 @@ export function parsePrice(s) {
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-/** Find each plan's price in the page. Returns { pro_m: 20, pro_y: 214.99, … } for what it found. */
-export function extractPrices(html) {
+/**
+ * Find each plan's price in the page. `iap` maps our price keys to the App Store's item name: a RegExp,
+ * or { name, pick: 'min' | 'max', yearlyOf } when two items share a name (e.g. a plan's monthly and
+ * yearly price): 'min' takes the cheaper, 'max' the dearer, and only if both are listed. A yearly price
+ * that isn't at least 6x its monthly one is dropped as a misread.
+ */
+export function extractPrices(html, iap = IAP_NAMES) {
   const text = htmlToText(html);
   const out = {};
-  for (const [key, name] of Object.entries(IAP_NAMES)) {
-    const m = text.match(name);
-    if (!m) continue;
-    // the price follows the name: currency symbol or code, then the number (or the number, then the symbol)
-    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40);
-    const pm = after.match(/^\s*(?:[^\d\s]{1,4}\s?)?\d[\d.,\s  ']*\d(?:\s?[^\d\s]{1,4})?|^\s*(?:[^\d\s]{1,4}\s?)?\d/);
-    const v = pm && parsePrice(pm[0]);
-    if (v) out[key] = v;
+  const yearly = [];
+  for (const [key, spec] of Object.entries(iap)) {
+    const { name, pick = 'first', yearlyOf } = spec instanceof RegExp ? { name: spec } : spec;
+    const re = new RegExp(name.source, name.flags.includes('g') ? name.flags : `${name.flags}g`);
+    const found = [];
+    for (const m of text.matchAll(re)) {
+      // the price follows the name: currency symbol or code, then the number (or the number, then the symbol)
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40);
+      const pm = after.match(/^\s*(?:[^\d\s]{1,4}\s?)?\d[\d.,\s\u00a0\u202f']*\d(?:\s?[^\d\s]{1,4})?|^\s*(?:[^\d\s]{1,4}\s?)?\d/);
+      const v = pm && parsePrice(pm[0]);
+      if (v) found.push(v);
+    }
+    const distinct = [...new Set(found)];
+    if (!distinct.length) continue;
+    if (pick === 'min') out[key] = Math.min(...distinct);
+    else if (pick === 'max') { if (distinct.length >= 2) out[key] = Math.max(...distinct); }
+    else out[key] = found[0];
+    if (yearlyOf) yearly.push([key, yearlyOf]);
   }
+  for (const [key, of] of yearly) if (out[key] && out[of] && out[key] < out[of] * 6) delete out[key];
   return out;
 }
 
@@ -79,14 +95,17 @@ export function reviewPrices(fetched, current) {
  * Start syncing. `get(key)` returns the price in use now; `save(key, value)` stores a synced one;
  * `notify(event)` reaches the admin. Runs at start and every `everyHours`.
  */
-export function startApplePriceSync({ region, keys, get, save, notify = () => {}, fetchImpl = fetch, everyHours = 6, log = console, url: pageUrl }) {
-  const url = pageUrl || `https://apps.apple.com/${region.toLowerCase()}/app/claude-by-anthropic/id${APP_ID}`;
+export function startApplePriceSync({
+  region, keys, get, save, notify = () => {}, fetchImpl = fetch, everyHours = 6, log = console, url: pageUrl,
+  appId = APP_ID, slug = 'claude-by-anthropic', iap = IAP_NAMES, product = 'Claude',
+}) {
+  const url = pageUrl || `https://apps.apple.com/${region.toLowerCase()}/app/${slug}/id${appId}`;
   let lastProblem = '';
   async function run() {
     try {
       const res = await fetchImpl(url, { headers: { 'accept-language': 'en' }, signal: AbortSignal.timeout(15000) });
       if (!res.ok) throw new Error(`App Store page HTTP ${res.status}`);
-      const fetched = extractPrices(await res.text());
+      const fetched = extractPrices(await res.text(), iap);
       const current = Object.fromEntries(keys().map((k) => [k, get(k)]));
       const { accept, refused, missing } = reviewPrices(fetched, current);
       const changed = [];
@@ -96,19 +115,19 @@ export function startApplePriceSync({ region, keys, get, save, notify = () => {}
       }
       if (changed.length) {
         log.log?.(`[prices] App Store ${region}: ${changed.map((c) => `${c.key} ${c.from} → ${c.to}`).join(', ')}`);
-        notify({ type: 'apple_prices_changed', region, changed });
+        notify({ type: 'apple_prices_changed', region, product, changed });
       }
       const problem = [
-        Object.keys(fetched).length === 0 ? 'no Claude prices found on the page' : '',
+        Object.keys(fetched).length === 0 ? 'no prices found on the page' : '',
         missing.length ? `not found: ${missing.join(', ')}` : '',
         Object.keys(refused).length ? `refused (jump over 2x): ${Object.entries(refused).map(([k, r]) => `${k} ${r.from} → ${r.to}`).join(', ')}` : '',
       ].filter(Boolean).join('; ');
-      if (problem && problem !== lastProblem) notify({ type: 'apple_prices_problem', region, problem, url });
+      if (problem && problem !== lastProblem) notify({ type: 'apple_prices_problem', region, product, problem, url });
       lastProblem = problem;
       return { fetched, changed, refused, missing };
     } catch (e) {
       const problem = `couldn't read the App Store page (${e.message})`;
-      if (problem !== lastProblem) notify({ type: 'apple_prices_problem', region, problem, url });
+      if (problem !== lastProblem) notify({ type: 'apple_prices_problem', region, product, problem, url });
       lastProblem = problem;
       log.warn?.(`[prices] ${problem}`);
       return null;
