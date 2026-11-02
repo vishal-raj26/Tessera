@@ -97,43 +97,64 @@ export const REGIONS = {
 };
 
 /**
- * Pick the combination of the region's card denominations that covers `needed` for the least money.
- * Exact: a min-cost search over face values (in steps of the denominations' common divisor), so the
- * buyer always pays for the cheapest mix. Ties go to fewer codes, then to less leftover credit.
- * Returns null when nothing covers it within maxCodes (default 10).
- * packages: [{ id, value, costUsd }]
+ * Pick the combination of the region's card denominations that covers `needed` for the least money,
+ * using at most maxCodes codes (default 10, more only when even the biggest card needs more). Exact: a min-cost search over (codes used, face value)
+ * in steps of the denominations' common divisor, so a cheap mix that needs many small cards can never
+ * hide a cheaper mix that fits the code limit. Ties go to fewer codes, then to less leftover credit.
+ * Returns null when nothing covers it. packages: [{ id, value, costUsd }]
  */
-export function pickPackages(packages, needed, maxCodes = 10) {
+export function pickPackages(packages, needed, maxCodes) {
   const list = packages.filter((p) => p.value > 0 && Number.isFinite(p.costUsd));
   if (!list.length || !(needed > 0)) return null;
+  // up to 10 codes, or as many as the biggest card needs for a large order (so it still gets a price)
+  maxCodes ??= Math.max(10, Math.ceil(needed / Math.max(...list.map((p) => p.value))));
   const cents = list.map((p) => Math.round(p.value * 100));
   const gcd = (a, b) => (b ? gcd(b, a % b) : a);
   const unit = cents.reduce(gcd);
   const units = cents.map((c) => c / unit);
   const need = Math.ceil((needed * 100 - 1e-6) / unit);
-  const top = need + Math.max(...units); // the cheapest mix never overshoots by more than one card
-  if (top > 5e6) return null;
-  const cost = new Float64Array(top + 1).fill(Infinity);
-  const codes = new Uint16Array(top + 1);
-  const from = new Int32Array(top + 1).fill(-1);
+  // face values past `need` only matter up to one card over (more is never cheaper); keep them as one "covered" cell
+  const top = need + Math.max(...units);
+  if (top * maxCodes > 2e7) return null;
+  const W = top + 1;
+  // cost[n * W + u]: cheapest way to reach exactly u units with exactly n codes
+  const cost = new Float64Array(W * (maxCodes + 1)).fill(Infinity);
+  const from = new Int16Array(W * (maxCodes + 1)).fill(-1);
   cost[0] = 0;
-  const better = (c, n, u) => c < cost[u] - 1e-9 || (Math.abs(c - cost[u]) <= 1e-9 && n < codes[u]);
-  for (let u = 1; u <= top; u++) {
-    for (let k = 0; k < list.length; k++) {
-      const prev = u - units[k];
-      if (prev < 0 || cost[prev] === Infinity || codes[prev] >= maxCodes) continue;
-      const c = cost[prev] + list[k].costUsd;
-      if (better(c, codes[prev] + 1, u)) { cost[u] = c; codes[u] = codes[prev] + 1; from[u] = k; }
+  let best = null; // { n, u, c }
+  for (let n = 1; n <= maxCodes; n++) {
+    const prevRow = (n - 1) * W, row = n * W;
+    let any = false;
+    for (let u = 0; u < need; u++) { // only extend mixes that don't cover yet
+      const c0 = cost[prevRow + u];
+      if (c0 === Infinity) continue;
+      for (let k = 0; k < list.length; k++) {
+        const v = Math.min(top, u + units[k]);
+        const c = c0 + list[k].costUsd;
+        if (c < cost[row + v] - 1e-9) { cost[row + v] = c; from[row + v] = k; any = true; }
+      }
+    }
+    if (!any) break;
+    for (let u = need; u <= top; u++) {
+      const c = cost[row + u];
+      if (c === Infinity) continue;
+      // strictly cheaper wins; equal cost keeps the earlier (fewer codes) or smaller face
+      if (!best || c < best.c - 1e-9 || (Math.abs(c - best.c) <= 1e-9 && n === best.n && u < best.u)) best = { n, u, c };
     }
   }
-  let end = -1;
-  for (let u = need; u <= top; u++) {
-    if (cost[u] === Infinity) continue;
-    if (end < 0 || cost[u] < cost[end] - 1e-9 || (Math.abs(cost[u] - cost[end]) <= 1e-9 && codes[u] < codes[end])) end = u;
-  }
-  if (end < 0) return null;
+  if (!best) return null;
   const combo = [];
-  for (let u = end; u > 0; u -= units[from[u]]) combo.push(list[from[u]]);
+  for (let n = best.n, u = best.u; n > 0; n--) {
+    const k = from[n * W + u];
+    combo.push(list[k]);
+    // step back: the previous face is whatever, with one card fewer, led here at that cost
+    const prevRow = (n - 1) * W;
+    let back = -1;
+    for (let p = 0; p < need; p++) {
+      if (Math.min(top, p + units[k]) === u && Math.abs(cost[prevRow + p] + list[k].costUsd - cost[n * W + u]) <= 1e-9) { back = p; break; }
+    }
+    u = back;
+  }
   combo.sort((a, b) => b.value - a.value);
   return { packages: combo, faceValue: round2(combo.reduce((t, p) => t + p.value, 0)), costUsd: round2(combo.reduce((t, p) => t + p.costUsd, 0)) };
 }

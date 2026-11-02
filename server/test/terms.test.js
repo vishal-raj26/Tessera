@@ -42,6 +42,37 @@ test('code picker: the buyer always pays for the cheapest mix of cards', () => {
   assert.ok(pickPackages(inr, 1999.5).faceValue >= 1999.5);
 });
 
+test('code picker: a cheap many-card mix never hides a cheaper mix that fits the code limit', () => {
+  // (Codex repro) ten 1000-cards ($110) beat one 10000-card ($200); the 500s alone would need 20 codes
+  const pk = [{ id: 's', value: 500, costUsd: 5 }, { id: 'm', value: 1000, costUsd: 11 }, { id: 'l', value: 10000, costUsd: 200 }];
+  const a = pickPackages(pk, 10000);
+  assert.equal(a.costUsd, 110);
+  assert.ok(a.packages.length <= 10);
+  assert.equal(a.faceValue, 10000);
+  // without the big card the $110 mix is still found
+  assert.equal(pickPackages(pk.slice(0, 2), 10000).costUsd, 110);
+  // a mix needing more codes than allowed is refused, not stretched
+  assert.equal(pickPackages(pk.slice(0, 1), 10000, 10), null);
+  // brute force agrees on random cases
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let t = 0; t < 200; t++) {
+    const denoms = [...new Set(Array.from({ length: 2 + Math.floor(rnd() * 3) }, () => [5, 10, 15, 20, 25, 50, 100][Math.floor(rnd() * 7)]))];
+    const list = denoms.map((v, i) => ({ id: String(i), value: v, costUsd: Math.round(v * (0.8 + rnd() * 0.4) * 100) / 100 }));
+    const need = 5 + Math.floor(rnd() * 120);
+    const max = 1 + Math.floor(rnd() * 5);
+    let best = null;
+    (function walk(from, face, cost, n) {
+      if (face >= need) { if (!best || cost < best - 1e-9) best = cost; return; }
+      if (n === max) return;
+      for (let i = from; i < list.length; i++) walk(i, face + list[i].value, cost + list[i].costUsd, n + 1);
+    })(0, 0, 0, 0);
+    const got = pickPackages(list, need, max);
+    if (best === null) assert.equal(got, null, `case ${t}`);
+    else { assert.ok(Math.abs(got.costUsd - Math.round(best * 100) / 100) < 0.011, `case ${t}: ${got.costUsd} vs ${best}`); assert.ok(got.packages.length <= max); assert.ok(got.faceValue >= need); }
+  }
+});
+
 test('renewal reminder lands ~3 days before the credit runs out', () => {
   const { orders, payments } = openStore(':memory:');
   const t0 = Date.UTC(2026, 0, 1);

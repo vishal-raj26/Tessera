@@ -237,13 +237,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
   gap: 8px;
   transition: transform 0.15s, opacity 0.2s;
 }
-.btn:active { transform: scale(0.98); }
+.btn:not(:disabled):active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.4; }
 /* until the terms are accepted the pay button reads as switched off, not just dimmed */
 .btn-pearl:disabled { background: rgba(250, 249, 245, 0.08); color: rgba(250, 249, 245, 0.45); box-shadow: none; opacity: 1; cursor: not-allowed; }
 .btn-pearl:disabled .amt { filter: grayscale(1); opacity: 0.6; }
 .btn-pearl { background: var(--clay); color: #fff8f2; box-shadow: 0 12px 36px -14px rgba(217, 119, 87, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
-.btn-pearl:active { background: var(--clay-deep); }
+.btn-pearl:not(:disabled):active { background: var(--clay-deep); }
 .btn-quiet { color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); }
 .btn + .btn { margin-top: 10px; }
 .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: currentColor; animation: spin 0.8s linear infinite; }

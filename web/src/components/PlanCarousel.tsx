@@ -103,8 +103,9 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
   const onPan = (_: PointerEvent, info: PanInfo) => {
     if (!axis.current) {
       axis.current = Math.abs(info.offset.x) > Math.abs(info.offset.y) ? 'x' : 'y';
-      if (axis.current === 'x') release(); // swiping sideways, not pulling
-      else startRays();
+      // rays for a downward pull only; a sideways or upward swipe isn't a pull, so it cancels the hold too
+      if (axis.current === 'y' && info.offset.y > 0) startRays();
+      else release();
     }
     if (axis.current === 'x') {
       const step = width.current * 0.74;

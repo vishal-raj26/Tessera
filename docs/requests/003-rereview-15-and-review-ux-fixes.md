@@ -1,6 +1,6 @@
 # 003: Re-review PR #15, then review the redeem and pricing PR
 
-**Status:** open
+**Status:** done (PR #16 review posted 2026-11-02; multi-code Telegram check moved to 004)
 **Why Codex:** reviewer role (AGENTS.md › Roles), plus the owner's PC for the Windows test run and Telegram.
 
 ## Part A: re-review PR #15 (`claude/multi-product`)

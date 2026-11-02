@@ -303,12 +303,28 @@ export default function App() {
       .catch(() => setToast('Press and hold to copy'));
   }
 
-  // tick a code as redeemed (or take the tick off): shown at once, saved in the background
+  // tick a code as redeemed (or take the tick off): shown at once, saved in the background. If the save
+  // fails, that code goes back to what it was, so the screen never shows a tick the server doesn't have.
   const markCode = useCallback((o: Order, index: number, redeemed: boolean) => {
-    const apply = (x: Order) => (x.id !== o.id || !x.codes ? x : { ...x, codes: x.codes.map((c, k) => (k === index ? { ...c, redeemedAt: redeemed ? (c.redeemedAt || Date.now()) : null } : c)) });
-    setOrder((cur) => (cur ? apply(cur) : cur));
-    setHistory((h) => (h ? h.map(apply) : h));
-    api.markCode(o.id, index, redeemed).catch(() => setToast("Couldn't save that. Try again."));
+    const before = o.codes?.[index]?.redeemedAt ?? null;
+    const set = (value: number | null) => (x: Order) =>
+      x.id !== o.id || !x.codes ? x : { ...x, codes: x.codes.map((c, k) => (k === index ? { ...c, redeemedAt: value } : c)) };
+    const optimistic = set(redeemed ? (before || Date.now()) : null);
+    setOrder((cur) => (cur ? optimistic(cur) : cur));
+    setHistory((h) => (h ? h.map(optimistic) : h));
+    api.markCode(o.id, index, redeemed)
+      .then((saved) => {
+        // take the server's copy of that code's mark
+        const value = saved.codes?.[index]?.redeemedAt ?? null;
+        setOrder((cur) => (cur ? set(value)(cur) : cur));
+        setHistory((h) => (h ? h.map(set(value)) : h));
+      })
+      .catch(() => {
+        setOrder((cur) => (cur ? set(before)(cur) : cur));
+        setHistory((h) => (h ? h.map(set(before)) : h));
+        setToast(redeemed ? `Couldn't save the tick on code ${index + 1}. Tap Redeem again.` : "Couldn't remove the tick. Try again.");
+        tg.notify('error');
+      });
   }, []);
 
   const loadHistory = useCallback(() => {
