@@ -5,7 +5,7 @@
 **Why Codex:** reviewer role, plus Windows tests and the owner's iPhone in Telegram.
 
 ## What changed
-1. **A look per plan** (`web/src/tiers.ts`): plans get a palette by rank within their product: clay (1st), silver (2nd), black and gold (3rd). Used by the 3D card (`three/cardScene.ts`: body, foil, edge metal, rim light), the CSS card (`.tier-N`), and a background glow that follows the front card.
+1. **A look per plan** (`web/src/tiers.ts`): all plans keep the original warm charcoal card (the owner's choice); by rank within their product, the foil, edge and glow step up: the original silver (1st), a brighter silver (2nd), a warm clay foil and edge (3rd). Used by the 3D card (`three/cardScene.ts`), the CSS card (`.tier-N`), and a soft background glow that follows the front card.
 2. **Opening moment** (`components/MosaicIntro.tsx`): 40 tiles fly in and form the first card (~0.8 s), then the real card takes over and the others are dealt in. Once per session (`sessionStorage`), only for the first carousel, never with reduced motion. The floor pattern is now faint mosaic tiles.
 3. **Personal header**: returning buyers see "<App> <Plan> · N days left" with **Renew**, which selects that plan, term and store and opens the review. Days left come from `web/src/coverage.ts` (30 days per month, 365 for the yearly plan, same plan's purchases stack; matches the server's renewal reminder). New buyers see the title plus one line ("Pay with GRAM or Stars, get your code right away."), hidden on screens under 700px tall. The server now sends `deliveredAt` on orders.
 4. **Plan value line** under the card: the plan's catalog blurb.
@@ -24,7 +24,7 @@ Found and fixed while testing: the live dot's CSS class (`.live`) collided with 
 2. Windows: `npm test` (expect 131 server, E2E OK, 12 web), `cd web && npx tsc -b --noEmit && npx vite build`.
 3. `npm run live` from this branch on testnet. On the owner's iPhone in Telegram:
    - fully close and reopen Telegram's app view: the tiles form the first card once; reopening within the same session doesn't replay it;
-   - swipe through the plans: clay Pro, silver Max 5×, black and gold Max 20× in 3D; the background glow follows; nothing blank or flat;
+   - swipe through the plans: all charcoal like before; Pro with the original silver lettering, Max 5× brighter silver, Max 20× warm clay lettering and edge, in 3D; nothing blank or flat;
    - the header shows the owner's latest plan with days left (the testnet Pro 3-month order should show about 90 days minus the days since) and Renew opens its review; don't pay;
    - the value line changes with the plan; the price counts when switching plans and terms; with Settings › Accessibility › Reduce Motion on, nothing animates and nothing replays;
    - leave the home screen open for a minute: the price stays put, or pings the green dot if the rate moved.

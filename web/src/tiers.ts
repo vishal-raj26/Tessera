@@ -1,6 +1,7 @@
 // Each plan's look follows its rank within its product (first, second, third…), so any product gets
-// the same progression: a warm clay card, then brushed silver, then black with gold. Used by the 3D
-// card (three/cardScene.ts), the CSS card (HoloCard, `.tier-N`) and the background glow.
+// the same progression. All keep the original warm charcoal card; the foil, edge and glow step up from
+// the original silver, to a brighter silver, to the warm clay accent. Used by the 3D card
+// (three/cardScene.ts), the CSS card (HoloCard, `.tier-N`) and the background glow.
 import type { Plan } from './api';
 
 export interface Tier {
@@ -16,38 +17,39 @@ export interface Tier {
 }
 
 export const TIERS: Tier[] = [
+  // all three keep the original warm charcoal card; they differ only in the foil, edge and glow
   {
-    name: 'clay',
-    body: ['#3b241b', '#21140f', '#120b08'],
-    sheen: 'rgba(255, 200, 170, 0.10)',
-    foil: ['#fff1e8', '#e8b49a', '#9c5a40'],
-    ink: 'rgba(240, 214, 198, 0.86)',
-    edge: { color: '#3a2016', metal: 0.75, rough: 0.3 },
+    name: 'base', // the original card, unchanged
+    body: ['#24221f', '#131211', '#0c0b0b'],
+    sheen: 'rgba(255, 236, 214, 0.07)',
+    foil: ['#fffaf2', '#d9d2c5', '#8f877d'],
+    ink: 'rgba(214, 208, 198, 0.82)',
+    edge: { color: '#1b1918', metal: 0.8, rough: 0.26 },
     rim: '#d97757',
-    glow: 'rgba(217, 119, 87, 0.20)',
-    tile: '#7a4632',
+    glow: 'rgba(255, 232, 214, 0.07)',
+    tile: '#3a3734',
   },
   {
-    name: 'silver',
-    body: ['#34373b', '#1c1e21', '#0f1012'],
-    sheen: 'rgba(225, 235, 255, 0.10)',
-    foil: ['#ffffff', '#d3d8de', '#7c828b'],
-    ink: 'rgba(222, 227, 234, 0.86)',
-    edge: { color: '#8a9099', metal: 0.95, rough: 0.22 },
-    rim: '#a9b8cf',
-    glow: 'rgba(170, 188, 214, 0.18)',
-    tile: '#6b727c',
+    name: 'bright', // a brighter, cooler silver foil and a lighter polished edge
+    body: ['#262422', '#141312', '#0c0b0b'],
+    sheen: 'rgba(240, 240, 248, 0.08)',
+    foil: ['#ffffff', '#e4e2de', '#9c9894'],
+    ink: 'rgba(224, 221, 216, 0.86)',
+    edge: { color: '#3a3836', metal: 0.9, rough: 0.2 },
+    rim: '#e0b49a',
+    glow: 'rgba(240, 236, 230, 0.09)',
+    tile: '#45423f',
   },
   {
-    name: 'gold',
-    body: ['#1a1712', '#0c0b09', '#050504'],
-    sheen: 'rgba(255, 220, 150, 0.07)',
-    foil: ['#fff6d6', '#e6c36a', '#8a6420'],
-    ink: 'rgba(232, 214, 168, 0.88)',
-    edge: { color: '#b48a36', metal: 1, rough: 0.2 },
-    rim: '#e3b45a',
-    glow: 'rgba(222, 176, 82, 0.18)',
-    tile: '#8d6a28',
+    name: 'warm', // the top plan: a warm clay foil and edge, the brand accent
+    body: ['#25211e', '#131110', '#0c0a0a'],
+    sheen: 'rgba(255, 214, 190, 0.08)',
+    foil: ['#fff1e6', '#ebc2a6', '#b0765a'],
+    ink: 'rgba(232, 210, 196, 0.86)',
+    edge: { color: '#4a2e22', metal: 0.85, rough: 0.22 },
+    rim: '#d97757',
+    glow: 'rgba(217, 119, 87, 0.12)',
+    tile: '#4a3a33',
   },
 ];
 

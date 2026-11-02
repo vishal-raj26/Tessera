@@ -867,21 +867,14 @@ ol.codes { list-style: none; padding: 0; margin: 0 0 14px; }
 .code-row .code-text { flex: 0 1 auto; min-width: 0; }
 .wl-detail > * { flex-shrink: 0; }
 
-/* --- plan tiers: the CSS card follows the same palette as the 3D card (tiers.ts) --- */
-.card.tier-0 .base { background: radial-gradient(120% 70% at 50% -10%, rgba(255, 200, 170, 0.12), transparent 60%), linear-gradient(160deg, #3b241b, #120b08 62%); }
-.card.tier-0 .base .cc { color: rgba(240, 214, 198, 0.9); }
-.card.tier-0 .base .cc-name { background-image: linear-gradient(180deg, #fff1e8 0%, #e8b49a 45%, #9c5a40 100%); }
-.card.tier-0 .face.back { background: radial-gradient(120% 70% at 50% 110%, rgba(255, 200, 170, 0.08), transparent 60%), linear-gradient(200deg, #3b241b, #120b08 60%); }
-.card.tier-1 .base { background: radial-gradient(120% 70% at 50% -10%, rgba(225, 235, 255, 0.12), transparent 60%), linear-gradient(160deg, #34373b, #0f1012 62%); }
-.card.tier-1 .base .cc { color: rgba(222, 227, 234, 0.9); }
-.card.tier-1 .base .cc-name { background-image: linear-gradient(180deg, #ffffff 0%, #d3d8de 45%, #7c828b 100%); }
-.card.tier-1 .face.back { background: radial-gradient(120% 70% at 50% 110%, rgba(225, 235, 255, 0.08), transparent 60%), linear-gradient(200deg, #34373b, #0f1012 60%); }
-.card.tier-1 .rim { box-shadow: inset 0 0 0 1px rgba(210, 220, 235, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
-.card.tier-2 .base { background: radial-gradient(120% 70% at 50% -10%, rgba(255, 220, 150, 0.08), transparent 60%), linear-gradient(160deg, #1a1712, #050504 62%); }
-.card.tier-2 .base .cc { color: rgba(232, 214, 168, 0.9); }
-.card.tier-2 .base .cc-name { background-image: linear-gradient(180deg, #fff6d6 0%, #e6c36a 45%, #8a6420 100%); }
-.card.tier-2 .face.back { background: radial-gradient(120% 70% at 50% 110%, rgba(255, 220, 150, 0.06), transparent 60%), linear-gradient(200deg, #1a1712, #050504 60%); }
-.card.tier-2 .rim { box-shadow: inset 0 0 0 1px rgba(214, 170, 80, 0.45), inset 0 1px 0 rgba(255, 230, 170, 0.35); }
+/* --- plan tiers: the CSS card follows the same palette as the 3D card (tiers.ts). The body stays the
+   original charcoal (.base); only the foil, small text and rim change. --- */
+.card.tier-1 .base .cc { color: rgba(224, 221, 216, 0.9); }
+.card.tier-1 .base .cc-name { background-image: linear-gradient(180deg, #ffffff 0%, #e4e2de 45%, #9c9894 100%); }
+.card.tier-1 .rim { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.26); }
+.card.tier-2 .base .cc { color: rgba(232, 210, 196, 0.9); }
+.card.tier-2 .base .cc-name { background-image: linear-gradient(180deg, #fff1e6 0%, #ebc2a6 45%, #b0765a 100%); }
+.card.tier-2 .rim { box-shadow: inset 0 0 0 1px rgba(217, 119, 87, 0.28), inset 0 1px 0 rgba(255, 214, 190, 0.22); }
 
 /* --- opening moment: tiles forming the first card (MosaicIntro) --- */
 .mosaic { position: absolute; width: var(--card-w); aspect-ratio: 0.63; z-index: 30; pointer-events: none; }
