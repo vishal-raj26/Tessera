@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { Address } from '@ton/core';
 import { commentPayload } from '../src/chain.js';
 import assert from 'node:assert/strict';
+import { isolatedEnv } from './isolated-env.js';
 
 const MERCHANT_RAW = '0:' + 'ab'.repeat(32);
 const MERCHANT = Address.parse(MERCHANT_RAW).toString({ bounceable: false, testOnly: true });
@@ -55,11 +56,11 @@ const freshWalletTx = (hash, memo, nano) => {
 };
 
 const server = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
-  env: {
-    ...process.env, PORT: String(API), DB_PATH: ':memory:', PAYMENT_MODE: 'chain', TON_NETWORK: 'testnet',
+  env: isolatedEnv({
+    PORT: String(API), PAYMENT_MODE: 'chain', TON_NETWORK: 'testnet', TON_STREAM: 'on',
     MERCHANT_WALLET: MERCHANT, TON_STREAM_URL: `http://localhost:${FAKE}/api/streaming/v2/sse`,
-    TONCENTER_URL: `http://localhost:${FAKE}/api/v3`, RATE_URL: `http://localhost:${FAKE}/rates`, BOT_TOKEN: '', SUPPLIER: 'mock', APPLE_PRICE_SYNC: 'off',
-  },
+    TONCENTER_URL: `http://localhost:${FAKE}/api/v3`, RATE_URL: `http://localhost:${FAKE}/rates`,
+  }),
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';

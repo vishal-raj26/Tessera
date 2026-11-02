@@ -216,16 +216,15 @@ app.post('/api/quotes', telegramAuth, async (req, res) => {
   const months = Number(req.body?.months ?? 1);
   const code = String(region || STORE_REGION).toUpperCase();
   const store = storeOf(req.body?.store);
-  // use the held quote when it's this buyer's, for this plan and term, and still valid
-  const held = quotes.get(String(req.body?.quoteId || ''));
-  const useHeld = held && held.user === String(req.tgUser.id) && held.planId === planId && held.months === months
-    && held.regionCode === code && held.store === store && held.expiresAt > Date.now();
-  const q = useHeld ? held : await quote(code, planId, months, store).catch((e) => { console.error(e); return null; });
+  // always a fresh price: a held quote is only ever *used* by an order, never renewed here, so nobody
+  // can roll an old price forward by asking again before it expires
+  const q = await quote(code, planId, months, store).catch((e) => { console.error(e); return null; });
   if (!q || (!q.gram && !q.stars)) return res.status(q?.stale ? 503 : 400).json({ error: q?.stale ? 'Prices are updating. Try again in a minute.' : 'This plan is not available right now.' });
   const id = crypto.randomUUID();
   const expiresAt = Date.now() + QUOTE_TTL_MS;
   quotes.set(id, { ...q, user: String(req.tgUser.id), expiresAt });
-  res.json({ id, expiresAt, months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
+  // planId, store and region say exactly what this price is for, so the app can match it to the open review
+  res.json({ id, expiresAt, planId: q.planId, store: q.store, region: q.regionCode, months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
 });
 
 app.post('/api/orders', telegramAuth, async (req, res) => {

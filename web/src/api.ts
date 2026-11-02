@@ -12,7 +12,7 @@ export interface Term {
   credit: number; codes: number; gram: number | null; stars: number | null; usd: number;
 }
 /** A price held for 20 minutes while the buyer reviews it. */
-export interface Quote extends Term { id: string; expiresAt: number }
+export interface Quote extends Term { id: string; expiresAt: number; planId: PlanId; store: StoreId; region: string }
 export interface Plan {
   id: PlanId; name: string; label: string; product: Product; term: string; blurb: string; available: boolean;
   terms?: Term[];

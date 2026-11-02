@@ -5,6 +5,7 @@ import { pickPackages, termsFor, REGIONS } from '../src/catalog.js';
 import { mockSupplier } from '../src/supplier/mock.js';
 import { openStore } from '../src/db.js';
 import { createEngine } from '../src/engine.js';
+import { isolatedEnv } from './isolated-env.js';
 
 test('terms: Pro gets Apple\'s yearly plan where we know its price; Max is 1/3/6 months', () => {
   assert.deepEqual(termsFor('pro_m', REGIONS.US), [1, 3, 6, 12]);
@@ -43,10 +44,10 @@ test('renewal reminder lands ~3 days before the credit runs out', () => {
 // API: the real server in demo mode
 const PORT = 8911;
 const srv = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
-  env: { ...process.env, PORT: String(PORT), DB_PATH: ':memory:', PAYMENT_MODE: 'mock', BOT_TOKEN: '', SUPPLIER: 'mock', STORE_REGION: 'US', APPLE_PRICE_SYNC: 'off' },
+  env: isolatedEnv({ PORT: String(PORT) }),
   stdio: 'ignore',
 });
-after(() => srv.kill());
+after(async () => { srv.kill(); await new Promise((r) => (srv.exitCode !== null ? r() : srv.once('exit', r))); });
 const call = async (path, body) => {
   for (let i = 0; i < 40; i++) {
     try {

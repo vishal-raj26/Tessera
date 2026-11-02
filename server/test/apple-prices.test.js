@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { parsePrice, extractPrices, reviewPrices, startApplePriceSync, htmlToText } from '../src/applePrices.js';
+import { isolatedEnv } from './isolated-env.js';
 
 test('parsePrice reads every storefront format', () => {
   const cases = { '$20.00': 20, '$124.99': 124.99, '£19.99': 19.99, '19,99 €': 19.99, '¥3,000': 3000, '₩33,000': 33000,
@@ -71,11 +72,10 @@ let pageHtml = page({ pro_m: '$25.00' });
 const fakeStore = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(pageHtml); });
 await new Promise((r) => fakeStore.listen(PAGE_PORT, r));
 const srv = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
-  env: { ...process.env, PORT: String(API), DB_PATH: ':memory:', PAYMENT_MODE: 'mock', BOT_TOKEN: '', SUPPLIER: 'mock', STORE_REGION: 'US',
-    APPLE_PAGE_URL: `http://localhost:${PAGE_PORT}/`, APPLE_PRICE_SYNC: 'on', GRAM_USD_FALLBACK: '1.5' },
+  env: isolatedEnv({ PORT: String(API), APPLE_PAGE_URL: `http://localhost:${PAGE_PORT}/`, APPLE_PRICE_SYNC: 'on' }),
   stdio: 'ignore',
 });
-after(() => { srv.kill(); fakeStore.close(); });
+after(async () => { srv.kill(); await new Promise((r) => (srv.exitCode !== null ? r() : srv.once('exit', r))); fakeStore.close(); });
 const call = async (path, body, user = 'u1') => {
   for (let i = 0; i < 60; i++) {
     try {
@@ -87,9 +87,14 @@ const call = async (path, body, user = 'u1') => {
 };
 
 test('API: the synced App Store price is what we sell against', async () => {
-  await new Promise((r) => setTimeout(r, 600));
-  const { body } = await call('/api/catalog');
-  const pro1 = body.plans.find((p) => p.id === 'pro_m').terms.find((t) => t.months === 1);
+  // the sync runs right after start-up; give it a moment (live rate sources may be slow to fail offline)
+  let pro1;
+  for (let i = 0; i < 40; i++) {
+    const { body } = await call('/api/catalog');
+    pro1 = body.plans.find((p) => p.id === 'pro_m').terms.find((t) => t.months === 1);
+    if (pro1.appPrice === 25) break;
+    await new Promise((r) => setTimeout(r, 150));
+  }
   assert.equal(pro1.appPrice, 25);
 });
 
@@ -100,6 +105,15 @@ test('API: Stars cost about the same as GRAM but never less than our cost', asyn
     assert.ok(t.stars * 0.013 >= cost * 1.03 - 0.02, `${p.id} ${t.months}m covers cost`);
     assert.ok(t.stars >= Math.ceil(t.usd / 0.02), 'never cheaper for the buyer than GRAM');
   }
+});
+
+test('API: asking again always gives a fresh quote; an old one is never renewed', async () => {
+  const a = await call('/api/quotes', { planId: 'pro_m', months: 1 });
+  const b = await call('/api/quotes', { planId: 'pro_m', months: 1, quoteId: a.body.id });
+  assert.equal(b.status, 200);
+  assert.notEqual(b.body.id, a.body.id);
+  assert.equal(b.body.planId, 'pro_m');
+  assert.equal(b.body.store, 'appstore');
 });
 
 test('API: a held quote is what the order gets, for that buyer only', async () => {

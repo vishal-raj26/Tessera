@@ -156,7 +156,9 @@ export default function App() {
   const term = plan?.terms?.find((t) => t.months === months)
     ?? [...(plan?.terms ?? [])].reverse().find((t) => t.months < months) ?? plan?.terms?.[0];
   // in the review sheet, the held quote once it has arrived
-  const shown = sheet === 'review' && held ? held : term;
+  // the held quote, only if it's for exactly what the review shows (plan, store, term)
+  const heldOk = !!held && held.planId === plan?.id && held.store === store && held.months === term?.months ? held : null;
+  const shown = sheet === 'review' && heldOk ? heldOk : term;
   const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
@@ -168,7 +170,9 @@ export default function App() {
     try { localStorage.setItem('pay', m); } catch { /* ignore */ }
   }
   const needsWallet = config?.paymentMode === 'chain' && !wallet && payWith === 'gram';
-  const closeSheet = useCallback(() => setSheet(null), []);
+  // closing any sheet also abandons a quote still on its way, and drops the one shown
+  const quoteSeq = useRef(0);
+  const closeSheet = useCallback(() => { quoteSeq.current++; setHeld(null); setSheet(null); }, []);
   const rollDir = index >= prevIndex.current ? 1 : -1;
   useEffect(() => { prevIndex.current = index; }, [index]);
 
@@ -231,11 +235,12 @@ export default function App() {
     setErr(null);
     setHeld(null);
     setSheet('review');
-    // lock this price for 20 minutes; the sheet shows it and the order uses it
-    const want = `${plan.id}:${term.months}`;
+    // lock this price for 20 minutes; the sheet shows it and the order uses it. Only the answer to this
+    // request counts: one for a review that was closed or reopened since is ignored.
+    const seq = ++quoteSeq.current;
     api.quote(config!.region, store, plan.id, term.months)
-      .then((q) => setHeld((cur) => (cur ? cur : `${plan.id}:${q.months}` === want ? q : null)))
-      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
+      .then((q) => { if (seq === quoteSeq.current) setHeld(q); })
+      .catch((e) => { if (seq === quoteSeq.current) setErr(e instanceof Error ? e.message : String(e)); });
   }
   reviewRef.current = openReview;
 
@@ -245,7 +250,7 @@ export default function App() {
     setBusy(true);
     setErr(null);
     try {
-      const o = await api.createOrder(config.region, store, plan.id, term.months, payWith, wallet || undefined, held?.id);
+      const o = await api.createOrder(config.region, store, plan.id, term.months, payWith, wallet || undefined, heldOk?.id);
       setOrder(o);
       setWalletSent(false);
       if (payWith === 'stars' && o.invoiceLink) {
@@ -600,12 +605,12 @@ export default function App() {
             {needsWallet ? (
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
-              <motion.button className="btn btn-pearl" disabled={!agree || busy || !held} onClick={pay} whileTap={{ scale: 0.97 }}>
+              <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk} onClick={pay} whileTap={{ scale: 0.97 }}>
                 {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={19} /></span></>}
               </motion.button>
             )}
             <p className="fine">
-              {held ? <>Price held for <Countdown until={held.expiresAt} /></> : 'Locking your price…'}
+              {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Locking your price…'}
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
               {testScale < 1 ? ` · Testnet: you pay ${Math.round(testScale * 100)}% of the real price` : ''}
             </p>
