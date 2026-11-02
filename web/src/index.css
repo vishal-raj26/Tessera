@@ -903,3 +903,33 @@ ol.codes { list-style: none; padding: 0; margin: 0 0 14px; }
 @keyframes ping { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .price-live i.ping::after { animation: none; opacity: 0; } }
 @media (max-height: 700px) { .hello { padding: 4px 4px 4px 12px; } .hello .renew { padding: 6px 12px; } }
+
+/* ===================== top bar variants (mockups) ===================== */
+.hb { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 14px 16px 0; min-height: 58px; }
+.hb-right, .hb-left { display: flex; align-items: center; gap: 8px; }
+.hb-badge { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: var(--clay); color: #fff8f2; font-size: 10.5px; font-weight: 700; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--void); }
+.hb-dot { position: absolute; bottom: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: #7fd18b; box-shadow: 0 0 0 2px var(--void); }
+.hb-dot.static { position: static; box-shadow: 0 0 6px rgba(127, 209, 139, 0.6); }
+.is-on { color: var(--clay); }
+
+/* A: minimal, no bar */
+.hb-word { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 19px; letter-spacing: -0.04em; color: var(--ink); }
+.hb-word svg { color: var(--clay); }
+.hb-round { position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--ink); background: rgba(250, 249, 245, 0.06); transition: background 0.2s; }
+.hb-round:active { background: rgba(250, 249, 245, 0.12); }
+
+/* B: personal */
+.hb-me { display: flex; align-items: center; gap: 11px; min-width: 0; text-align: left; }
+.hb-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 650; font-size: 16px; color: #fff8f2;
+  background: radial-gradient(120% 120% at 30% 20%, #e8936f, #b85c3c 70%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.hb-me-text { display: flex; flex-direction: column; min-width: 0; }
+.hb-hi { font-size: 15.5px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+.hb-line { font-size: 12.5px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb-icon { position: relative; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: var(--ink); transition: background 0.2s; }
+.hb-icon:active { background: rgba(250, 249, 245, 0.08); }
+
+/* C: balance first */
+.hb-logo { display: grid; place-items: center; width: 38px; height: 38px; color: var(--clay); }
+.hb-bal { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 20px; font-size: 14px; font-weight: 500; color: var(--ink);
+  background: linear-gradient(180deg, #2a2927, #201f1e); border: 1px solid rgba(250, 249, 245, 0.09); box-shadow: inset 0 1px 0 rgba(250, 249, 245, 0.08); }
+.hb-bal b { font-size: 16px; font-weight: 650; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }

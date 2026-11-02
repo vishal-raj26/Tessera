@@ -171,6 +171,15 @@ export default function App() {
   if (mosaicLeft.current === null) mosaicLeft.current = shouldPlayMosaic();
   useEffect(() => { if (plans) mosaicLeft.current = false; }, [plans]);
 
+  // MOCKUP ONLY: ?hdr=minimal|personal|balance picks a top bar; ?name, ?bal, ?wallet fake its data
+  const qs = new URLSearchParams(location.search);
+  const hdrVariant = (qs.get('hdr') as 'glass' | 'minimal' | 'personal' | 'balance' | null) ?? 'glass';
+  const mockName = qs.get('name') ?? '';
+  const mockBalance = qs.get('bal') ? Number(qs.get('bal')) : null;
+  const mockWallet = qs.get('wallet') ?? '';
+  const codesLeft = (history ?? []).reduce((n, o) => n + (o.status === 'delivered' ? (o.codes ?? []).filter((c) => !c.redeemedAt).length : 0), 0);
+  const coverLine = (c: NonNullable<typeof cover>) => `${c.order.product?.name ?? 'Claude'} ${c.order.plan.label ?? c.order.plan.name} · ${c.daysLeft > 1 ? `${c.daysLeft} days left` : c.daysLeft === 1 ? '1 day left' : c.daysLeft === 0 ? 'runs out today' : `ran out ${-c.daysLeft} days ago`}`;
+
   // returning buyers: the plan they bought last and how long its credit still lasts
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setClock(Date.now()), 60_000); return () => clearInterval(id); }, []);
@@ -409,7 +418,12 @@ export default function App() {
 
       {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
         <Header
-          wallet={wallet}
+          variant={hdrVariant}
+          codesCount={codesLeft}
+          name={tg.firstName || mockName}
+          line={cover ? coverLine(cover) : undefined}
+          balance={mockBalance}
+          wallet={wallet || mockWallet}
           onCodes={openOrders}
           onHome={view === 'done' ? home : view === 'wallet' ? toHome : undefined}
           active={view === 'wallet'}
@@ -420,7 +434,7 @@ export default function App() {
           {view === 'home' && (
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
-                {cover ? (
+                {cover && hdrVariant !== 'personal' ? (
                   <div className={`hello ${cover.daysLeft <= 5 ? 'soon' : ''}`}>
                     <div className="hello-text">
                       {tg.firstName && <span className="hi">Hi {tg.firstName}</span>}
