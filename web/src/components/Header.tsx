@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Emblem } from './Emblem';
 import { GramIcon } from './GramIcon';
 
-export type HeaderVariant = 'glass' | 'minimal' | 'personal' | 'balance';
+export type HeaderVariant = 'glass' | 'minimal' | 'personal' | 'balance' | 'mb1' | 'mb2' | 'mb3' | 'mb4';
 
 interface Props {
   wallet: string;
@@ -44,6 +44,75 @@ export function Header({ wallet, onWallet, onCodes, onHome, active, variant = 'g
       {codesCount > 0 && <span className="hb-badge">{codesCount}</span>}
     </motion.button>
   );
+
+  // ---- minimal, balance first: four takes ----
+  const amount = balance != null ? balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
+  const connectLabel = (<><WalletIcon size={16} /> Connect</>);
+  if (variant === 'mb1') {
+    // wordmark left; codes and a balance pill right
+    return (
+      <motion.header className="hb mb1" {...enter}>
+        <button className="hb-word" onClick={onHome} aria-label="Tessera"><Emblem size={22} stroke={1.8} assemble /><span>Tessera</span></button>
+        <div className="hb-right">
+          {codes('hb-round')}
+          <motion.button className="mb-pill" onClick={onWallet} whileTap={{ scale: 0.95 }} layout>
+            {wallet ? <><b>{amount ?? short(wallet)}</b>{amount && <GramIcon size={15} />}</> : connectLabel}
+          </motion.button>
+        </div>
+      </motion.header>
+    );
+  }
+  if (variant === 'mb2') {
+    // the balance is the left-hand title, with a small label; mark and codes on the right
+    return (
+      <motion.header className="hb mb2" {...enter}>
+        <motion.button className="mb-stack" onClick={onWallet} whileTap={{ scale: 0.97 }}>
+          {wallet ? (
+            <>
+              <span className="mb-label">Balance</span>
+              <span className="mb-amount"><b>{amount ?? short(wallet)}</b>{amount && <GramIcon size={20} />}</span>
+            </>
+          ) : (
+            <>
+              <span className="mb-label">Wallet</span>
+              <span className="mb-amount connect">Connect <span aria-hidden="true">›</span></span>
+            </>
+          )}
+        </motion.button>
+        <div className="hb-right">
+          {codes('hb-round')}
+          <button className="hb-round mark" onClick={onHome} aria-label="Tessera"><Emblem size={20} stroke={1.8} assemble /></button>
+        </div>
+      </motion.header>
+    );
+  }
+  if (variant === 'mb3') {
+    // the balance centred, like a wallet app; mark left, codes right
+    return (
+      <motion.header className="hb mb3" {...enter}>
+        <button className="hb-logo" onClick={onHome} aria-label="Tessera"><Emblem size={24} stroke={1.8} assemble /></button>
+        <motion.button className="mb-center" onClick={onWallet} whileTap={{ scale: 0.97 }}>
+          {wallet ? <><b>{amount ?? short(wallet)}</b>{amount && <GramIcon size={18} />}</> : connectLabel}
+        </motion.button>
+        {codes('hb-round')}
+      </motion.header>
+    );
+  }
+  if (variant === 'mb4') {
+    // one quiet line: mark left; balance as plain text and codes right, no pills at all
+    return (
+      <motion.header className="hb mb4" {...enter}>
+        <button className="hb-logo" onClick={onHome} aria-label="Tessera"><Emblem size={24} stroke={1.8} assemble /></button>
+        <div className="hb-right">
+          <motion.button className="mb-text" onClick={onWallet} whileTap={{ scale: 0.95 }}>
+            {wallet ? <><span className="hb-dot static" /><b>{amount ?? short(wallet)}</b>{amount && <GramIcon size={16} />}</> : connectLabel}
+          </motion.button>
+          <span className="mb-sep" aria-hidden="true" />
+          {codes('hb-icon')}
+        </div>
+      </motion.header>
+    );
+  }
 
   if (variant === 'minimal') {
     return (
