@@ -55,6 +55,7 @@ export const api = {
     req<Order>('/api/orders', { method: 'POST', body: JSON.stringify({ region, store, planId, months, method, wallet, quoteId }) }),
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
+  balance: (address: string) => req<{ gram: number | null; network: string }>(`/api/balance?address=${encodeURIComponent(address)}`),
   mockPay: (id: string) => req<Order>(`/api/orders/${id}/mock-pay`, { method: 'POST' }),
   markCode: (id: string, index: number, redeemed: boolean) =>
     req<Order>(`/api/orders/${id}/codes/${index}`, { method: 'POST', body: JSON.stringify({ redeemed }) }),

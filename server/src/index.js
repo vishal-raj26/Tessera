@@ -10,7 +10,7 @@ import { cachedSupplier } from './supplier/cache.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
-import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, normalize, friendly, NETWORK } from './chain.js';
+import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, walletBalance, normalize, friendly, NETWORK } from './chain.js';
 import { createEngine } from './engine.js';
 import { startApplePriceSync } from './applePrices.js';
 import { startPaymentStream } from './stream.js';
@@ -292,6 +292,18 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
     }
   }
   res.json({ ...publicOrder(orders.get(id)), invoiceLink });
+});
+
+// The connected wallet's GRAM balance, for the top bar. Read-only and cached (chain.js walletBalance).
+app.get('/api/balance', telegramAuth, async (req, res) => {
+  const address = String(req.query.address || '');
+  if (!normalize(address)) return res.status(400).json({ error: 'Not a TON address' });
+  if (PAYMENT_MODE === 'mock') return res.json({ gram: null, network: NETWORK }); // demo: no chain to ask
+  try {
+    res.json({ gram: await walletBalance(address), network: NETWORK });
+  } catch (e) {
+    res.status(503).json({ error: 'Balance unavailable right now' });
+  }
 });
 
 app.get('/api/orders', telegramAuth, (req, res) => {

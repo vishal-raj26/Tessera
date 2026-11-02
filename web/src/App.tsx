@@ -171,6 +171,27 @@ export default function App() {
   if (mosaicLeft.current === null) mosaicLeft.current = shouldPlayMosaic();
   useEffect(() => { if (plans) mosaicLeft.current = false; }, [plans]);
 
+  // a purchase just delivered: refresh the buyer's orders so the header and the codes badge include it
+  useEffect(() => {
+    if (order?.status === 'delivered') api.orders().then(setHistory).catch(() => {});
+  }, [order?.id, order?.status]);
+
+  // codes bought but not redeemed yet: the badge on the top bar's codes button
+  const codesLeft = (history ?? []).reduce((n, o) => n + (o.status === 'delivered' ? (o.codes ?? []).filter((c) => !c.redeemedAt).length : 0), 0);
+
+  // the connected wallet's GRAM balance for the top bar: on connect, every 30 s while the app is open,
+  // and when the app comes back to the front. Unknown (null) shows the short address instead.
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!wallet || !config) { setBalance(null); return; }
+    let alive = true;
+    const get = () => { if (!document.hidden) api.balance(wallet).then((b) => { if (alive) setBalance(b.gram); }).catch(() => {}); };
+    get();
+    const id = setInterval(get, 30_000);
+    document.addEventListener('visibilitychange', get);
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', get); };
+  }, [wallet, config, view]);
+
   // returning buyers: the plan they bought last and how long its credit still lasts
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setClock(Date.now()), 60_000); return () => clearInterval(id); }, []);
@@ -410,6 +431,8 @@ export default function App() {
       {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
         <Header
           wallet={wallet}
+          balance={balance}
+          codesCount={codesLeft}
           onCodes={openOrders}
           onHome={view === 'done' ? home : view === 'wallet' ? toHome : undefined}
           active={view === 'wallet'}
