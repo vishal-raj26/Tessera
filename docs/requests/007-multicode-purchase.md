@@ -1,7 +1,7 @@
 # 007: Multi-code purchase on testnet (before merging #16 → #15 → main)
 
 **Status:** open
-**Base:** `claude/ux-fixes` @ latest (PR #16). Only docs changed since the pre-merge check (f4ec264).
+**Base:** `main` (everything is merged; was PR #16). Pending at the owner's choice until the wallet has ~0.67 test GRAM.
 **Why Codex:** needs the owner's PC, testnet wallet and Telegram.
 
 ## Why this is affordable now
@@ -16,7 +16,7 @@ The six-month Max 20× buy needed ~15 test GRAM. With the cheapest-mix picker, s
 At the live rate (~$1.20) Pro 3 months is ~0.6 GRAM, which fits the wallet's ~1.04. Check the price shown in the app before paying.
 
 ## To do
-1. Make sure `npm run live` runs the latest `claude/ux-fixes` (testnet, `PAYMENT_MODE=chain`, mock supplier, `TEST_PRICE_SCALE=0.01`).
+1. Make sure `npm run live` runs the latest `main` (testnet, `PAYMENT_MODE=chain`, mock supplier, `TEST_PRICE_SCALE=0.01`).
 2. In Telegram on the owner's iPhone, buy **Pro, 3 months** with GRAM from the testnet wallet. The review sheet should say "4 codes" (or however many the app shows; note it).
 3. Expected flow: payment seen → confirmed → codes revealed. On the done screen:
    - codes are numbered, code 1 is highlighted, the button reads "Redeem code 1 in App Store";

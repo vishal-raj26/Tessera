@@ -1,6 +1,27 @@
 # Codex / Claude handoff
 
-## Latest: `claude/payment-followups` (Claude)
+## Latest: `main` @ 67f4020 (2026-11-03)
+
+PRs #1–#17 are merged into `main` (#17 → #16 → #15 → `main`; #1–#14 were contained and are marked merged). `main`'s tree is identical to the reviewed and tested `25081bb`.
+
+**What's on `main`**
+- Multi-product catalog (Claude first), App Store and Google Play credit, GRAM (TON) and Telegram Stars payments, live GRAM rate, App Store price sync, 1/3/6/12-month terms (12 = the store's yearly price), testnet price scaling.
+- 3D plan cards, pull-to-buy with rays (hold or downward pull only), clearly disabled Pay until the terms are accepted.
+- Codes redeemed one at a time with saved ticks (`POST /api/orders/:id/codes/:index`, `web/src/markQueue.ts`).
+- Pricing (`server/src/pricing.js`): in-app price → credit plus maximum sales tax (US 12%, CA 15%, `tax:<REGION>`) → the supplier's cards for exactly that store, country and currency → cheapest mix (ties: fewer codes, less leftover; at most 20 codes).
+- Supplier cache (`server/src/supplier/cache.js`): 5-minute refresh, last good data for up to 30 minutes on outages, cards dropped at once on supplier refusals (refresh or purchase), generation checks so older refreshes can't restore them.
+- Mock supplier: cards recorded from Bitrefill's public storefront on 2026-11-02 (US App Store, US Google Play, DE App Store; retail prices). Refuses mainnet with real payments.
+- Bitrefill adapter: documented fields only; prices nothing until `BITREFILL_COST_FIELD` / `BITREFILL_COST_CURRENCY=USD` are set from a recorded response (`npm run supplier:record`); re-checks availability before each purchase.
+
+**Verified:** `npm test` 131 server + E2E + 6 web (Linux and Windows), `tsc`, `vite build`. Testnet in Telegram: GRAM and Stars purchases delivered; multi-code redeem flow, airplane-mode tick rollback, Pay/rays/toast checks on the owner's iPhone; Pro 1-month price ($22.40 needed, one $25 card).
+
+**Not verified (open):**
+- Funded Pro 3-month purchase on the final code (request 007; wallet needs ~0.67 test GRAM).
+- Bitrefill Business credentials, the real cost field and currency, real availability and costs per region, range (custom amount) pricing, an invoice price check before paying.
+- `npm audit`: 2 high (server, `@ton/ton` → `zod`; `@ton/ton` isn't imported by server code) and 3 low (web, `@tonconnect/ui` → `deepmerge`).
+- Hosting and mainnet are separate, owner-authorised tasks.
+
+## Earlier: `claude/payment-followups` (Claude)
 
 - Base: `codex/payment-repair-handoff` (PR #1) merged with `codex/testnet-fixtures` (PR #4). Merge those two first; this PR's own diff is then just the follow-ups.
 - **Real-payload tests** (`server/test/real-fixtures.test.js`): both readers accept Codex's captured fresh-wallet credit (`TS-628AF91308`, 0.209933333 GRAM). The stream payload has **no pre-decoded comment**, and the memo is decoded from the raw body. Both readers give the same hash, so the engine buys once.
