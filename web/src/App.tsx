@@ -425,9 +425,10 @@ export default function App() {
                     <div className="hello-text">
                       {tg.firstName && <span className="hi">Hi {tg.firstName}</span>}
                       <p>
-                        <b>{cover.order.product?.name ?? 'Claude'} {cover.order.plan.label ?? cover.order.plan.name}</b>{' '}
-                        {cover.daysLeft > 1 ? `covered for ${cover.daysLeft} more days`
-                          : cover.daysLeft === 1 ? 'covered until tomorrow'
+                        <b>{cover.order.product?.name ?? 'Claude'} {cover.order.plan.label ?? cover.order.plan.name}</b>
+                        {' · '}
+                        {cover.daysLeft > 1 ? `${cover.daysLeft} days left`
+                          : cover.daysLeft === 1 ? '1 day left'
                           : cover.daysLeft === 0 ? 'runs out today'
                           : `ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
                       </p>
@@ -439,7 +440,7 @@ export default function App() {
                   ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
                   : !cover && <h1>Choose your {product?.name ?? 'Claude'} plan</h1>}
                 {!cover && history !== null && (
-                  <p className="promise">Pay with GRAM{config?.stars ? ' or Stars' : ''}. Your code arrives right after payment.</p>
+                  <p className="promise">Pay with GRAM{config?.stars ? ' or Stars' : ''}, get your code right away.</p>
                 )}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
@@ -487,7 +488,7 @@ export default function App() {
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
-                        {payWith !== 'stars' && <span className="live" title="Live price: follows the GRAM rate" aria-label="Live price"><i key={pulse} className={pulse ? 'ping' : ''} /></span>}
+                        {payWith !== 'stars' && <span className="price-live" title="Live price: follows the GRAM rate" aria-label="Live price"><i key={pulse} className={pulse ? 'ping' : ''} /></span>}
                         {testScale < 1
                           ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>
                           : <>≈ ${term.usd.toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>}

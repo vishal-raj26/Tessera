@@ -35,6 +35,15 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
       .then(({ createCardScene }) => createCardScene(canvas.current!, face))
       .then((s) => {
         if (!alive) { s.dispose(); return; }
+        // Phones (iOS especially) can drop a WebGL context under memory pressure. Then the canvas is
+        // blank, so go back to the CSS card for good rather than leave an empty space.
+        canvas.current!.addEventListener('webglcontextlost', (e) => {
+          e.preventDefault();
+          scene.current?.dispose();
+          scene.current = null;
+          if (alive) setReady(false);
+        }, { once: true });
+        if ((canvas.current!.getContext('webgl2') ?? canvas.current!.getContext('webgl'))?.isContextLost()) { s.dispose(); return; }
         scene.current = s;
         const r = wrap.current!.getBoundingClientRect();
         s.resize(r.width * 1.25, r.height * 1.25);

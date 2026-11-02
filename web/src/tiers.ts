@@ -24,7 +24,7 @@ export const TIERS: Tier[] = [
     ink: 'rgba(240, 214, 198, 0.86)',
     edge: { color: '#3a2016', metal: 0.75, rough: 0.3 },
     rim: '#d97757',
-    glow: 'rgba(217, 119, 87, 0.30)',
+    glow: 'rgba(217, 119, 87, 0.20)',
     tile: '#7a4632',
   },
   {
@@ -35,7 +35,7 @@ export const TIERS: Tier[] = [
     ink: 'rgba(222, 227, 234, 0.86)',
     edge: { color: '#8a9099', metal: 0.95, rough: 0.22 },
     rim: '#a9b8cf',
-    glow: 'rgba(170, 188, 214, 0.26)',
+    glow: 'rgba(170, 188, 214, 0.18)',
     tile: '#6b727c',
   },
   {
@@ -46,7 +46,7 @@ export const TIERS: Tier[] = [
     ink: 'rgba(232, 214, 168, 0.88)',
     edge: { color: '#b48a36', metal: 1, rough: 0.2 },
     rim: '#e3b45a',
-    glow: 'rgba(222, 176, 82, 0.26)',
+    glow: 'rgba(222, 176, 82, 0.18)',
     tile: '#8d6a28',
   },
 ];

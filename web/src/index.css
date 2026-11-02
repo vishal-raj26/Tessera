@@ -103,11 +103,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 
 /* The plan card is sized from the screen height as well as its width, so the term picker, price
    and hint always fit below it: iPhone SE and small Androids included, and Telegram full screen
-   (its safe-area insets) too. ~436px is what the header, title, value line, picker, price and hint need. */
+   (its safe-area insets) too. ~456px is what the header, title, value line, picker, price and hint need. */
 .home {
   --safe-y: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)
     + var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px));
-  --card-w: min(62vw, 250px, max(150px, calc((100dvh - 436px - var(--safe-y)) * 0.63)));
+  --card-w: min(62vw, 250px, max(150px, calc((100dvh - 456px - var(--safe-y)) * 0.63)));
 }
 .carousel .card-wrap, .carousel .card-ghost { width: var(--card-w); }
 .carousel {
@@ -888,22 +888,25 @@ ol.codes { list-style: none; padding: 0; margin: 0 0 14px; }
 .mosaic i { position: absolute; border-radius: 3px; will-change: transform, opacity; }
 
 /* --- home: personal header, plan value line, live price --- */
-.promise { margin: 6px auto 0; max-width: 300px; font-size: 13px; color: var(--dim); letter-spacing: -0.005em; }
-.hello { display: flex; align-items: center; gap: 12px; max-width: 360px; margin: 0 auto; padding: 10px 10px 10px 16px; border-radius: 18px; text-align: left;
+.promise { margin: 6px auto 0; font-size: 13px; color: var(--dim); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* short screens (iPhone SE and smaller): the card comes first */
+@media (max-height: 700px) { .promise { display: none; } }
+.hello { display: flex; align-items: center; gap: 12px; max-width: 360px; margin: 0 auto; padding: 7px 7px 7px 14px; border-radius: 18px; text-align: left;
   background: rgba(250, 249, 245, 0.045); border: 1px solid rgba(250, 249, 245, 0.07); }
 .hello-text { flex: 1; min-width: 0; }
 .hello .hi { display: block; font-size: 12px; color: var(--dim); margin-bottom: 1px; }
-.hello p { margin: 0; font-size: 14px; color: var(--mute); line-height: 1.3; }
+.hello p { margin: 0; font-size: 14px; color: var(--mute); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hello p b { color: var(--ink); font-weight: 600; }
-.hello .renew { flex: none; padding: 9px 14px; border-radius: 12px; font-size: 13.5px; font-weight: 600; background: rgba(250, 249, 245, 0.08); color: var(--ink); transition: background 0.2s; }
+.hello .renew { flex: none; padding: 8px 14px; border-radius: 12px; font-size: 13.5px; font-weight: 600; background: rgba(250, 249, 245, 0.08); color: var(--ink); transition: background 0.2s; }
 .hello .renew:active { background: rgba(250, 249, 245, 0.14); }
 .hello.soon { border-color: rgba(217, 119, 87, 0.4); }
 .hello.soon .renew { background: var(--clay); color: #fff8f2; }
 .blurb-row { height: 22px; display: grid; place-items: center; margin-bottom: 6px; }
 .blurb { margin: 0; font-size: 13.5px; color: var(--mute); letter-spacing: -0.005em; text-align: center; padding: 0 24px; }
 .count { font-variant-numeric: tabular-nums; }
-.live { display: inline-grid; place-items: center; width: 14px; height: 10px; vertical-align: 1px; margin-right: 2px; }
-.live i { position: relative; width: 6px; height: 6px; border-radius: 50%; background: #7fd18b; box-shadow: 0 0 6px rgba(127, 209, 139, 0.6); }
-.live i.ping::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(127, 209, 139, 0.8); animation: ping 1.1s var(--ease) forwards; }
+.price-live { display: inline-grid; place-items: center; width: 14px; height: 10px; vertical-align: 1px; margin-right: 2px; }
+.price-live i { position: relative; width: 6px; height: 6px; border-radius: 50%; background: #7fd18b; box-shadow: 0 0 6px rgba(127, 209, 139, 0.6); }
+.price-live i.ping::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(127, 209, 139, 0.8); animation: ping 1.1s var(--ease) forwards; }
 @keyframes ping { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .live i.ping::after { animation: none; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .price-live i.ping::after { animation: none; opacity: 0; } }
+@media (max-height: 700px) { .hello { padding: 4px 4px 4px 12px; } .hello .renew { padding: 6px 12px; } }
