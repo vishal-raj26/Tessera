@@ -7,7 +7,8 @@
     "start": "node --no-warnings src/index.js",
     "dev": "node --no-warnings --watch src/index.js",
     "test": "DB_PATH=:memory: node --no-warnings --test test/*.test.js",
-    "test:e2e": "node --no-warnings test/e2e-chain.mjs"
+    "test:e2e": "node --no-warnings test/e2e-chain.mjs",
+    "supplier:record": "node scripts/bitrefill-record.mjs"
   },
   "keywords": [],
   "author": "",

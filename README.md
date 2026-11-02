@@ -118,9 +118,19 @@ Uses the same bot as the Mini App. Set `BOT_TOKEN` and `ADMIN_CHAT_IDS` (your Te
 
 GRAM refunds are sent by you from the merchant wallet; the bot only records them. Stars refunds are sent by the bot itself.
 
+## How a price is made
+
+Product, plan, term, store and region give the in-app price: the store's yearly price for 12 months, otherwise the monthly price times the months. The credit to buy is that price plus the most sales tax the store can add at checkout: 12% in the US and 15% in Canada (prices there exclude tax; the admin can change it with the setting `tax:<REGION>`), and 0 elsewhere. The supplier's current cards for exactly that store, country and currency are then combined into the cheapest mix that covers the credit (`server/src/pricing.js`). Ties go to fewer codes, then to less leftover credit. Stores, countries and currencies are never mixed, and supplier data older than `SUPPLIER_MAX_AGE_MIN` is never priced.
+
+`SUPPLIER=mock` uses cards recorded from Bitrefill's public storefront (`server/src/supplier/recorded/`): real denominations, but retail prices, and only US App Store, US Google Play and Germany App Store. It issues fake codes, and the server refuses to start with it on mainnet with real payments.
+
 ## Going live
 
-1. **Bitrefill Business API:** set `SUPPLIER=bitrefill` with `BITREFILL_API_ID` and `BITREFILL_API_SECRET`. The adapter was written from the public docs, so test it with Bitrefill's test products first.
+1. **Bitrefill Business API:** set `SUPPLIER=bitrefill` with `BITREFILL_API_ID` and `BITREFILL_API_SECRET`. Bitrefill's public docs don't say which package field holds your cost, so the adapter won't price anything until that's verified:
+   1. `npm run supplier:record -- US` (read-only) saves the real catalog responses to `server/test/fixtures/bitrefill/` and prints each card's numeric fields.
+   2. Set `BITREFILL_COST_FIELD` (the cost field's path, e.g. `price`) and `BITREFILL_COST_CURRENCY=USD`.
+   3. If more than one product matches a store and country, set `BITREFILL_PRODUCT_IDS`, e.g. `{"appstore:US":"apple-usa"}`.
+   Then test with Bitrefill's test products before real ones.
 2. **Mainnet:** set `TON_NETWORK=mainnet` and your real `MERCHANT_WALLET`.
 3. **Telegram:**
    - Set `BOT_TOKEN`. Every API call then requires valid `initData`, verified with HMAC.
@@ -138,6 +148,9 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 | `STORE_REGION` | App Store country to sell credit for (default `US`; never shown to users) |
 | `SUPPLIER` | `mock` or `bitrefill` |
 | `BITREFILL_API_ID` / `BITREFILL_API_SECRET` | Business API credentials |
+| `BITREFILL_COST_FIELD` / `BITREFILL_COST_CURRENCY` | Where a package's cost is, and its currency (`USD`); required, verified with `npm run supplier:record` |
+| `BITREFILL_PRODUCT_IDS` | Optional JSON map `{"<store>:<REGION>": "<product id>"}` when a store has several matching products |
+| `SUPPLIER_MAX_AGE_MIN` | Supplier card data older than this is never priced (default 30) |
 | `PAYMENT_MODE` | `mock` or `chain` |
 | `TON_NETWORK` | `testnet` or `mainnet` (default) |
 | `MERCHANT_WALLET` | Address that receives GRAM |

@@ -1,6 +1,6 @@
 # 002: Review PR #15, then run a full testnet purchase in Telegram
 
-**Status:** open
+**Status:** done (reported 2026-11-02: review posted, both live payments delivered)
 **Base:** `claude/multi-product` @ latest (PR #15). It contains every change since `main` (PRs #1–#14 are stacked into it).
 **Why Codex:** part A is the reviewer role (AGENTS.md › Roles); part B needs the owner's PC, `.env`, testnet wallets, `cloudflared` and Telegram.
 

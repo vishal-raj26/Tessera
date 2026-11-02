@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtMoney, groupCode, redeemUrl, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
 import { HoloCard, PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -12,6 +12,8 @@ import { Header } from './components/Header';
 import { Rolling } from './components/Rolling';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
+import { RedeemCodes } from './components/RedeemCodes';
+import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
 import { TermPicker } from './components/TermPicker';
@@ -302,6 +304,25 @@ export default function App() {
       .catch(() => setToast('Press and hold to copy'));
   }
 
+  // tick a code as redeemed (or take the tick off): shown at once; saves go one at a time per code and the
+  // screen always ends on what the server has (see markQueue.ts)
+  const showMark = useCallback((orderId: string, index: number, value: number | null) => {
+    const set = (x: Order) => (x.id !== orderId || !x.codes ? x : { ...x, codes: x.codes.map((c, k) => (k === index ? { ...c, redeemedAt: value } : c)) });
+    setOrder((cur) => (cur ? set(cur) : cur));
+    setHistory((h) => (h ? h.map(set) : h));
+  }, []);
+  const marks = useMemo(() => createMarkQueue({
+    send: (orderId, index, redeemed) => api.markCode(orderId, index, redeemed).then((o) => o.codes?.[index]?.redeemedAt ?? null),
+    show: showMark,
+    failed: (_o, index, redeemed) => {
+      setToast(redeemed ? `Couldn't save the tick on code ${index + 1}. Tap Redeem again.` : "Couldn't remove the tick. Try again.");
+      tg.notify('error');
+    },
+  }), [showMark]);
+  const markCode = useCallback((o: Order, index: number, redeemed: boolean) => {
+    marks.mark(o.id, index, o.codes?.[index]?.redeemedAt ?? null, redeemed);
+  }, [marks]);
+
   const loadHistory = useCallback(() => {
     setHistoryErr(null);
     api.orders().then(setHistory).catch((e) => setHistoryErr(e.message));
@@ -430,7 +451,6 @@ export default function App() {
                   term={termLabel(order.months ?? 1)}
                   credit={fmtMoney(order.credit, order.currency)}
                   flipped
-                  idle
                   back={
                     <>
                       <b>{backLine}</b>
@@ -506,19 +526,8 @@ export default function App() {
                     <h1>Your credit is ready</h1>
                     <p>{fmtMoney(order.credit, order.currency)} for {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}, {termLabel(order.months ?? 1)}</p>
                   </motion.div>
-                  <div className="codes">
-                    {order.codes.map((c, i) => (
-                      <motion.button key={c.code} className={`code ${copied === c.code ? 'is-copied' : ''}`} onClick={() => copy(c.code)} aria-label={`Copy code ${c.code}`} whileTap={{ scale: 0.98 }} {...rise(0.1 + i * 0.08)}>
-                        {groupCode(c.code)}
-                        {order.codes!.length > 1 && <span className="amt-sm">{fmtMoney(c.value, order.currency)}</span>}
-                        <span className="copy">{copied === c.code ? 'Copied' : 'Copy'}</span>
-                      </motion.button>
-                    ))}
-                  </div>
                   <div className="actions">
-                    <motion.button className="btn btn-pearl" onClick={() => { tg.tap('medium'); tg.openLink(redeemUrl(order.store?.id, order.codes![0].code)); }} whileTap={{ scale: 0.97 }} {...rise(0.3)}>
-                      Redeem in {order.store?.label ?? 'App Store'}
-                    </motion.button>
+                    <RedeemCodes order={order} copied={copied} onCopy={copy} onMark={markCode} delay={0.1} />
                     <motion.button className="btn btn-quiet" onClick={() => openGuide(order)} whileTap={{ scale: 0.97 }} {...rise(0.38)}>
                       How to activate {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
                     </motion.button>
@@ -541,6 +550,7 @@ export default function App() {
                 error={historyErr}
                 copied={copied}
                 onCopy={copy}
+                onMark={markCode}
                 onRetry={loadHistory}
                 onShop={toHome}
                 onGuide={openGuide}
@@ -564,7 +574,7 @@ export default function App() {
           <div className="st">
             <div className="summary">
               <motion.div initial={{ rotate: -14, y: 30, opacity: 0 }} animate={{ rotate: -6, y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 16, delay: 0.1 }}>
-                <HoloCard className="sm" planId={plan.id} label={plan.label} product={plan.product?.name} store={storeLabel} credit={fmtMoney(shown.credit, shown.currency)} term={termLabel(shown.months)} idle />
+                <HoloCard className="sm" planId={plan.id} label={plan.label} product={plan.product?.name} store={storeLabel} credit={fmtMoney(shown.credit, shown.currency)} term={termLabel(shown.months)} />
               </motion.div>
               <div className="what">
                 <b>{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}</b>
@@ -605,7 +615,7 @@ export default function App() {
             {needsWallet ? (
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
-              <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk} onClick={pay} whileTap={{ scale: 0.97 }}>
+              <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk} onClick={pay} whileTap={!agree || busy || !heldOk ? undefined : { scale: 0.97 }}>
                 {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={19} /></span></>}
               </motion.button>
             )}

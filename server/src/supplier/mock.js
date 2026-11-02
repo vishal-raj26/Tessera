@@ -1,53 +1,40 @@
-// Mock supplier. Mirrors the shape of the real Bitrefill adapter so swapping is one env var.
+// Mock supplier for demo mode and testnet. Its cards are a recorded observation of Bitrefill's public
+// storefront (recorded/bitrefill-storefront-*.json): real denominations and retail prices, but NOT the
+// Business API and not a Business account's cost. Only the recorded stores and countries exist here;
+// anything else has no cards (so it gets no price), never made-up ones. Codes it "issues" are fake.
+// index.js refuses to run it with real money on mainnet.
 import crypto from 'node:crypto';
-import { REGIONS } from '../catalog.js';
+import fs from 'node:fs';
 
-// Rough FX to USD for pricing in mock mode only (real mode uses the supplier's USD prices).
-const USD_PER_UNIT = {
-  USD: 1, GBP: 1.27, CAD: 0.72, AUD: 0.65, EUR: 1.08, JPY: 0.0066, INR: 0.0119,
-  TRY: 0.029, BRL: 0.18, MXN: 0.054, KRW: 0.00072, PHP: 0.0172, IDR: 0.000061,
-};
+export const RECORDED_FILE = new URL('./recorded/bitrefill-storefront-2026-11-02.json', import.meta.url);
 
-// Typical card denominations per currency: App Store, and Google Play (fewer, larger).
-const PLAY_USD = [5, 10, 15, 25, 50, 100, 200];
-// Typical App Store card denominations per currency.
-const DENOMS = {
-  USD: [2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 250, 300, 500],
-  GBP: [2, 5, 10, 15, 25, 50, 100, 200],
-  CAD: [15, 25, 50, 100, 200, 300, 500],
-  AUD: [20, 30, 50, 100, 200, 300, 500],
-  EUR: [2, 5, 10, 15, 20, 25, 40, 50, 100, 150, 200],
-  JPY: [1500, 3000, 5000, 10000, 20000, 30000, 50000],
-  INR: [500, 1000, 2000, 3000, 5000, 10000, 15000],
-  TRY: [100, 250, 500, 1000, 2500, 5000],
-  BRL: [50, 100, 150, 200, 300, 500, 1000],
-  MXN: [200, 300, 400, 500, 1000, 1500, 2000],
-  KRW: [10000, 30000, 50000, 100000, 200000, 300000, 500000],
-  PHP: [500, 1000, 2000, 5000, 10000],
-  IDR: [100000, 200000, 300000, 500000, 1000000, 2000000],
-};
+export function createMockSupplier({ recorded = JSON.parse(fs.readFileSync(RECORDED_FILE, 'utf8')), now = Date.now } = {}) {
+  return {
+    name: 'mock',
+    live: false,
+    source: `fixture:${recorded.source}`,
+    async fetchSnapshot(region, store = 'appstore') {
+      const product = recorded.products.find((p) => p.country === region && p.store === store);
+      if (!product) throw new Error(`no recorded cards for ${store} ${region} (mock knows: ${recorded.products.map((p) => `${p.store} ${p.country}`).join(', ')})`);
+      const productId = `mock:${product.slug}`;
+      return {
+        region, store, currency: product.currency, productId,
+        packages: product.packages.map((p) => ({ id: `${productId}<&>${p.value}`, productId, value: p.value, costUsd: p.priceUsd })),
+        fetchedAt: now(),
+        source: `fixture:${recorded.source}`,
+        live: false,
+      };
+    },
+    async purchase({ packages, reference }) {
+      await new Promise((r) => setTimeout(r, 1200));
+      return packages.map((p) => ({
+        packageId: p.id,
+        value: p.value,
+        code: 'X' + crypto.randomBytes(12).toString('base64').replace(/[^A-Z0-9]/gi, '').toUpperCase().padEnd(15, 'Q').slice(0, 15),
+        supplierRef: `mock_${reference}_${p.value}`,
+      }));
+    },
+  };
+}
 
-const FEE = 1.02; // assumed supplier spread over face value
-
-export const mockSupplier = {
-  name: 'mock',
-  async listPackages(regionCode, store = 'appstore') {
-    const r = REGIONS[regionCode];
-    if (!r) return [];
-    const denoms = store === 'play' && r.currency === 'USD' ? PLAY_USD : DENOMS[r.currency] || [];
-    return denoms.map((value) => ({
-      id: `mock-${store}-${regionCode}<&>${value}`,
-      value,
-      costUsd: value * USD_PER_UNIT[r.currency] * FEE,
-    }));
-  },
-  async purchase({ regionCode, packages, reference }) {
-    await new Promise((r) => setTimeout(r, 1200));
-    return packages.map((p) => ({
-      packageId: p.id,
-      value: p.value,
-      code: 'X' + crypto.randomBytes(12).toString('base64').replace(/[^A-Z0-9]/gi, '').toUpperCase().padEnd(15, 'Q').slice(0, 15),
-      supplierRef: `mock_${reference}_${p.value}`,
-    }));
-  },
-};
+export const mockSupplier = createMockSupplier();

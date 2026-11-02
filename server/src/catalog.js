@@ -73,12 +73,14 @@ export const termLabel = (months) => (months === 12 ? '1 year' : months === 1 ? 
 
 // `prices` are App Store prices. Google Play prices have no defaults (Play doesn't publish them): set them
 // with /price play <key> <amount>.
-// taxBuffer: storefronts whose prices exclude sales tax (US, CA) need extra credit,
-// otherwise the store charges tax at checkout and the balance falls short.
-// Any credit left over stays in the user's Apple balance.
+// taxBuffer: the most sales tax the store can add on top of its listed price in that country (US, CA list
+// prices without tax; elsewhere prices include it, so 0). We can't know the buyer's state or province, so
+// we cover the highest rate: US 12% (highest combined state + local rates, e.g. Colorado 2.9% + 9.1%,
+// Alabama 4% + 8%; Tax Foundation 2026), Canada 15% (HST). Credit left over stays in the buyer's balance.
+// The admin can change a region's rate (settings key tax:<REGION>).
 export const REGIONS = {
   US: {
-    name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.1,
+    name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.12,
     prices: { pro_m: 20, pro_y: 214.99, max5_m: 124.99, max20_m: 249.99 },
   },
   GB: { name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', taxBuffer: 0, prices: { pro_m: 20, max5_m: 119.99, max20_m: 249.99 } },
@@ -96,36 +98,7 @@ export const REGIONS = {
   ID: { name: 'Indonesia', flag: '🇮🇩', currency: 'IDR', taxBuffer: 0, prices: { pro_m: 349000, max5_m: 1999000, max20_m: 3999000 } },
 };
 
-/**
- * Pick the cheapest combination of available denominations whose total face value covers
- * `needed`, using as few codes as sensible. maxCodes defaults to 3, raised just enough when even
- * the biggest card can't cover it in 3 (long Max terms), up to 6.
- * packages: [{ id, value, costUsd }]
- */
-export function pickPackages(packages, needed, maxCodes) {
-  const sorted = [...packages].sort((a, b) => a.value - b.value);
-  if (!sorted.length) return null;
-  const biggest = sorted.at(-1).value;
-  const limit = maxCodes ?? Math.min(6, Math.max(3, Math.ceil(needed / biggest)));
-  let best = null;
-  const combo = [];
-  // combos in non-decreasing order; stop extending once the face value covers the need,
-  // because adding another code only adds cost
-  (function walk(from, face, cost) {
-    if (face + 1e-9 >= needed) {
-      // One code is much easier to redeem: treat each extra code as 4% more expensive.
-      const score = cost * (1 + 0.04 * (combo.length - 1));
-      if (!best || score < best.score - 1e-9) best = { combo: [...combo], face, cost, score };
-      return;
-    }
-    if (combo.length === limit) return;
-    for (let i = from; i < sorted.length; i++) {
-      combo.push(sorted[i]);
-      walk(i, face + sorted[i].value, cost + sorted[i].costUsd);
-      combo.pop();
-    }
-  })(0, 0, 0);
-  return best && { packages: best.combo, faceValue: round2(best.face), costUsd: round2(best.cost) };
-}
+// The card picker lives in pricing.js; re-exported here for older imports.
+export { pickPackages } from './pricing.js';
 
 export const round2 = (x) => Math.round(x * 100) / 100;

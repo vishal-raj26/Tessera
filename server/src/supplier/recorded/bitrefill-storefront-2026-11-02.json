@@ -1,0 +1,54 @@
+{
+  "source": "bitrefill-storefront-2026-11-02",
+  "kind": "public storefront observation (NOT the Business API)",
+  "recordedAt": "2026-11-02",
+  "recordedBy": "Claude, via the public product pages viewed in USD",
+  "pages": [
+    "https://www.bitrefill.com/us/en/gift-cards/apple-usa/",
+    "https://www.bitrefill.com/us/en/gift-cards/google-play-usa/",
+    "https://www.bitrefill.com/de/en/gift-cards/itunes-germany/"
+  ],
+  "caveats": [
+    "priceUsd is the retail price a shopper sees, not a Business account's cost.",
+    "Each product also offers a custom amount; its price isn't shown, so it is left out.",
+    "Used only by the mock supplier (demo and testnet). Never used for live pricing."
+  ],
+  "products": [
+    {
+      "slug": "apple-usa", "store": "appstore", "country": "US", "currency": "USD",
+      "packages": [
+        { "value": 10, "priceUsd": 10.50 },
+        { "value": 20, "priceUsd": 20.99 },
+        { "value": 25, "priceUsd": 26.25 },
+        { "value": 50, "priceUsd": 52.50 },
+        { "value": 100, "priceUsd": 102.01 },
+        { "value": 200, "priceUsd": 204.00 },
+        { "value": 300, "priceUsd": 306.00 },
+        { "value": 400, "priceUsd": 408.00 },
+        { "value": 500, "priceUsd": 510.00 }
+      ]
+    },
+    {
+      "slug": "google-play-usa", "store": "play", "country": "US", "currency": "USD",
+      "packages": [
+        { "value": 5, "priceUsd": 5.00 },
+        { "value": 10, "priceUsd": 10.00 },
+        { "value": 20, "priceUsd": 20.00 },
+        { "value": 50, "priceUsd": 50.00 },
+        { "value": 100, "priceUsd": 100.00 },
+        { "value": 200, "priceUsd": 200.00 }
+      ]
+    },
+    {
+      "slug": "itunes-germany", "store": "appstore", "country": "DE", "currency": "EUR",
+      "packages": [
+        { "value": 5, "priceUsd": 5.65 },
+        { "value": 10, "priceUsd": 11.31 },
+        { "value": 20, "priceUsd": 22.62 },
+        { "value": 50, "priceUsd": 56.55 },
+        { "value": 100, "priceUsd": 113.09 },
+        { "value": 250, "priceUsd": 282.73 }
+      ]
+    }
+  ]
+}
