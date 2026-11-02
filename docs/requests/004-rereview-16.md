@@ -1,6 +1,6 @@
 # 004: Re-review PR #16 and finish the multi-code check
 
-**Status:** open
+**Status:** done (re-review posted 2026-11-02; one finding fixed, see 005)
 **Base:** `claude/ux-fixes` @ latest (PR #16, on top of #15).
 
 ## Your four findings, fixed

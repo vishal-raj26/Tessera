@@ -13,6 +13,7 @@ import { Rolling } from './components/Rolling';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
+import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
 import { TermPicker } from './components/TermPicker';
@@ -303,29 +304,24 @@ export default function App() {
       .catch(() => setToast('Press and hold to copy'));
   }
 
-  // tick a code as redeemed (or take the tick off): shown at once, saved in the background. If the save
-  // fails, that code goes back to what it was, so the screen never shows a tick the server doesn't have.
-  const markCode = useCallback((o: Order, index: number, redeemed: boolean) => {
-    const before = o.codes?.[index]?.redeemedAt ?? null;
-    const set = (value: number | null) => (x: Order) =>
-      x.id !== o.id || !x.codes ? x : { ...x, codes: x.codes.map((c, k) => (k === index ? { ...c, redeemedAt: value } : c)) };
-    const optimistic = set(redeemed ? (before || Date.now()) : null);
-    setOrder((cur) => (cur ? optimistic(cur) : cur));
-    setHistory((h) => (h ? h.map(optimistic) : h));
-    api.markCode(o.id, index, redeemed)
-      .then((saved) => {
-        // take the server's copy of that code's mark
-        const value = saved.codes?.[index]?.redeemedAt ?? null;
-        setOrder((cur) => (cur ? set(value)(cur) : cur));
-        setHistory((h) => (h ? h.map(set(value)) : h));
-      })
-      .catch(() => {
-        setOrder((cur) => (cur ? set(before)(cur) : cur));
-        setHistory((h) => (h ? h.map(set(before)) : h));
-        setToast(redeemed ? `Couldn't save the tick on code ${index + 1}. Tap Redeem again.` : "Couldn't remove the tick. Try again.");
-        tg.notify('error');
-      });
+  // tick a code as redeemed (or take the tick off): shown at once; saves go one at a time per code and the
+  // screen always ends on what the server has (see markQueue.ts)
+  const showMark = useCallback((orderId: string, index: number, value: number | null) => {
+    const set = (x: Order) => (x.id !== orderId || !x.codes ? x : { ...x, codes: x.codes.map((c, k) => (k === index ? { ...c, redeemedAt: value } : c)) });
+    setOrder((cur) => (cur ? set(cur) : cur));
+    setHistory((h) => (h ? h.map(set) : h));
   }, []);
+  const marks = useMemo(() => createMarkQueue({
+    send: (orderId, index, redeemed) => api.markCode(orderId, index, redeemed).then((o) => o.codes?.[index]?.redeemedAt ?? null),
+    show: showMark,
+    failed: (_o, index, redeemed) => {
+      setToast(redeemed ? `Couldn't save the tick on code ${index + 1}. Tap Redeem again.` : "Couldn't remove the tick. Try again.");
+      tg.notify('error');
+    },
+  }), [showMark]);
+  const markCode = useCallback((o: Order, index: number, redeemed: boolean) => {
+    marks.mark(o.id, index, o.codes?.[index]?.redeemedAt ?? null, redeemed);
+  }, [marks]);
 
   const loadHistory = useCallback(() => {
     setHistoryErr(null);
