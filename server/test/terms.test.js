@@ -13,13 +13,15 @@ test('terms: Pro gets Apple\'s yearly plan where we know its price; Max is 1/3/6
   assert.deepEqual(termsFor('pro_m', REGIONS.GB), [1, 3, 6]);
 });
 
-test('code picker: few codes for small amounts, up to 6 for 6 months of Max 20x', async () => {
-  const pk = await mockSupplier.listPackages('US');
-  assert.ok(pickPackages(pk, 22).packages.length <= 2);
-  const big = pickPackages(pk, 249.99 * 6 * 1.1); // ~$1650 incl. tax buffer, biggest card $500
-  assert.ok(big.faceValue >= 1649.93);
-  assert.ok(big.packages.length >= 4 && big.packages.length <= 10, `${big.packages.length} codes`);
-  assert.equal(pickPackages(pk, 1e6), null, 'impossible amounts give no quote');
+test('code picker: real US App Store cards (recorded) for small and large amounts', async () => {
+  const snap = await mockSupplier.fetchSnapshot('US', 'appstore');
+  const pk = snap.packages;
+  const small = pickPackages(pk, 22.4); // Pro, 1 month, with 12% tax
+  assert.ok(small.faceValue >= 22.4 && small.packages.length <= 2);
+  const big = pickPackages(pk, 249.99 * 6 * 1.12);
+  assert.ok(big.faceValue >= 249.99 * 6 * 1.12);
+  assert.ok(big.packages.length <= 10, `${big.packages.length} codes`);
+  assert.equal(pickPackages(pk, 1e6, 10), null, 'impossible within the code limit gives no quote');
 });
 
 test('code picker: the buyer always pays for the cheapest mix of cards', () => {
