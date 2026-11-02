@@ -1,6 +1,6 @@
 # 006: Recheck the toast position on iPhone (PR #16)
 
-**Status:** open
+**Status:** done (owner results 2026-11-02: toast visible, airplane-mode tick PASS)
 **Base:** `claude/ux-fixes` @ latest (PR #16).
 
 ## The fix
