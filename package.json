@@ -9,6 +9,7 @@
     "live": "node scripts/live.mjs",
     "testnet:buy": "node scripts/testnet-buy.mjs",
     "test": "npm --prefix server test && npm --prefix server run test:e2e && npm --prefix web test",
-    "dev": "npm --prefix server run dev & npm --prefix web run dev"
+    "dev": "npm --prefix server run dev & npm --prefix web run dev",
+    "supplier:record": "npm --prefix server run supplier:record --"
   }
 }

@@ -73,12 +73,14 @@ export const termLabel = (months) => (months === 12 ? '1 year' : months === 1 ? 
 
 // `prices` are App Store prices. Google Play prices have no defaults (Play doesn't publish them): set them
 // with /price play <key> <amount>.
-// taxBuffer: storefronts whose prices exclude sales tax (US, CA) need extra credit,
-// otherwise the store charges tax at checkout and the balance falls short.
-// Any credit left over stays in the user's Apple balance.
+// taxBuffer: the most sales tax the store can add on top of its listed price in that country (US, CA list
+// prices without tax; elsewhere prices include it, so 0). We can't know the buyer's state or province, so
+// we cover the highest rate: US 12% (highest combined state + local rates, e.g. Colorado 2.9% + 9.1%,
+// Alabama 4% + 8%; Tax Foundation 2026), Canada 15% (HST). Credit left over stays in the buyer's balance.
+// The admin can change a region's rate (settings key tax:<REGION>).
 export const REGIONS = {
   US: {
-    name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.1,
+    name: 'United States', flag: '🇺🇸', currency: 'USD', taxBuffer: 0.12,
     prices: { pro_m: 20, pro_y: 214.99, max5_m: 124.99, max20_m: 249.99 },
   },
   GB: { name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', taxBuffer: 0, prices: { pro_m: 20, max5_m: 119.99, max20_m: 249.99 } },
@@ -96,67 +98,7 @@ export const REGIONS = {
   ID: { name: 'Indonesia', flag: '🇮🇩', currency: 'IDR', taxBuffer: 0, prices: { pro_m: 349000, max5_m: 1999000, max20_m: 3999000 } },
 };
 
-/**
- * Pick the combination of the region's card denominations that covers `needed` for the least money,
- * using at most maxCodes codes (default 10, more only when even the biggest card needs more). Exact: a min-cost search over (codes used, face value)
- * in steps of the denominations' common divisor, so a cheap mix that needs many small cards can never
- * hide a cheaper mix that fits the code limit. Ties go to fewer codes, then to less leftover credit.
- * Returns null when nothing covers it. packages: [{ id, value, costUsd }]
- */
-export function pickPackages(packages, needed, maxCodes) {
-  const list = packages.filter((p) => p.value > 0 && Number.isFinite(p.costUsd));
-  if (!list.length || !(needed > 0)) return null;
-  // up to 10 codes, or as many as the biggest card needs for a large order (so it still gets a price)
-  maxCodes ??= Math.max(10, Math.ceil(needed / Math.max(...list.map((p) => p.value))));
-  const cents = list.map((p) => Math.round(p.value * 100));
-  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
-  const unit = cents.reduce(gcd);
-  const units = cents.map((c) => c / unit);
-  const need = Math.ceil((needed * 100 - 1e-6) / unit);
-  // face values past `need` only matter up to one card over (more is never cheaper); keep them as one "covered" cell
-  const top = need + Math.max(...units);
-  if (top * maxCodes > 2e7) return null;
-  const W = top + 1;
-  // cost[n * W + u]: cheapest way to reach exactly u units with exactly n codes
-  const cost = new Float64Array(W * (maxCodes + 1)).fill(Infinity);
-  const from = new Int16Array(W * (maxCodes + 1)).fill(-1);
-  cost[0] = 0;
-  let best = null; // { n, u, c }
-  for (let n = 1; n <= maxCodes; n++) {
-    const prevRow = (n - 1) * W, row = n * W;
-    let any = false;
-    for (let u = 0; u < need; u++) { // only extend mixes that don't cover yet
-      const c0 = cost[prevRow + u];
-      if (c0 === Infinity) continue;
-      for (let k = 0; k < list.length; k++) {
-        const v = Math.min(top, u + units[k]);
-        const c = c0 + list[k].costUsd;
-        if (c < cost[row + v] - 1e-9) { cost[row + v] = c; from[row + v] = k; any = true; }
-      }
-    }
-    if (!any) break;
-    for (let u = need; u <= top; u++) {
-      const c = cost[row + u];
-      if (c === Infinity) continue;
-      // strictly cheaper wins; equal cost keeps the earlier (fewer codes) or smaller face
-      if (!best || c < best.c - 1e-9 || (Math.abs(c - best.c) <= 1e-9 && n === best.n && u < best.u)) best = { n, u, c };
-    }
-  }
-  if (!best) return null;
-  const combo = [];
-  for (let n = best.n, u = best.u; n > 0; n--) {
-    const k = from[n * W + u];
-    combo.push(list[k]);
-    // step back: the previous face is whatever, with one card fewer, led here at that cost
-    const prevRow = (n - 1) * W;
-    let back = -1;
-    for (let p = 0; p < need; p++) {
-      if (Math.min(top, p + units[k]) === u && Math.abs(cost[prevRow + p] + list[k].costUsd - cost[n * W + u]) <= 1e-9) { back = p; break; }
-    }
-    u = back;
-  }
-  combo.sort((a, b) => b.value - a.value);
-  return { packages: combo, faceValue: round2(combo.reduce((t, p) => t + p.value, 0)), costUsd: round2(combo.reduce((t, p) => t + p.costUsd, 0)) };
-}
+// The card picker lives in pricing.js; re-exported here for older imports.
+export { pickPackages } from './pricing.js';
 
 export const round2 = (x) => Math.round(x * 100) / 100;

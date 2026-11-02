@@ -4,7 +4,9 @@ import cors from 'cors';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
-import { REGIONS, TERMS, STORES, enabledProducts, findPlan, priceKeys, pickPackages, round2, termLabel } from './catalog.js';
+import { REGIONS, TERMS, STORES, enabledProducts, findPlan, priceKeys, round2, termLabel } from './catalog.js';
+import { requiredCredit, usableCards, pickPackages, SupplierUnavailable } from './pricing.js';
+import { cachedSupplier } from './supplier/cache.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
@@ -16,7 +18,10 @@ import { startAdminBot } from './bot.js';
 import { telegramAuth } from './telegram.js';
 
 const PORT = Number(process.env.PORT || 8787);
-const SUPPLIER = process.env.SUPPLIER === 'bitrefill' ? bitrefillSupplier : mockSupplier;
+// Supplier cards are cached per store and region; data older than SUPPLIER_MAX_AGE_MIN is never priced.
+const SUPPLIER = cachedSupplier(process.env.SUPPLIER === 'bitrefill' ? bitrefillSupplier : mockSupplier, {
+  maxAgeMs: Number(process.env.SUPPLIER_MAX_AGE_MIN || 30) * 60e3,
+});
 const PAYMENT_MODE = process.env.PAYMENT_MODE || 'mock'; // mock | chain
 const MERCHANT = process.env.MERCHANT_WALLET || '';
 const MARGIN = Number(process.env.MARGIN ?? 0.08);
@@ -37,6 +42,11 @@ const starsFor = (costUsd) => Math.max(1,
 
 if (PAYMENT_MODE === 'chain' && !normalize(MERCHANT)) {
   console.error('PAYMENT_MODE=chain needs a valid MERCHANT_WALLET');
+  process.exit(1);
+}
+// The mock supplier issues fake codes from recorded storefront data: never let it take real money.
+if (!SUPPLIER.live && NETWORK === 'mainnet' && (PAYMENT_MODE === 'chain' || (STARS && process.env.BOT_TOKEN))) {
+  console.error('SUPPLIER=mock issues fake codes: it can only run in demo mode (PAYMENT_MODE=mock, no Stars) or on testnet. Set SUPPLIER=bitrefill for mainnet.');
   process.exit(1);
 }
 const MERCHANT_FRIENDLY = MERCHANT && normalize(MERCHANT) ? friendly(MERCHANT, NETWORK) : null;
@@ -78,6 +88,11 @@ function termPrice(regionCode, planId, months, store = 'appstore') {
   const monthly = inAppPrice(regionCode, plan.key, store);
   return monthly ? round2(monthly * months) : null;
 }
+/** Sales tax a store may add on top of its listed price in a region: admin setting `tax:<R>`, else catalog. */
+const taxRate = (regionCode) => {
+  const set = settings.get(`tax:${regionCode}`);
+  return set != null ? Number(set) : (REGIONS[regionCode]?.taxBuffer || 0);
+};
 const storeOf = (s) => (STORES[s] ? s : 'appstore');
 const onSale = (planId) => { const f = findPlan(planId); return f && enabledProducts().some((p) => p.id === f.product.id) ? f : null; };
 
@@ -86,11 +101,21 @@ async function quote(regionCode, planId, months = 1, store = 'appstore') {
   if (!onSale(planId)) return null;
   const price = termPrice(regionCode, planId, months, store);
   if (!price) return null;
-  const packages = await SUPPLIER.listPackages(regionCode, store);
-  if (!packages.length) return null;
-  const needed = price * (1 + (region.taxBuffer || 0));
-  const pick = pickPackages(packages, needed);
-  if (!pick) return null;
+  // the credit to buy: the price plus the most sales tax the store can add at checkout
+  const needed = requiredCredit(price, taxRate(regionCode));
+  // the supplier's current cards for exactly this store, country and currency
+  let cards, supplierInfo;
+  try {
+    const snap = await SUPPLIER.snapshot(regionCode, store);
+    cards = usableCards(snap, { region: regionCode, store, currency: region.currency, maxAgeMs: SUPPLIER.maxAgeMs });
+    supplierInfo = { source: snap.source, live: snap.live, fetchedAt: snap.fetchedAt };
+  } catch (e) {
+    if (e instanceof SupplierUnavailable) return { unavailable: e.code, reason: e.message };
+    throw e;
+  }
+  // the cheapest mix of them that covers it
+  const pick = pickPackages(cards, needed);
+  if (!pick) return { unavailable: 'no_mix', reason: `no mix of cards covers ${needed} ${region.currency}` };
   // demo and testnet tolerate an old rate (no real value moves); mainnet refuses to quote GRAM on a stale one
   const rate = await gramUsd({ allowStale: PAYMENT_MODE === 'mock' || NETWORK === 'testnet' });
   // On testnet everything is charged at TEST_PRICE_SCALE, Stars included: Telegram Stars are real money
@@ -107,6 +132,7 @@ async function quote(regionCode, planId, months = 1, store = 'appstore') {
     regionCode, planId, months, store,
     annual: months === 12,
     monthly: inAppPrice(regionCode, findPlan(planId).plan.key, store),
+    needed, taxRate: taxRate(regionCode), supplier: supplierInfo,
     appPrice: price,
     currency: region.currency,
     credit: pick.faceValue,
@@ -130,12 +156,12 @@ app.get('/tonconnect-manifest.json', (req, res) => {
   res.json({ url, name: 'Tessera', iconUrl: `${url}/icon-512.png`, termsOfUseUrl: `${url}/terms`, privacyPolicyUrl: `${url}/privacy` });
 });
 
-app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE, gram: rateStatus() }));
+app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE, gram: rateStatus(), supplier: { name: SUPPLIER.name, live: SUPPLIER.live, snapshots: SUPPLIER.status() } }));
 
 app.get('/api/config', (req, res) => {
   const testScale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
   res.json({
-    paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, region: STORE_REGION, stars: STARS, testScale,
+    paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, supplierLive: SUPPLIER.live, region: STORE_REGION, stars: STARS, testScale,
     products: enabledProducts().map((p) => ({ id: p.id, name: p.name, app: p.app })),
     stores: Object.values(STORES),
   });
@@ -144,8 +170,10 @@ app.get('/api/config', (req, res) => {
 // Regions the supplier can actually fulfil right now (App Store credit), intersected with regions we have prices for.
 app.get('/api/regions', async (req, res) => {
   const list = await Promise.all(Object.entries(REGIONS).map(async ([code, r]) => {
-    const pk = await SUPPLIER.listPackages(code).catch(() => []);
-    return pk.length ? { code, name: r.name, flag: r.flag, currency: r.currency } : null;
+    const ok = await SUPPLIER.snapshot(code, 'appstore')
+      .then((snap) => usableCards(snap, { region: code, store: 'appstore', currency: r.currency, maxAgeMs: SUPPLIER.maxAgeMs }).length > 0)
+      .catch(() => false);
+    return ok ? { code, name: r.name, flag: r.flag, currency: r.currency } : null;
   }));
   res.json({ regions: list.filter(Boolean) });
 });
@@ -157,7 +185,7 @@ app.get('/api/catalog', async (req, res) => {
   if (!REGIONS[code]) return res.status(400).json({ error: 'Unknown region' });
   const store = storeOf(req.query.store);
   let stale = false;
-  const pick = (q) => ({ months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
+  const pick = (q) => ({ months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, needed: q.needed, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
   const all = enabledProducts().flatMap((product) => product.plans.map((plan) => ({ product, plan })));
   const plans = await Promise.all(all.map(async ({ product, plan }) => {
     const quotes = await Promise.all(termsAt(code, plan.id, store).map((m) => quote(code, plan.id, m, store).catch(() => null)));
@@ -224,7 +252,7 @@ app.post('/api/quotes', telegramAuth, async (req, res) => {
   const expiresAt = Date.now() + QUOTE_TTL_MS;
   quotes.set(id, { ...q, user: String(req.tgUser.id), expiresAt });
   // planId, store and region say exactly what this price is for, so the app can match it to the open review
-  res.json({ id, expiresAt, planId: q.planId, store: q.store, region: q.regionCode, months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
+  res.json({ id, expiresAt, planId: q.planId, store: q.store, region: q.regionCode, months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, needed: q.needed, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
 });
 
 app.post('/api/orders', telegramAuth, async (req, res) => {
