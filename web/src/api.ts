@@ -18,7 +18,7 @@ export interface Plan {
   terms?: Term[];
   appPrice?: number; currency?: string; credit?: number; codes?: number; gram?: number | null; stars?: number | null; usd?: number;
 }
-export interface Code { code: string; value: number }
+export interface Code { code: string; value: number; redeemedAt?: number | null }
 export type PayMethod = 'gram' | 'stars';
 export type OrderStatus = 'awaiting_payment' | 'paid' | 'fulfilling' | 'delivered' | 'expired' | 'failed' | 'underpaid' | 'refunded';
 export interface Order {
@@ -56,6 +56,8 @@ export const api = {
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
   mockPay: (id: string) => req<Order>(`/api/orders/${id}/mock-pay`, { method: 'POST' }),
+  markCode: (id: string, index: number, redeemed: boolean) =>
+    req<Order>(`/api/orders/${id}/codes/${index}`, { method: 'POST', body: JSON.stringify({ redeemed }) }),
 };
 
 export const fmtMoney = (v: number, currency: string) =>

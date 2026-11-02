@@ -18,8 +18,28 @@ test('code picker: few codes for small amounts, up to 6 for 6 months of Max 20x'
   assert.ok(pickPackages(pk, 22).packages.length <= 2);
   const big = pickPackages(pk, 249.99 * 6 * 1.1); // ~$1650 incl. tax buffer, biggest card $500
   assert.ok(big.faceValue >= 1649.93);
-  assert.ok(big.packages.length >= 4 && big.packages.length <= 6, `${big.packages.length} codes`);
+  assert.ok(big.packages.length >= 4 && big.packages.length <= 10, `${big.packages.length} codes`);
   assert.equal(pickPackages(pk, 1e6), null, 'impossible amounts give no quote');
+});
+
+test('code picker: the buyer always pays for the cheapest mix of cards', () => {
+  // two $25 cards on discount cost less than one $50 card: take the two
+  const pk = [{ id: 'a', value: 25, costUsd: 22 }, { id: 'b', value: 50, costUsd: 49 }, { id: 'c', value: 100, costUsd: 99 }];
+  const p = pickPackages(pk, 50);
+  assert.deepEqual(p.packages.map((x) => x.id), ['a', 'a']);
+  assert.equal(p.costUsd, 44);
+  // $60 needed: 25+25+25 ($66) beats 50+25 ($71) and 100 ($99)
+  assert.equal(pickPackages(pk, 60).costUsd, 66);
+  // same price either way: fewer codes win
+  const flat = [{ id: 's', value: 10, costUsd: 10 }, { id: 'l', value: 20, costUsd: 20 }];
+  assert.deepEqual(pickPackages(flat, 20).packages.map((x) => x.id), ['l']);
+  // regional denominations (whole rupees, big numbers) work the same way
+  const inr = [{ id: 'r500', value: 500, costUsd: 6 }, { id: 'r1000', value: 1000, costUsd: 12.1 }, { id: 'r2000', value: 2000, costUsd: 23.5 }];
+  const r = pickPackages(inr, 1999);
+  assert.equal(r.faceValue, 2000);
+  assert.equal(r.costUsd, 23.5);
+  // odd prices with paise
+  assert.ok(pickPackages(inr, 1999.5).faceValue >= 1999.5);
 });
 
 test('renewal reminder lands ~3 days before the credit runs out', () => {
@@ -80,4 +100,27 @@ test('API: catalog lists every term with its own price; orders keep their term',
   assert.equal(bad.status, 400, 'no yearly Max');
   const odd = await call('/api/orders', { planId: 'pro_m', months: 2, method: 'gram' });
   assert.equal(odd.status, 400);
+});
+
+test('API: a code can be ticked as redeemed and unticked; only real codes of a delivered order', async () => {
+  const { body: o } = await call('/api/orders', { planId: 'max20_m', months: 6, method: 'gram' });
+  assert.ok(o.id, JSON.stringify(o));
+  assert.equal((await call(`/api/orders/${o.id}/codes/0`, { redeemed: true })).status, 400, 'not delivered yet');
+  await call(`/api/orders/${o.id}/mock-pay`, {});
+  let d;
+  for (let i = 0; i < 40; i++) {
+    d = (await call(`/api/orders/${o.id}`)).body;
+    if (d.status === 'delivered') break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.equal(d.status, 'delivered');
+  assert.ok(d.codes.length > 1, 'six months of Max 20x takes several codes');
+  const marked = (await call(`/api/orders/${o.id}/codes/1`, { redeemed: true })).body;
+  assert.ok(marked.codes[1].redeemedAt > 0);
+  assert.ok(!marked.codes[0].redeemedAt);
+  assert.equal(marked.codes[1].code, d.codes[1].code, 'the code itself is unchanged');
+  const unmarked = (await call(`/api/orders/${o.id}/codes/1`, { redeemed: false })).body;
+  assert.equal(unmarked.codes[1].redeemedAt, null);
+  assert.equal((await call(`/api/orders/${o.id}/codes/99`, { redeemed: true })).status, 400);
+  assert.equal((await call('/api/orders/nope/codes/0', { redeemed: true })).status, 404);
 });

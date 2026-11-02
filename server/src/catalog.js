@@ -97,35 +97,45 @@ export const REGIONS = {
 };
 
 /**
- * Pick the cheapest combination of available denominations whose total face value covers
- * `needed`, using as few codes as sensible. maxCodes defaults to 3, raised just enough when even
- * the biggest card can't cover it in 3 (long Max terms), up to 6.
+ * Pick the combination of the region's card denominations that covers `needed` for the least money.
+ * Exact: a min-cost search over face values (in steps of the denominations' common divisor), so the
+ * buyer always pays for the cheapest mix. Ties go to fewer codes, then to less leftover credit.
+ * Returns null when nothing covers it within maxCodes (default 10).
  * packages: [{ id, value, costUsd }]
  */
-export function pickPackages(packages, needed, maxCodes) {
-  const sorted = [...packages].sort((a, b) => a.value - b.value);
-  if (!sorted.length) return null;
-  const biggest = sorted.at(-1).value;
-  const limit = maxCodes ?? Math.min(6, Math.max(3, Math.ceil(needed / biggest)));
-  let best = null;
+export function pickPackages(packages, needed, maxCodes = 10) {
+  const list = packages.filter((p) => p.value > 0 && Number.isFinite(p.costUsd));
+  if (!list.length || !(needed > 0)) return null;
+  const cents = list.map((p) => Math.round(p.value * 100));
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+  const unit = cents.reduce(gcd);
+  const units = cents.map((c) => c / unit);
+  const need = Math.ceil((needed * 100 - 1e-6) / unit);
+  const top = need + Math.max(...units); // the cheapest mix never overshoots by more than one card
+  if (top > 5e6) return null;
+  const cost = new Float64Array(top + 1).fill(Infinity);
+  const codes = new Uint16Array(top + 1);
+  const from = new Int32Array(top + 1).fill(-1);
+  cost[0] = 0;
+  const better = (c, n, u) => c < cost[u] - 1e-9 || (Math.abs(c - cost[u]) <= 1e-9 && n < codes[u]);
+  for (let u = 1; u <= top; u++) {
+    for (let k = 0; k < list.length; k++) {
+      const prev = u - units[k];
+      if (prev < 0 || cost[prev] === Infinity || codes[prev] >= maxCodes) continue;
+      const c = cost[prev] + list[k].costUsd;
+      if (better(c, codes[prev] + 1, u)) { cost[u] = c; codes[u] = codes[prev] + 1; from[u] = k; }
+    }
+  }
+  let end = -1;
+  for (let u = need; u <= top; u++) {
+    if (cost[u] === Infinity) continue;
+    if (end < 0 || cost[u] < cost[end] - 1e-9 || (Math.abs(cost[u] - cost[end]) <= 1e-9 && codes[u] < codes[end])) end = u;
+  }
+  if (end < 0) return null;
   const combo = [];
-  // combos in non-decreasing order; stop extending once the face value covers the need,
-  // because adding another code only adds cost
-  (function walk(from, face, cost) {
-    if (face + 1e-9 >= needed) {
-      // One code is much easier to redeem: treat each extra code as 4% more expensive.
-      const score = cost * (1 + 0.04 * (combo.length - 1));
-      if (!best || score < best.score - 1e-9) best = { combo: [...combo], face, cost, score };
-      return;
-    }
-    if (combo.length === limit) return;
-    for (let i = from; i < sorted.length; i++) {
-      combo.push(sorted[i]);
-      walk(i, face + sorted[i].value, cost + sorted[i].costUsd);
-      combo.pop();
-    }
-  })(0, 0, 0);
-  return best && { packages: best.combo, faceValue: round2(best.face), costUsd: round2(best.cost) };
+  for (let u = end; u > 0; u -= units[from[u]]) combo.push(list[from[u]]);
+  combo.sort((a, b) => b.value - a.value);
+  return { packages: combo, faceValue: round2(combo.reduce((t, p) => t + p.value, 0)), costUsd: round2(combo.reduce((t, p) => t + p.costUsd, 0)) };
 }
 
 export const round2 = (x) => Math.round(x * 100) / 100;

@@ -239,6 +239,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 }
 .btn:active { transform: scale(0.98); }
 .btn:disabled { opacity: 0.4; }
+/* until the terms are accepted the pay button reads as switched off, not just dimmed */
+.btn-pearl:disabled { background: rgba(250, 249, 245, 0.08); color: rgba(250, 249, 245, 0.45); box-shadow: none; opacity: 1; cursor: not-allowed; }
+.btn-pearl:disabled .amt { filter: grayscale(1); opacity: 0.6; }
 .btn-pearl { background: var(--clay); color: #fff8f2; box-shadow: 0 12px 36px -14px rgba(217, 119, 87, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
 .btn-pearl:active { background: var(--clay-deep); }
 .btn-quiet { color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); }
@@ -840,3 +843,27 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .intro .seg { margin: 0 auto; }
 .intro .seg + .seg { margin-top: 8px; }
 .intro .seg button { padding: 6px 14px; }
+
+/* codes redeemed one at a time: the next one is lit, redeemed ones get a tick */
+ol.codes { list-style: none; padding: 0; margin: 0 0 14px; }
+.code-row { display: flex; align-items: center; gap: 10px; }
+.code-row .code { flex: 1; min-width: 0; }
+.code-row .code-text { overflow: hidden; text-overflow: ellipsis; }
+.code-mark {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid var(--line); background: transparent; color: var(--mute);
+  font: 600 13px/1 var(--font); transition: background 0.25s, color 0.25s, border-color 0.25s;
+}
+.code-row.is-next .code { border-color: rgba(217, 119, 87, 0.55); }
+.code-row.is-next .code-mark { border-color: var(--clay); color: var(--clay); }
+.code-row.is-later .code { opacity: 0.55; }
+.code-row.is-used .code-mark { background: var(--clay); border-color: var(--clay); color: #fff8f2; }
+.code-row.is-used .code { opacity: 0.6; }
+.code-row.is-used .code-text { text-decoration: line-through; text-decoration-color: rgba(250, 249, 245, 0.35); }
+.redeem-progress { width: 100%; font-size: 12.5px; color: var(--mute); margin: 0 0 8px; }
+.wl-actions:has(> .btn:only-child) { grid-template-columns: 1fr; }
+.wl-detail > .btn-pearl { margin-bottom: 10px; }
+.code-row .code { font-size: clamp(12.5px, 3.6vw, 15px); letter-spacing: 0.03em; padding: 13px 14px; gap: 8px; }
+.code-row .code .copy { font-size: 12.5px; }
+.code-row .code-text { flex: 0 1 auto; min-width: 0; }
+.wl-detail > * { flex-shrink: 0; }

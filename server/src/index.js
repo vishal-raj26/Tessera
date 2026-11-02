@@ -275,6 +275,20 @@ app.get('/api/orders/:id', telegramAuth, (req, res) => {
   res.json(publicOrder(o));
 });
 
+// The buyer marks a code as redeemed (the app does it when they tap Redeem for it), or takes the mark off.
+// Only a mark: the code itself never changes.
+app.post('/api/orders/:id/codes/:index', telegramAuth, (req, res) => {
+  const o = orders.get(req.params.id);
+  if (!o || o.tg_user_id !== String(req.tgUser.id)) return res.status(404).json({ error: 'Order not found' });
+  const i = Number(req.params.index);
+  if (o.status !== 'delivered' || !Array.isArray(o.codes) || !Number.isInteger(i) || i < 0 || i >= o.codes.length) {
+    return res.status(400).json({ error: 'No such code' });
+  }
+  const codes = o.codes.map((c, k) => (k === i ? { ...c, redeemedAt: req.body?.redeemed === false ? null : (c.redeemedAt || Date.now()) } : c));
+  orders.update(o.id, { codes });
+  res.json(publicOrder(orders.get(o.id)));
+});
+
 // Demo-only: pretend the payment landed.
 if (PAYMENT_MODE === 'mock') {
   app.post('/api/orders/:id/mock-pay', telegramAuth, (req, res) => {

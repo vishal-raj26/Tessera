@@ -4,7 +4,6 @@ import { motion, useMotionTemplate, useMotionValue, useSpring, useTransform, typ
 import { memo, useEffect, useRef, type ReactNode } from 'react';
 import { Emblem } from './Emblem';
 import type { PlanId } from '../api';
-import { tg } from '../tg';
 
 /** Fallback labels for Claude's plans; the catalog's `label` is used whenever a caller has it. */
 export const PLAN_LABEL: Record<PlanId, string> = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
@@ -88,11 +87,10 @@ export const HoloCard = memo(function HoloCard({ planId, credit, region, term, t
     const leave = () => { px.set(0.5); py.set(0.5); };
     el?.addEventListener('pointermove', move);
     el?.addEventListener('pointerleave', leave);
-    const offTilt = tg.onTilt((x, y) => { px.set(0.5 + x * 0.5); py.set(0.5 + y * 0.5); });
     return () => {
       el?.removeEventListener('pointermove', move);
       el?.removeEventListener('pointerleave', leave);
-      offTilt();
+     
     };
   }, [interactive, px, py]);
 

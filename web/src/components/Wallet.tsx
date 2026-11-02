@@ -2,7 +2,8 @@
 // top while the rest settle into a pile at the bottom. Pull the lifted card down to put it back.
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { fmtMoney, redeemUrl, termLabel, groupCode, type Order } from '../api';
+import { fmtMoney, termLabel, type Order } from '../api';
+import { RedeemCodes } from './RedeemCodes';
 import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import { Amount } from './Amount';
@@ -12,6 +13,7 @@ interface Props {
   error: string | null;
   copied: string | null;
   onCopy: (code: string) => void;
+  onMark: (o: Order, index: number, redeemed: boolean) => void;
   onRetry: () => void;
   onShop: () => void;
   onGuide: (o: Order) => void;
@@ -47,7 +49,7 @@ function note(o: Order): string {
   }
 }
 
-export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide, onBack }: Props) {
+export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop, onGuide, onBack }: Props) {
   const [sel, setSel] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(600);
@@ -125,6 +127,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
         {orders.map((o, i) => {
           const p = place(o, i);
           const st = statusOf(o);
+          const left = o.codes?.filter((c) => !c.redeemedAt).length ?? 0;
           const isLifted = lifted?.id === o.id;
           return (
             <motion.button
@@ -152,7 +155,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
                 term={termLabel(o.months ?? 1)}
                 reveal={o.status === 'delivered' ? 1 : 0}
                 interactive={isLifted}
-                top={<><span><b>{o.product?.name ?? 'Claude'} {o.plan.label ?? PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{st.label}</span></>}
+                top={<><span><b>{o.product?.name ?? 'Claude'} {o.plan.label ?? PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{o.status === 'delivered' && o.codes?.length ? (left ? (o.codes.length > 1 ? `${left} to redeem` : 'Ready') : 'Redeemed') : st.label}</span></>}
               />
             </motion.button>
           );
@@ -175,18 +178,8 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
             </div>
             {lifted.codes?.length ? (
               <>
-                <div className="codes">
-                  {lifted.codes.map((c, i) => (
-                    <motion.button key={c.code} className={`code ${copied === c.code ? 'is-copied' : ''}`} onClick={() => onCopy(c.code)} whileTap={{ scale: 0.98 }}
-                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 + i * 0.06 }}>
-                      {groupCode(c.code)}
-                      {lifted.codes!.length > 1 && <span className="amt-sm">{fmtMoney(c.value, lifted.currency)}</span>}
-                      <span className="copy">{copied === c.code ? 'Copied' : 'Copy'}</span>
-                    </motion.button>
-                  ))}
-                </div>
+                <RedeemCodes order={lifted} copied={copied} onCopy={onCopy} onMark={onMark} delay={0.18} />
                 <div className="wl-actions">
-                  <button className="btn btn-pearl" onClick={() => { tg.tap('medium'); tg.openLink(redeemUrl(lifted.store?.id, lifted.codes![0].code)); }}>Redeem</button>
                   <button className="btn btn-quiet" onClick={() => onGuide(lifted)}>How to activate</button>
                 </div>
               </>

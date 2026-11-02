@@ -1,10 +1,9 @@
 // The plan card as a real 3D object (see three/cardScene.ts). Shows the CSS card until three.js has
-// loaded, and keeps it if WebGL isn't available. Tilts with the finger, the phone (gyro), or a slow
-// idle sway, through the same springs as the CSS card.
+// loaded, and keeps it if WebGL isn't available. Tilts only under the finger (no gyro, no idle sway:
+// a card that moves by itself reads as shaking), through the same springs as the CSS card.
 import { useMotionValue, useSpring } from 'framer-motion';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PlanId } from '../api';
-import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import type { CardScene } from '../three/cardScene';
 
@@ -65,7 +64,7 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
     return () => { a(); b(); };
   }, [sx, sy]);
 
-  // finger + gyro
+  // finger only
   useEffect(() => {
     if (!interactive) { px.set(0); py.set(0); return; }
     const el = wrap.current;
@@ -77,8 +76,7 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
     const leave = () => { px.set(0); py.set(0); };
     el?.addEventListener('pointermove', move);
     el?.addEventListener('pointerleave', leave);
-    const offTilt = tg.onTilt((x, y) => { px.set(x); py.set(y); });
-    return () => { el?.removeEventListener('pointermove', move); el?.removeEventListener('pointerleave', leave); offTilt(); };
+    return () => { el?.removeEventListener('pointermove', move); el?.removeEventListener('pointerleave', leave); };
   }, [interactive, px, py]);
 
   // slow idle sway so the light moves across it even untouched (paused while the app is hidden)

@@ -58,7 +58,6 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel }: {
             credit={t ? fmtMoney(t.credit, t.currency) : undefined}
             term={t ? termLabel(t.months) : undefined}
             interactive={active}
-            idle={active}
           />
         </motion.div>
       </motion.div>
@@ -76,13 +75,19 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
   const hold = sharedHold ?? ownHold;
   const [holding, setHolding] = useState(false);
   const off = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const press = () => {
+  // A touch could be the start of a sideways swipe, so the rays wait: they start once the finger has
+  // stayed put for a moment, or as soon as it moves downward. A sideways move cancels them.
+  const pressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const startRays = () => {
+    clearTimeout(pressTimer.current);
     if (disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     clearTimeout(off.current);
     setHolding(true);
     animate(hold, 1, { duration: 0.18, ease: 'easeOut' });
   };
+  const press = () => { clearTimeout(pressTimer.current); pressTimer.current = setTimeout(startRays, 220); };
   const release = () => {
+    clearTimeout(pressTimer.current);
     animate(hold, 0, { duration: 0.28, ease: 'easeOut' });
     clearTimeout(off.current);
     // pause the rays once they've faded and the card is back
@@ -99,6 +104,7 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
     if (!axis.current) {
       axis.current = Math.abs(info.offset.x) > Math.abs(info.offset.y) ? 'x' : 'y';
       if (axis.current === 'x') release(); // swiping sideways, not pulling
+      else startRays();
     }
     if (axis.current === 'x') {
       const step = width.current * 0.74;
