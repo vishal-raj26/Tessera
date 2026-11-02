@@ -1,6 +1,6 @@
 # 007: Multi-code purchase on testnet
 
-**Status:** open, pending until the owner adds test GRAM (wallet 0.4276 test GRAM on 2026-11-03; the latest quote for Pro, 3 months is ~0.68).
+**Status:** done (2026-11-03, PASS on `main` @ 67f4020; evidence below). Real Bitrefill catalog and cost verification is a separate, still-open dependency.
 **Base:** `main` @ 67f4020 or later.
 **Why Codex:** needs the owner's PC, testnet wallet and Telegram.
 
@@ -36,3 +36,13 @@ Pro, 1 month is a single code now, so it can't test the multi-code flow. The che
 
 ## Report back
 - The quoted plan, code count and amount before paying; order memo, status sequence and tx hash; pass/fail for each step in 4 and 5, with exact text for anything wrong.
+
+## Result (2026-11-03): PASS
+Reported by Codex on PR #17 (https://github.com/vishal-raj26/Tessera/pull/17#issuecomment-6586860940).
+- Code: `main` @ 67f4020 (tree identical to the reviewed `25081bb`). Testnet, chain payment, mock supplier, `TEST_PRICE_SCALE=0.01`.
+- Before paying: Pro, 3 months, 4 codes, quoted 0.68 test GRAM; buyer balance 2.428 test GRAM. The owner checked the quote and network and paid on the iPhone.
+- Memo `TS-B03C4D6FF7`; 0.68 test GRAM quoted and received (680000000 nano); tx `ta/RXqiH33ouoM4X8kA2XndV/tFv+HMHm7kUjxUmcUw=`.
+- Status: awaiting_payment → payment seen (~6 s) → delivered (~8 s from creation) with 4 codes. `paid`/`fulfilling` weren't sampled individually (the observer hit a transient database read lock); final delivery was verified separately.
+- Redeem flow (owner): numbered codes, code 1 highlighted; Redeem copies, opens the App Store, ticks and moves on; unticking returns to code 1; all four end on "All redeemed".
+- After closing and reopening: all four ticks kept, tag "Redeemed". Database check: 4 codes, marks `[true, true, true, true]`, exact amount, delivered.
+- Not done: the optional Stars payment. Mock codes don't redeem in the App Store, as expected.
