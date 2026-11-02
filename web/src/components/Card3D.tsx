@@ -6,6 +6,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PlanId } from '../api';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import type { CardScene } from '../three/cardScene';
+import { tierOf } from '../tiers';
 
 interface Props { planId: PlanId; label?: string; product?: string; store?: string; credit?: string; term?: string; interactive?: boolean; idle?: boolean; className?: string }
 
@@ -18,8 +19,8 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<CardScene | null>(null);
   const [ready, setReady] = useState(false);
-  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}` };
-  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}`;
+  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`, tier: tierOf(planId) };
+  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}|${face.tier}`;
 
   const px = useMotionValue(0);
   const py = useMotionValue(0);
@@ -34,6 +35,15 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
       .then(({ createCardScene }) => createCardScene(canvas.current!, face))
       .then((s) => {
         if (!alive) { s.dispose(); return; }
+        // Phones (iOS especially) can drop a WebGL context under memory pressure. Then the canvas is
+        // blank, so go back to the CSS card for good rather than leave an empty space.
+        canvas.current!.addEventListener('webglcontextlost', (e) => {
+          e.preventDefault();
+          scene.current?.dispose();
+          scene.current = null;
+          if (alive) setReady(false);
+        }, { once: true });
+        if ((canvas.current!.getContext('webgl2') ?? canvas.current!.getContext('webgl'))?.isContextLost()) { s.dispose(); return; }
         scene.current = s;
         const r = wrap.current!.getBoundingClientRect();
         s.resize(r.width * 1.25, r.height * 1.25);

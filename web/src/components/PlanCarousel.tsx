@@ -5,6 +5,8 @@ import { Rays } from './Rays';
 import { Card3D } from './Card3D';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
+import { tierOf } from '../tiers';
+import { MosaicIntro, MOSAIC_FORMED, shouldPlayMosaic } from './MosaicIntro';
 
 interface Props {
   plans: Plan[];
@@ -19,12 +21,20 @@ interface Props {
   storeLabel?: string;
   /** optional shared hold amount (0…1 while the front card is pressed) */
   hold?: MotionValue<number>;
+  /** this is the first carousel of the page: it may play the mosaic opening (once per session) */
+  mosaic?: boolean;
+  /** called once the carousel is on screen (the app then stops offering the opening) */
+  onShown?: () => void;
 }
 
 const PULL = 110;
 
-function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel }: {
+function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel, introAt, formed }: {
   i: number; pos: MotionValue<number>; pull: MotionValue<number>; hold: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number; storeLabel?: string;
+  /** seconds until the mosaic has formed the front card (0: no mosaic) */
+  introAt: number;
+  /** this card is the one the mosaic forms: it appears in place instead of being dealt in */
+  formed: boolean;
 }) {
   // pressed in slightly while held
   const press = useTransform(hold, (h) => (active ? 1 - h * 0.035 : 1));
@@ -43,11 +53,13 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel }: {
   const y = useTransform([off, pull] as MotionValue<number>[], ([o, p]: number[]) => (Math.abs(o) < 0.5 ? p : 0) + Math.abs(o) * 18);
   return (
     <motion.div className="slot" style={{ x, y, z: depth, scale, rotateY, rotateZ, opacity, zIndex: z }} onTap={active ? undefined : onTap}>
-      {/* dealt in like a hand of cards on first load */}
+      {/* dealt in like a hand of cards on first load; after the mosaic, the front card is already in place */}
       <motion.div
-        initial={{ y: 320, rotate: -18 + i * 14, opacity: 0, scale: 0.85 }}
+        initial={formed ? { opacity: 0 } : { y: 320, rotate: -18 + i * 14, opacity: 0, scale: 0.85 }}
         animate={{ y: 0, rotate: 0, opacity: 1, scale: 1 }}
-        transition={{ type: 'spring', stiffness: 120, damping: 17, delay: 0.35 + i * 0.12 }}
+        transition={formed
+          ? { duration: 0.25, delay: introAt }
+          : { type: 'spring', stiffness: 120, damping: 17, delay: (introAt ? introAt + 0.05 : 0.35) + i * 0.12 }}
       >
         <motion.div style={{ scale: press }}>
           <Card3D
@@ -65,7 +77,16 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel }: {
   );
 }
 
-export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel }: Props) {
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel, mosaic = false, onShown }: Props) {
+  // decided once, when the carousel first appears: only here is the session's opening used up
+  const [intro] = useState(() => (mosaic && shouldPlayMosaic() ? { at: MOSAIC_FORMED, front: index } : null));
+  useEffect(() => { onShown?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showMosaic, setShowMosaic] = useState(!!intro);
+  useEffect(() => {
+    if (!showMosaic) return;
+    const id = setTimeout(() => setShowMosaic(false), (MOSAIC_FORMED + 0.6) * 1000);
+    return () => clearTimeout(id);
+  }, [showMosaic]);
   const pos = useMotionValue(index);
   const ownPull = useMotionValue(0);
   const pull = sharedPull ?? ownPull;
@@ -164,8 +185,10 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
       }}
     >
       <Rays hold={hold} pull={pull} max={PULL} on={holding} />
+      {showMosaic && plans[intro!.front] && <MosaicIntro tier={tierOf(plans[intro!.front].id)} />}
       {plans.map((p, i) => (
-        <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} storeLabel={storeLabel} />
+        <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} storeLabel={storeLabel}
+          introAt={intro?.at ?? 0} formed={!!intro && i === intro.front} />
       ))}
     </motion.div>
   );
