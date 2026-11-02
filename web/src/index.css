@@ -347,7 +347,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .order .code + .code { margin-top: 6px; }
 .empty { color: var(--mute); text-align: center; padding: 36px 0; }
 
-.toast { position: fixed; z-index: 50; left: 50%; top: 16px; translate: -50% 0; background: var(--clay); color: #fff8f2; padding: 9px 16px; border-radius: 99px; font-weight: 600; font-size: 14px; }
+/* below the notch / Dynamic Island and Telegram's own top bar (fullscreen), whichever reaches lower */
+.toast { position: fixed; z-index: 50; left: 50%;
+  top: calc(max(env(safe-area-inset-top, 0px), var(--tg-safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, 0px) + 12px); translate: -50% 0; background: var(--clay); color: #fff8f2; padding: 9px 16px; border-radius: 99px; font-weight: 600; font-size: 14px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

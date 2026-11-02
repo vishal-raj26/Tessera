@@ -1,6 +1,6 @@
 # 005: Re-review PR #16 (overlapping tick saves)
 
-**Status:** open
+**Status:** done (re-review clean 2026-11-02; toast follow-up in 006)
 **Base:** `claude/ux-fixes` @ latest (PR #16).
 
 ## The fix
