@@ -171,9 +171,14 @@ export function createEngine({ orders, payments, supplier, fetchIncoming, notify
     }
   }
 
-  /** Nudge buyers shortly before their Claude month renews (once per order). */
-  function remindRenewals(daysAfter = 27) {
-    const due = orders.dueForReminder(now() - daysAfter * 86400e3);
+  /**
+   * Nudge buyers about 3 days before their credit runs out (once per order): after 27 days for a
+   * month, ~87 for 3 months, ~177 for 6, and ~362 for Apple's yearly plan.
+   */
+  function remindRenewals(daysBefore = 3) {
+    const coverDays = (m) => (m === 12 ? 365 : 30 * (m || 1));
+    const due = orders.dueForReminder(now() - (30 - daysBefore) * 86400e3)
+      .filter((o) => o.delivered_at < now() - (coverDays(o.months) - daysBefore) * 86400e3);
     for (const o of due) {
       orders.update(o.id, { reminded_at: now() });
       notify({ type: 'renewal', order: o });

@@ -3,6 +3,8 @@ dist
 data
 .env
 scripts/.testnet-*.json
+wallets.toml
+*.wallets.toml
 *.db
 *.db-*
 .env.*

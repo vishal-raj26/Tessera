@@ -2,7 +2,8 @@
 // top while the rest settle into a pile at the bottom. Pull the lifted card down to put it back.
 import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { fmtMoney, groupCode, type Order } from '../api';
+import { fmtMoney, termLabel, type Order } from '../api';
+import { RedeemCodes } from './RedeemCodes';
 import { tg } from '../tg';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import { Amount } from './Amount';
@@ -12,6 +13,7 @@ interface Props {
   error: string | null;
   copied: string | null;
   onCopy: (code: string) => void;
+  onMark: (o: Order, index: number, redeemed: boolean) => void;
   onRetry: () => void;
   onShop: () => void;
   onGuide: (o: Order) => void;
@@ -47,7 +49,7 @@ function note(o: Order): string {
   }
 }
 
-export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide, onBack }: Props) {
+export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop, onGuide, onBack }: Props) {
   const [sel, setSel] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(600);
@@ -98,12 +100,14 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
   }
 
   const lifted = orders.find((o) => o.id === sel) ?? null;
+  // on short screens the lifted card shrinks so its codes and buttons (~230px) stay in view
+  const liftScale = Math.min(LIFT, Math.max(0.45, (h - PILE - 240) / cardH));
   const others = orders.filter((o) => o.id !== sel);
   const stackH = (orders.length - 1) * PEEK + cardH + 24;
 
   function place(o: Order, i: number) {
     if (!lifted) return { y: i * PEEK, scale: 1, opacity: 1, z: i };
-    if (o.id === lifted.id) return { y: 0, scale: LIFT, opacity: 1, z: 100 };
+    if (o.id === lifted.id) return { y: 0, scale: liftScale, opacity: 1, z: 100 };
     const k = Math.min(others.indexOf(o), 3);
     return { y: h - PILE + k * 7, scale: 0.92 - k * 0.03, opacity: k > 2 ? 0 : 1, z: 10 - k };
   }
@@ -123,6 +127,7 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
         {orders.map((o, i) => {
           const p = place(o, i);
           const st = statusOf(o);
+          const left = o.codes?.filter((c) => !c.redeemedAt).length ?? 0;
           const isLifted = lifted?.id === o.id;
           return (
             <motion.button
@@ -137,16 +142,20 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
               dragElastic={{ top: 0.05, bottom: 0.6 }}
               onDragEnd={release}
               onClick={() => (lifted && !isLifted ? setSel(null) : lift(o.id))}
-              aria-label={`Claude ${PLAN_LABEL[o.plan.id]}, ${fmtMoney(o.credit, o.currency)}, ${st.label}`}
+              aria-label={`${o.product?.name ?? 'Claude'} ${o.plan.label ?? PLAN_LABEL[o.plan.id]}, ${fmtMoney(o.credit, o.currency)}, ${st.label}`}
               aria-expanded={isLifted}
             >
               <HoloCard
                 className="wlc"
                 planId={o.plan.id}
+                label={o.plan.label}
+                product={o.product?.name}
+                store={o.store?.label}
                 credit={fmtMoney(o.credit, o.currency)}
+                term={termLabel(o.months ?? 1)}
                 reveal={o.status === 'delivered' ? 1 : 0}
                 interactive={isLifted}
-                top={<><span><b>{PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{st.label}</span></>}
+                top={<><span><b>{o.product?.name ?? 'Claude'} {o.plan.label ?? PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{o.status === 'delivered' && o.codes?.length ? (left ? (o.codes.length > 1 ? `${left} to redeem` : 'Ready') : 'Redeemed') : st.label}</span></>}
               />
             </motion.button>
           );
@@ -158,29 +167,19 @@ export function Wallet({ orders, error, copied, onCopy, onRetry, onShop, onGuide
           <motion.div
             key={lifted.id}
             className="wl-detail"
-            style={{ top: cardH * LIFT + 14, bottom: PILE + 10 }}
+            style={{ top: cardH * liftScale + 14, bottom: PILE + 10 }}
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0, transition: { delay: 0.12, type: 'spring', stiffness: 260, damping: 26 } }}
             exit={{ opacity: 0, y: 12, transition: { duration: 0.15 } }}
           >
             <div className="wl-meta">
-              <span>Claude {PLAN_LABEL[lifted.plan.id]} · {fmtMoney(lifted.credit, lifted.currency)}</span>
+              <span>{lifted.product?.name ?? 'Claude'} {lifted.plan.label ?? PLAN_LABEL[lifted.plan.id]}, {termLabel(lifted.months ?? 1)} · {fmtMoney(lifted.credit, lifted.currency)}</span>
               <span className="amt"><Amount method={lifted.method} gram={lifted.gram} stars={lifted.stars} size={12} /></span>
             </div>
             {lifted.codes?.length ? (
               <>
-                <div className="codes">
-                  {lifted.codes.map((c, i) => (
-                    <motion.button key={c.code} className={`code ${copied === c.code ? 'is-copied' : ''}`} onClick={() => onCopy(c.code)} whileTap={{ scale: 0.98 }}
-                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 + i * 0.06 }}>
-                      {groupCode(c.code)}
-                      {lifted.codes!.length > 1 && <span className="amt-sm">{fmtMoney(c.value, lifted.currency)}</span>}
-                      <span className="copy">{copied === c.code ? 'Copied' : 'Copy'}</span>
-                    </motion.button>
-                  ))}
-                </div>
+                <RedeemCodes order={lifted} copied={copied} onCopy={onCopy} onMark={onMark} delay={0.18} />
                 <div className="wl-actions">
-                  <button className="btn btn-pearl" onClick={() => { tg.tap('medium'); tg.openLink(`https://apps.apple.com/redeem?code=${lifted.codes![0].code}`); }}>Redeem</button>
                   <button className="btn btn-quiet" onClick={() => onGuide(lifted)}>How to activate</button>
                 </div>
               </>

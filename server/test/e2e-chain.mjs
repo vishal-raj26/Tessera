@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { Address } from '@ton/core';
 import { commentPayload } from '../src/chain.js';
 import assert from 'node:assert/strict';
+import { isolatedEnv } from './isolated-env.js';
 
 const MERCHANT_RAW = '0:' + 'ab'.repeat(32);
 const MERCHANT = Address.parse(MERCHANT_RAW).toString({ bounceable: false, testOnly: true });
@@ -43,13 +44,23 @@ const push = (finality, t) => {
   const data = JSON.stringify({ type: 'transactions', finality, trace_external_hash_norm: 'T', transactions: [t] });
   for (const c of sseClients) c.write(`: keepalive\n\ndata: ${data}\n\n`);
 };
+const freshWalletTx = (hash, memo, nano) => {
+  const t = tx(hash, memo, nano);
+  Object.assign(t, { orig_status: 'nonexist', end_status: 'uninit' });
+  Object.assign(t.in_msg, { bounce: false });
+  t.description = {
+    type: 'ord', aborted: true, destroyed: false, credit_first: true,
+    credit_ph: { credit: String(nano) }, compute_ph: { skipped: true, reason: 'no_state' },
+  };
+  return t;
+};
 
 const server = spawn(process.execPath, ['--no-warnings', 'src/index.js'], {
-  env: {
-    ...process.env, PORT: String(API), DB_PATH: ':memory:', PAYMENT_MODE: 'chain', TON_NETWORK: 'testnet',
+  env: isolatedEnv({
+    PORT: String(API), PAYMENT_MODE: 'chain', TON_NETWORK: 'testnet', TON_STREAM: 'on',
     MERCHANT_WALLET: MERCHANT, TON_STREAM_URL: `http://localhost:${FAKE}/api/streaming/v2/sse`,
-    TONCENTER_URL: `http://localhost:${FAKE}/api/v3`, RATE_URL: `http://localhost:${FAKE}/rates`, BOT_TOKEN: '', SUPPLIER: 'mock',
-  },
+    TONCENTER_URL: `http://localhost:${FAKE}/api/v3`, RATE_URL: `http://localhost:${FAKE}/rates`,
+  }),
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -86,7 +97,7 @@ try {
 
   // 2) backstop: a payment the stream never delivered is found by the v3 poller
   const b = await call('/api/orders', { method: 'POST', body: JSON.stringify({ planId: 'max5_m' }) });
-  restTxs.push(tx('hB', b.comment, b.amountNano));
+  restTxs.push(freshWalletTx('hB', b.comment, b.amountNano));
   await until(async () => (await call(`/api/orders/${b.id}`)).status === 'delivered', 25000, 'delivery via poller');
   console.log('✓ poller: missed-by-stream payment still delivered');
 
@@ -99,6 +110,15 @@ try {
   const deliveries = (logs.match(new RegExp(`\\[order ${a.id}\\] delivered`, 'g')) || []).length;
   assert.equal(deliveries, 1);
   console.log('✓ duplicate sightings are ignored');
+
+  const c = await call('/api/orders', { method: 'POST', body: JSON.stringify({ planId: 'pro_m' }) });
+  const firstCredit = freshWalletTx('hC', c.comment, c.amountNano);
+  push('pending', firstCredit);
+  await until(async () => (await call(`/api/orders/${c.id}`)).paymentSeen, 5000, 'fresh-wallet pending credit');
+  assert.equal((await call(`/api/orders/${c.id}`)).status, 'awaiting_payment');
+  push('finalized', firstCredit);
+  await until(async () => (await call(`/api/orders/${c.id}`)).status === 'delivered', 8000, 'fresh-wallet finalized credit');
+  console.log('✓ fresh-wallet credits require finality before delivery');
   console.log('E2E OK');
 } finally {
   server.kill();

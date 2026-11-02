@@ -1,6 +1,6 @@
 # Tessera
 
-A Telegram Mini App for buying **App Store credit for a Claude Pro / Max plan with GRAM or Telegram Stars**. The user picks a plan and pays from their TON wallet or with Stars. They get the code(s) and a short guide to redeem them and subscribe inside the Claude iOS app. The App Store country is a server setting and isn't shown to users.
+A Telegram Mini App for buying **subscriptions to the apps people use, paid with GRAM or Telegram Stars**. Claude (Pro, Max) is the first product; more apps will follow. Each purchase is App Store or Google Play credit: the buyer redeems the code and subscribes inside the app. The store country is a server setting and isn't shown to users.
 
 ```
 web/     React + Vite Mini App: TON Connect, Framer Motion (swipe plans, pull the card down to buy),
@@ -98,7 +98,7 @@ Telegram's rules say digital goods sold inside bots and Mini Apps must be paid i
 - **Before the charge:** Telegram sends a `pre_checkout_query`. The bot approves it only if the order belongs to that buyer, the amount matches and the 20-minute price hold hasn't run out.
 - **After the charge:** the `successful_payment` message pays the order. Its charge id is recorded once, so a repeated update never buys twice.
 - **Refunds:** for a Stars order, the admin bot's **Refund Stars** button really refunds through `refundStarPayment`, then marks the order refunded. Delivered orders can't be refunded.
-- **Pricing:** `stars = cost × (1 + STARS_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it, not what buyers pay for Stars, so the price covers your cost. Buyers pay noticeably more in Stars than in GRAM because of Telegram's and the app stores' cut.
+- **Pricing:** Stars are priced to cost the buyer about the same as GRAM (`GRAM price in USD ÷ STAR_BUYER_USD`), but never below `cost × (1 + STARS_MIN_MARGIN) ÷ STAR_USD`. `STAR_USD` is what one Star is worth to *you* when you withdraw it. Because Telegram and the app stores keep a cut, the floor usually wins, so Stars stay somewhat dearer than GRAM; they never sell at a loss.
 - Stars you earn are withdrawn to TON through Fragment after Telegram's holding period, so you pay for codes before that money arrives.
 - Without `BOT_TOKEN` (local demo) Stars runs in demo mode: no invoice, the payment is simulated.
 
@@ -118,9 +118,19 @@ Uses the same bot as the Mini App. Set `BOT_TOKEN` and `ADMIN_CHAT_IDS` (your Te
 
 GRAM refunds are sent by you from the merchant wallet; the bot only records them. Stars refunds are sent by the bot itself.
 
+## How a price is made
+
+Product, plan, term, store and region give the in-app price: the store's yearly price for 12 months, otherwise the monthly price times the months. The credit to buy is that price plus the most sales tax the store can add at checkout: 12% in the US and 15% in Canada (prices there exclude tax; the admin can change it with the setting `tax:<REGION>`), and 0 elsewhere. The supplier's current cards for exactly that store, country and currency are then combined into the cheapest mix that covers the credit (`server/src/pricing.js`). Ties go to fewer codes, then to less leftover credit. Stores, countries and currencies are never mixed, and supplier data older than `SUPPLIER_MAX_AGE_MIN` is never priced.
+
+`SUPPLIER=mock` uses cards recorded from Bitrefill's public storefront (`server/src/supplier/recorded/`): real denominations, but retail prices, and only US App Store, US Google Play and Germany App Store. It issues fake codes, and the server refuses to start with it on mainnet with real payments.
+
 ## Going live
 
-1. **Bitrefill Business API:** set `SUPPLIER=bitrefill` with `BITREFILL_API_ID` and `BITREFILL_API_SECRET`. The adapter was written from the public docs, so test it with Bitrefill's test products first.
+1. **Bitrefill Business API:** set `SUPPLIER=bitrefill` with `BITREFILL_API_ID` and `BITREFILL_API_SECRET`. Bitrefill's public docs don't say which package field holds your cost, so the adapter won't price anything until that's verified:
+   1. `npm run supplier:record -- US` (read-only) saves the real catalog responses to `server/test/fixtures/bitrefill/` and prints each card's numeric fields.
+   2. Set `BITREFILL_COST_FIELD` (the cost field's path, e.g. `price`) and `BITREFILL_COST_CURRENCY=USD`.
+   3. If more than one product matches a store and country, set `BITREFILL_PRODUCT_IDS`, e.g. `{"appstore:US":"apple-usa"}`.
+   Then test with Bitrefill's test products before real ones.
 2. **Mainnet:** set `TON_NETWORK=mainnet` and your real `MERCHANT_WALLET`.
 3. **Telegram:**
    - Set `BOT_TOKEN`. Every API call then requires valid `initData`, verified with HMAC.
@@ -138,6 +148,9 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 | `STORE_REGION` | App Store country to sell credit for (default `US`; never shown to users) |
 | `SUPPLIER` | `mock` or `bitrefill` |
 | `BITREFILL_API_ID` / `BITREFILL_API_SECRET` | Business API credentials |
+| `BITREFILL_COST_FIELD` / `BITREFILL_COST_CURRENCY` | Where a package's cost is, and its currency (`USD`); required, verified with `npm run supplier:record` |
+| `BITREFILL_PRODUCT_IDS` | Optional JSON map `{"<store>:<REGION>": "<product id>"}` when a store has several matching products |
+| `SUPPLIER_MAX_AGE_MIN` | Supplier card data older than this is never priced (default 30) |
 | `PAYMENT_MODE` | `mock` or `chain` |
 | `TON_NETWORK` | `testnet` or `mainnet` (default) |
 | `MERCHANT_WALLET` | Address that receives GRAM |
@@ -148,10 +161,29 @@ GRAM refunds are sent by you from the merchant wallet; the bot only records them
 | `RATE_MAX_AGE_MIN` | Mainnet only: pause new orders when the rate is older than this (default 10) |
 | `STARS` | `off` to hide the Stars option (default on) |
 | `STAR_USD` | What one Star is worth to you on withdrawal, in USD (default `0.013`) |
-| `STARS_MARGIN` | Markup for Stars orders (defaults to `MARGIN`) |
+| `PRODUCTS` | Products on sale, comma-separated catalog ids (default `claude`) |
+| `APPLE_PRICE_SYNC` | `off` to stop syncing in-app prices from the App Store (default on) |
+| `STAR_BUYER_USD` | Roughly what a buyer pays per Star, in USD (default `0.02`), used to match the GRAM price |
+| `STARS_MIN_MARGIN` | Smallest markup on Stars orders at the payout rate (default `0.03`) |
 | `TEST_PRICE_SCALE` | Testnet only: multiply GRAM amounts (e.g. `0.01`) so faucet coins cover test buys |
 
+## Products and stores
+
+- **Catalog:** `server/src/catalog.js` → `PRODUCTS`. Each product has an App Store id with the App Store's name for each in-app purchase (used by the price sync), a Google Play package, and plans. A plan has a monthly price key and, where the store sells one, a yearly key. Keys are unique across products. When two of an app's purchases share a name (a plan's monthly and yearly price), its IAP entry can say which to take: `{ name, pick: 'min' }` for monthly, `{ name, pick: 'max', yearlyOf }` for yearly.
+- **On sale:** the `PRODUCTS` list in `server/.env` (comma-separated ids); the default is `claude`. With more than one product, the app shows a product switch.
+- **Stores:** every quote and order is for `appstore` or `play`.
+  - App Store prices sync automatically (see below).
+  - Google Play doesn't publish in-app prices, so you set them in the admin bot: `/prices play` lists them and `/price play pro_m 19.99` sets one.
+  - Once any Play price is set, the app shows an iPhone / Android switch (defaulting to the buyer's phone), and Android buyers see only the plans priced for Play.
+  - The supplier delivers the matching card: App Store or Google Play.
+- **Adding a product:** add it to `PRODUCTS` (App Store id and slug, IAP names, Play package, plans) and its default App Store prices to `REGIONS`, then add it to `PRODUCTS` in `.env`. Card faces, the guide, the bot, Stars invoices and the wallet all read names from the catalog.
+
 ## How pricing works
+
+- **App Store prices sync automatically.** At startup and every 6 hours, the server reads each product's App Store page for `STORE_REGION` and picks up its plans' prices (for Claude: Pro monthly and yearly, Max 5× and Max 20×). A change is applied to new quotes and posted to the admin bot. A page it can't read, a missing plan, or a price that more than doubles or halves changes nothing and alerts you instead. `/price` still overrides, and `/prices` shows where each price comes from (set by you, App Store, or default). Set `APPLE_PRICE_SYNC=off` to stop it.
+- **GRAM prices are live.** The rate refreshes every 30 s, and the app refreshes its prices every 30 s and when it comes back to the front.
+- **Held quotes:** opening the review sheet locks the price for 20 minutes (`POST /api/quotes`), and the order uses exactly that price.
+
 
 - `server/src/catalog.js` holds the Claude in-app price for each App Store country (October 2026 data). Re-check these regularly.
 - The credit needed is the in-app price, plus a tax buffer for the US (+10%) and Canada (+15%), where App Store prices exclude sales tax.
