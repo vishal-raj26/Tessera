@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { requiredCredit, usableCards, pickPackages, SupplierUnavailable } from '../src/pricing.js';
 import { createMockSupplier, mockSupplier } from '../src/supplier/mock.js';
 import { cachedSupplier } from '../src/supplier/cache.js';
-import { createBitrefillSupplier, pickProduct, toSnapshot } from '../src/supplier/bitrefill.js';
+import { createBitrefillSupplier, pickProduct, toSnapshot, SupplierRefusal } from '../src/supplier/bitrefill.js';
 
 const T0 = Date.UTC(2026, 10, 2, 12);
 const snapUS = (over = {}) => ({
@@ -234,9 +234,10 @@ test('bitrefill: a product detail becomes a strict snapshot', () => {
   assert.deepEqual(s.packages.map((p) => [p.id, p.value, p.costUsd]), [['apple-usa<&>10', 10, 10.3], ['apple-usa<&>25', 25, 25.6]]);
   assert.deepEqual(s.dropped, ['apple-usa<&>50', 'apple-usa<&>100']);
   assert.equal(s.live, true);
-  assert.throws(() => toSnapshot({ data: P({ country: 'CA' }) }, opts), /not US USD/);
-  assert.throws(() => toSnapshot({ data: P({ currency: 'CAD' }) }, opts), /not US USD/);
-  assert.throws(() => toSnapshot({ data: P({ in_stock: false }) }, opts), /out of stock/);
+  const apple = (over) => ({ data: P({ id: 'apple-usa', name: 'Apple Gift Card', ...over }) });
+  assert.throws(() => toSnapshot(apple({ country: 'CA' }), opts), /not US USD/);
+  assert.throws(() => toSnapshot(apple({ currency: 'CAD' }), opts), /not US USD/);
+  assert.throws(() => toSnapshot(apple({ in_stock: false }), opts), /out of stock/);
 });
 
 test('bitrefill: follows paging, then reads the one matching product', async () => {
@@ -262,4 +263,127 @@ test('bitrefill: follows paging, then reads the one matching product', async () 
   seen.length = 0;
   assert.equal((await s2.fetchSnapshot('US', 'appstore')).productId, 'apple-usa');
   assert.equal(seen.length, 1);
+});
+
+// ---- regressions from the PR #17 review ----
+
+// a fake Bitrefill that serves whatever the test sets, and records requests
+function fakeBitrefill(routes) {
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    const path = url.replace('https://api.bitrefill.com/v2', '');
+    seen.push(`${init.method || 'GET'} ${path}`);
+    const r = typeof routes[path] === 'function' ? routes[path]() : routes[path];
+    return r ? new Response(JSON.stringify(r), { status: 200 }) : new Response('{"error":"not_found"}', { status: 404 });
+  };
+  return { fetchImpl, seen };
+}
+const ENV = { BITREFILL_API_ID: 'id', BITREFILL_API_SECRET: 'sec', BITREFILL_COST_FIELD: 'price', BITREFILL_COST_CURRENCY: 'USD' };
+const APPLE = (over = {}) => ({ data: P({ id: 'apple-usa', name: 'Apple Gift Card', packages: [{ package_id: 'apple-usa<&>25', value: 25, price: 26 }], ...over }) });
+const PLAY = (over = {}) => ({ data: P({ id: 'google-play-usa', name: 'Google Play', packages: [{ package_id: 'google-play-usa<&>25', value: 25, price: 25 }], ...over }) });
+
+test('(review P1) an explicit product id is still checked: Google Play is never sold as App Store credit', async () => {
+  const { fetchImpl } = fakeBitrefill({ '/products/google-play-usa': PLAY(), '/products/apple-usa': PLAY({ id: 'google-play-usa' }) });
+  const wrongMap = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"google-play-usa"}' }, fetchImpl, now: () => T0 });
+  await assert.rejects(() => wrongMap.fetchSnapshot('US', 'appstore'), (e) => e instanceof SupplierRefusal && /not a appstore gift card/.test(e.message));
+  // the detail must be the product asked for
+  const swapped = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl, now: () => T0 });
+  await assert.rejects(() => swapped.fetchSnapshot('US', 'appstore'), /asked for product apple-usa, got google-play-usa/);
+  // and the same rule the other way round
+  const { fetchImpl: f2 } = fakeBitrefill({ '/products/apple-usa': APPLE() });
+  const playToApple = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"play:US":"apple-usa"}' }, fetchImpl: f2, now: () => T0 });
+  await assert.rejects(() => playToApple.fetchSnapshot('US', 'play'), /not a play gift card/);
+  // a correct explicit id works
+  const { fetchImpl: f3 } = fakeBitrefill({ '/products/apple-usa': APPLE() });
+  const ok = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl: f3, now: () => T0 });
+  assert.equal((await ok.fetchSnapshot('US', 'appstore')).productId, 'apple-usa');
+});
+
+test('(review P2) a stockout reported by the supplier drops cached cards at once; an outage keeps them', async () => {
+  let clock = T0;
+  let detail = APPLE();
+  let down = false;
+  const { fetchImpl } = fakeBitrefill({ '/products/apple-usa': () => (down ? null : detail) });
+  const fi = async (url, init) => { if (down === 'timeout') throw new Error('timeout'); return fetchImpl(url, init); };
+  const b = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl: fi, now: () => clock });
+  const c = cachedSupplier(b, { ttlMs: 5 * 60e3, maxAgeMs: 30 * 60e3, retryMs: 60e3, now: () => clock, log: {} });
+  const want = () => ({ region: 'US', store: 'appstore', currency: 'USD', now: clock, maxAgeMs: c.maxAgeMs });
+  assert.equal(usableCards(await c.snapshot('US'), want()).length, 1);
+
+  // an outage (timeout): the old cards stay usable until they're too old
+  down = 'timeout';
+  clock += 6 * 60e3;
+  await c.snapshot('US');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(usableCards(await c.snapshot('US'), want()).length, 1);
+  assert.match(c.status()[0].error, /timeout/);
+
+  // (Codex repro) the supplier answers in_stock: false: nothing is sellable from then on
+  down = false;
+  detail = APPLE({ in_stock: false });
+  clock += 2 * 60e3;
+  await c.snapshot('US');
+  await new Promise((r) => setTimeout(r, 0));
+  const after = await c.snapshot('US');
+  assert.equal(after, null, 'no cached cards after a stockout');
+  assert.equal(c.status()[0].fresh, false);
+  assert.equal(c.status()[0].cards, 0);
+  assert.match(c.status()[0].error, /out of stock/);
+
+  // back in stock: sellable again on the next refresh
+  detail = APPLE();
+  clock += 2 * 60e3;
+  assert.equal(usableCards(await c.snapshot('US'), want()).length, 1);
+});
+
+test('(review P2) a product that disappears (404) or no longer matches also drops cached cards', async () => {
+  let clock = T0;
+  let detail = APPLE();
+  const { fetchImpl } = fakeBitrefill({ '/products/apple-usa': () => detail });
+  const b = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl, now: () => clock });
+  const c = cachedSupplier(b, { ttlMs: 5 * 60e3, retryMs: 0, now: () => clock, log: {} });
+  assert.ok(await c.snapshot('US'));
+  detail = null; // 404
+  clock += 6 * 60e3;
+  await c.snapshot('US'); await new Promise((r) => setTimeout(r, 0));
+  assert.equal(await c.snapshot('US'), null);
+  detail = APPLE({ currency: 'EUR' });
+  clock += 1;
+  assert.equal(await c.snapshot('US'), null);
+});
+
+test('purchase: availability is checked right before buying; nothing is bought if a card is gone', async () => {
+  const pk = [{ id: 'apple-usa<&>25', productId: 'apple-usa', value: 25, costUsd: 26 }];
+  for (const [label, detail] of [
+    ['out of stock', APPLE({ in_stock: false })],
+    ['package gone', APPLE({ packages: [{ package_id: 'apple-usa<&>50', value: 50, price: 51 }] })],
+    ['package sold out', APPLE({ packages: [{ package_id: 'apple-usa<&>25', value: 25, price: 26, in_stock: false }] })],
+    ['product gone', null],
+  ]) {
+    const { fetchImpl, seen } = fakeBitrefill({ '/products/apple-usa': detail });
+    const b = createBitrefillSupplier({ env: ENV, fetchImpl });
+    await assert.rejects(() => b.purchase({ packages: pk, reference: 'o1' }), SupplierRefusal, label);
+    assert.ok(!seen.some((r) => r.startsWith('POST /invoices')), `${label}: no invoice`);
+  }
+  // mixed products or more than 20 codes are refused before any request
+  const { fetchImpl, seen } = fakeBitrefill({});
+  const b = createBitrefillSupplier({ env: ENV, fetchImpl });
+  await assert.rejects(() => b.purchase({ packages: [...pk, { ...pk[0], productId: 'google-play-usa' }], reference: 'o2' }), /2 products/);
+  await assert.rejects(() => b.purchase({ packages: Array(21).fill(pk[0]), reference: 'o3' }), /at most 20/);
+  assert.equal(seen.length, 0);
+  // all available: the invoice is created
+  const ok = fakeBitrefill({
+    '/products/apple-usa': APPLE(),
+    '/invoices': { data: { id: 'inv1', orders: [{ id: 'ord1', package_id: 'apple-usa<&>25' }] } },
+    '/orders/ord1': { data: { id: 'ord1', package_id: 'apple-usa<&>25', value: 25, redemption_info: { code: 'CODE1' } } },
+  });
+  const codes = await createBitrefillSupplier({ env: ENV, fetchImpl: ok.fetchImpl }).purchase({ packages: pk, reference: 'o4' });
+  assert.deepEqual(codes.map((c) => c.code), ['CODE1']);
+  assert.deepEqual(ok.seen, ['GET /products/apple-usa', 'POST /invoices', 'GET /orders/ord1']);
+});
+
+test('picker: never more than 20 codes (Bitrefill invoice limit)', () => {
+  const tiny = [{ id: 't', value: 10, costUsd: 10 }];
+  assert.equal(pickPackages(tiny, 200).packages.length, 20);
+  assert.equal(pickPackages(tiny, 201), null);
 });

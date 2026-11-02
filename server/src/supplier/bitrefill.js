@@ -32,11 +32,22 @@ function headers(env) {
   return { Authorization: 'Basic ' + Buffer.from(`${id}:${secret}`).toString('base64'), 'Content-Type': 'application/json' };
 }
 
+/**
+ * Bitrefill answered, and the answer is that these cards can't be sold (out of stock, gone, or not the
+ * product we asked for). Unlike a timeout or a 5xx, this replaces any cached cards at once (cache.js).
+ */
+export class SupplierRefusal extends Error {
+  constructor(message) { super(message); this.authoritative = true; }
+}
+
 async function call(path, init, { fetchImpl, env }) {
   const url = path.startsWith('http') ? path : (env.BITREFILL_BASE_URL || BASE) + path;
   const res = await fetchImpl(url, { ...init, headers: { ...headers(env), ...(init.headers || {}) }, signal: AbortSignal.timeout(15000) });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Bitrefill ${init.method || 'GET'} ${path} failed: ${res.status} ${JSON.stringify(body).slice(0, 300)}`);
+  if (!res.ok) {
+    const msg = `Bitrefill ${init.method || 'GET'} ${path} failed: ${res.status} ${JSON.stringify(body).slice(0, 300)}`;
+    throw res.status === 404 ? new SupplierRefusal(msg) : new Error(msg);
+  }
   return body;
 }
 
@@ -49,24 +60,29 @@ export function pickProduct(products, { region, store, currency }) {
   const matches = products.filter((p) => p && pattern.test(`${p.id} ${p.name}`)
     && up(p.country) === region && up(p.currency) === currency && (p.type == null || p.type === 'gift_card'));
   if (matches.length === 1) return matches[0];
-  if (!matches.length) throw new Error(`no ${store} gift card for ${region} in ${currency}`);
+  if (!matches.length) throw new SupplierRefusal(`no ${store} gift card for ${region} in ${currency}`);
   throw new Error(`several ${store} products for ${region} ${currency} (${matches.map((p) => p.id).join(', ')}): set BITREFILL_PRODUCT_IDS`);
 }
 
 /**
- * A product's detail (GET /products/{id}) as a snapshot. Strict: the product must be for this country and
- * currency and in stock; each package needs a package_id, a numeric value and a cost at costField in
- * costCurrency. Packages without a readable cost are dropped, and reported.
+ * A product's detail (GET /products/{id}) as a snapshot. Strict, whether the id was discovered or set in
+ * BITREFILL_PRODUCT_IDS: it must be the product asked for (productId), a gift card for this store, for this
+ * country and currency, and in stock. Each package needs a package_id, a numeric value and a cost at
+ * costField in costCurrency; packages without one are dropped, and reported.
  */
-export function toSnapshot(detail, { region, store, currency, costField, costCurrency, now = Date.now() }) {
+export function toSnapshot(detail, { region, store, currency, costField, costCurrency, productId, now = Date.now() }) {
   if (!costField || costCurrency !== 'USD') {
     throw new Error('Bitrefill cost field not verified: record a real response (npm run supplier:record), then set BITREFILL_COST_FIELD and BITREFILL_COST_CURRENCY=USD');
   }
   const p = detail?.data ?? detail;
-  if (up(p?.country) !== region || up(p?.currency) !== currency) {
-    throw new Error(`product ${p?.id} is ${up(p?.country)} ${up(p?.currency)}, not ${region} ${currency}`);
+  if (productId != null && p?.id !== productId) throw new SupplierRefusal(`asked for product ${productId}, got ${p?.id}`);
+  if (!STORE_PATTERNS[store]?.test(`${p?.id} ${p?.name}`) || (p?.type != null && p.type !== 'gift_card')) {
+    throw new SupplierRefusal(`product ${p?.id} (${p?.name}) is not a ${store} gift card`);
   }
-  if (p.in_stock === false) throw new Error(`product ${p.id} is out of stock`);
+  if (up(p?.country) !== region || up(p?.currency) !== currency) {
+    throw new SupplierRefusal(`product ${p?.id} is ${up(p?.country)} ${up(p?.currency)}, not ${region} ${currency}`);
+  }
+  if (p.in_stock === false) throw new SupplierRefusal(`product ${p.id} is out of stock`);
   const dropped = [];
   const packages = [];
   for (const pk of p.packages || []) {
@@ -103,9 +119,21 @@ export function createBitrefillSupplier({ env = process.env, fetchImpl = fetch, 
         id = pickProduct(all, { region, store, currency }).id;
       }
       const detail = await call(`/products/${encodeURIComponent(id)}`, {}, io);
-      return toSnapshot(detail, opts);
+      return toSnapshot(detail, { ...opts, productId: id });
     },
     async purchase({ packages, reference }) {
+      // Check availability right before buying (Bitrefill's integration guidance): the one product the
+      // quote was made from must still be in stock with every package we're about to buy. Nothing is
+      // bought otherwise; the order goes to the admin as failed.
+      const productIds = [...new Set(packages.map((p) => p.productId))];
+      if (productIds.length !== 1) throw new Error(`refusing to buy from ${productIds.length} products in one order`);
+      if (packages.length > 20) throw new Error(`refusing ${packages.length} codes: Bitrefill takes at most 20 items per invoice`);
+      const live = (await call(`/products/${encodeURIComponent(productIds[0])}`, {}, io));
+      const p = live.data ?? live;
+      if (p?.id !== productIds[0] || p.in_stock === false) throw new SupplierRefusal(`product ${productIds[0]} is not available now`);
+      const now = new Map((p.packages || []).filter((pk) => pk.in_stock !== false).map((pk) => [pk.package_id, Number(pk.value)]));
+      const gone = packages.filter((pk) => now.get(pk.id) !== pk.value);
+      if (gone.length) throw new SupplierRefusal(`no longer available: ${gone.map((pk) => pk.id).join(', ')}`);
       const body = await call('/invoices', {
         method: 'POST',
         body: JSON.stringify({

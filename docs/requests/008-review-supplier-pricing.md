@@ -1,6 +1,6 @@
 # 008: Review the supplier pricing PR, and record Bitrefill's real catalog if credentials exist
 
-**Status:** open
+**Status:** done (review posted 2026-11-02; fixes in 009)
 **Base:** `claude/supplier-pricing` (PR on top of #16). Request 007 (multi-code purchase) still stands for #16.
 **Why Codex:** reviewer role; and part B needs the owner's PC and `server/.env`.
 

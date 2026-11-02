@@ -46,7 +46,7 @@ export function usableCards(snapshot, { region, store, currency, now = Date.now(
 
 /**
  * Pick the combination of the region's card denominations that covers `needed` for the least money,
- * using at most maxCodes codes (default 10, more only when even the biggest card needs more). Exact: a min-cost search over (codes used, face value)
+ * using at most maxCodes codes (default 10, more only when even the biggest card needs more, up to 20). Exact: a min-cost search over (codes used, face value)
  * in steps of the denominations' common divisor, so a cheap mix that needs many small cards can never
  * hide a cheaper mix that fits the code limit. Ties go to fewer codes, then to less leftover credit.
  * Returns null when nothing covers it. packages: [{ id, value, costUsd }]
@@ -55,7 +55,8 @@ export function pickPackages(packages, needed, maxCodes) {
   const list = packages.filter((p) => p.value > 0 && Number.isFinite(p.costUsd));
   if (!list.length || !(needed > 0)) return null;
   // up to 10 codes, or as many as the biggest card needs for a large order (so it still gets a price)
-  maxCodes ??= Math.max(10, Math.ceil(needed / Math.max(...list.map((p) => p.value))));
+  // never more than 20: Bitrefill takes at most 20 items per invoice
+  maxCodes ??= Math.min(20, Math.max(10, Math.ceil(needed / Math.max(...list.map((p) => p.value)))));
   const cents = list.map((p) => Math.round(p.value * 100));
   const gcd = (a, b) => (b ? gcd(b, a % b) : a);
   const unit = cents.reduce(gcd);

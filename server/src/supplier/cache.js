@@ -1,7 +1,9 @@
 // Keeps each supplier snapshot (one store, country and currency) fresh enough to price against.
 // - A snapshot is refetched after ttlMs.
-// - If a refetch fails, the last good snapshot is still used until it's maxAgeMs old; after that the
-//   store/region has no price (pricing.js refuses stale data), never an old price.
+// - If a refetch fails (timeout, server error), the last good snapshot is still used until it's maxAgeMs
+//   old; after that the store/region has no price (pricing.js refuses stale data), never an old price.
+// - If the supplier answers that the cards can't be sold (an error with authoritative: true, e.g. out of
+//   stock), the cached cards are dropped at once.
 // - Failures are retried after retryMs, not on every request.
 // status() reports every snapshot's age, source and last error for /healthz and the admin.
 
@@ -20,6 +22,9 @@ export function cachedSupplier(supplier, { ttlMs = 5 * 60e3, maxAgeMs = 30 * 60e
         e.error = null;
       } catch (err) {
         e.error = String(err?.message ?? err);
+        // The supplier answered that these cards can't be sold (out of stock, gone, wrong product): drop the
+        // cached cards now. A timeout or server error keeps them until maxAgeMs.
+        if (err?.authoritative) e.snap = null;
         log.warn?.(`[supplier] ${supplier.name} ${store} ${region}: ${e.error}`);
       } finally {
         e.inflight = null;
