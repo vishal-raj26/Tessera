@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TonConnectUIProvider } from '@tonconnect/ui-react';
+import { MotionConfig } from 'framer-motion';
 import './index.css';
 import App from './App';
 
@@ -13,7 +14,10 @@ createRoot(document.getElementById('root')!).render(
       uiPreferences={{ borderRadius: 'm' }}
       actionsConfiguration={{ twaReturnUrl: (import.meta.env.VITE_TWA_RETURN_URL as `${string}://${string}`) || undefined }}
     >
-      <App />
+      {/* Reduce Motion (iOS/Android setting) turns movement into simple fades everywhere */}
+      <MotionConfig reducedMotion="user">
+        <App />
+      </MotionConfig>
     </TonConnectUIProvider>
   </StrictMode>,
 );

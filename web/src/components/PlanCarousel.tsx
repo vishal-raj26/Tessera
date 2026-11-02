@@ -6,7 +6,7 @@ import { Card3D } from './Card3D';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
 import { tierOf } from '../tiers';
-import { MosaicIntro, MOSAIC_FORMED } from './MosaicIntro';
+import { MosaicIntro, MOSAIC_FORMED, shouldPlayMosaic } from './MosaicIntro';
 
 interface Props {
   plans: Plan[];
@@ -21,8 +21,10 @@ interface Props {
   storeLabel?: string;
   /** optional shared hold amount (0…1 while the front card is pressed) */
   hold?: MotionValue<number>;
-  /** play the mosaic opening: tiles form the front card, then the others are dealt in */
+  /** this is the first carousel of the page: it may play the mosaic opening (once per session) */
   mosaic?: boolean;
+  /** called once the carousel is on screen (the app then stops offering the opening) */
+  onShown?: () => void;
 }
 
 const PULL = 110;
@@ -75,9 +77,10 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel, int
   );
 }
 
-export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel, mosaic = false }: Props) {
-  // decided once, when the carousel first appears
-  const [intro] = useState(() => (mosaic ? { at: MOSAIC_FORMED, front: index } : null));
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel, mosaic = false, onShown }: Props) {
+  // decided once, when the carousel first appears: only here is the session's opening used up
+  const [intro] = useState(() => (mosaic && shouldPlayMosaic() ? { at: MOSAIC_FORMED, front: index } : null));
+  useEffect(() => { onShown?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [showMosaic, setShowMosaic] = useState(!!intro);
   useEffect(() => {
     if (!showMosaic) return;

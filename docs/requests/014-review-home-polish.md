@@ -1,6 +1,6 @@
 # 014: Review the home screen redesign and check it on the owner's iPhone
 
-**Status:** open
+**Status:** done (review 2026-11-03: four findings, fixed in 015)
 **Base:** `claude/home-polish` (PR on top of `main`).
 **Why Codex:** reviewer role, plus Windows tests and the owner's iPhone in Telegram.
 

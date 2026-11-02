@@ -4,23 +4,29 @@
 import { motion } from 'framer-motion';
 import { useMemo } from 'react';
 import { TIERS } from '../tiers';
+import { decideMosaic } from '../opening';
 
 const COLS = 5;
 const ROWS = 8; // 5:8 is the card's shape (0.63)
 /** When the tiles have formed the card (seconds): the carousel shows the real card from here. */
 export const MOSAIC_FORMED = 0.8;
 
-let played = false;
-/** Whether to play it now: once per session (and once per page load), and not with reduced motion. */
+let decided: boolean | null = null;
+/**
+ * The decision for this page load, made the first time it's asked (when the first carousel appears) and
+ * the same answer after that, so a repeated render can't flip it. App.tsx only asks for the first carousel.
+ */
 export function shouldPlayMosaic(): boolean {
-  if (played) return false;
-  played = true;
-  try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return false; } catch { /* ignore */ }
+  if (decided !== null) return decided;
+  let reduce = false;
+  try { reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* ignore */ }
+  let storage: { get(): string | null; set(): void } | null = null;
   try {
-    if (sessionStorage.getItem('tessera.mosaic')) return false;
-    sessionStorage.setItem('tessera.mosaic', '1');
-  } catch { /* no storage: play it this once */ }
-  return true;
+    sessionStorage.getItem('tessera.mosaic');
+    storage = { get: () => sessionStorage.getItem('tessera.mosaic'), set: () => sessionStorage.setItem('tessera.mosaic', '1') };
+  } catch { /* no storage */ }
+  decided = decideMosaic(reduce, storage);
+  return decided;
 }
 
 export function MosaicIntro({ tier = 0 }: { tier?: number }) {

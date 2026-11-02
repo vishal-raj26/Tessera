@@ -48,7 +48,7 @@ export const api = {
   config: () => req<AppConfig>('/api/config'),
   regions: () => req<{ regions: Region[] }>('/api/regions').then((r) => r.regions),
   catalog: (region: string, store: StoreId = 'appstore') =>
-    req<{ plans: Plan[]; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),
+    req<{ plans: Plan[]; store?: StoreId; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),
   quote: (region: string, store: StoreId, planId: PlanId, months: number) =>
     req<Quote>('/api/quotes', { method: 'POST', body: JSON.stringify({ region, store, planId, months }) }),
   createOrder: (region: string, store: StoreId, planId: PlanId, months: number, method: PayMethod, wallet?: string, quoteId?: string) =>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue, useReducedMotion } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
@@ -13,9 +13,10 @@ import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
 import { rememberTiers, tierOf, TIERS } from './tiers';
-import { shouldPlayMosaic } from './components/MosaicIntro';
 import { CountUp } from './components/CountUp';
 import { latestCoverage } from './coverage';
+import { renewStep, type RenewTarget } from './renew';
+import { shownBalance } from './balance';
 import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
@@ -88,8 +89,10 @@ export default function App() {
 
   const [bootErr, setBootErr] = useState(false);
   const store: StoreId = storesPriced[storePick] ? storePick : 'appstore';
+  // which store's prices are loaded (Renew waits for the right one)
+  const [catalogStore, setCatalogStore] = useState<StoreId | null>(null);
   const applyCatalog = useCallback((c: Awaited<ReturnType<typeof api.catalog>>) => {
-    rememberTiers(c.plans); setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating);
+    rememberTiers(c.plans); setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating); setCatalogStore(c.store ?? 'appstore');
     if (c.storesPriced) setStoresPriced(c.storesPriced);
   }, []);
   const load = useCallback(() => {
@@ -167,25 +170,32 @@ export default function App() {
   const shown = sheet === 'review' && heldOk ? heldOk : term;
   const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
   // the opening mosaic plays for the first carousel of the session only (not after a store or app switch)
-  const mosaicLeft = useRef<boolean | null>(null);
-  if (mosaicLeft.current === null) mosaicLeft.current = shouldPlayMosaic();
-  useEffect(() => { if (plans) mosaicLeft.current = false; }, [plans]);
+  // (offered to the first carousel that actually appears, e.g. after onboarding; see PlanCarousel)
+  const firstCarousel = useRef(true);
+  const carouselShown = useCallback(() => { firstCarousel.current = false; }, []);
 
   // a purchase just delivered: refresh the buyer's orders so the header and the codes badge include it
   useEffect(() => {
     if (order?.status === 'delivered') api.orders().then(setHistory).catch(() => {});
   }, [order?.id, order?.status]);
 
+  // Reduce Motion: no slides (fades only); also set app-wide in main.tsx (MotionConfig reducedMotion="user")
+  const still = useReducedMotion() ?? false;
+
   // codes bought but not redeemed yet: the badge on the top bar's codes button
   const codesLeft = (history ?? []).reduce((n, o) => n + (o.status === 'delivered' ? (o.codes ?? []).filter((c) => !c.redeemedAt).length : 0), 0);
 
   // the connected wallet's GRAM balance for the top bar: on connect, every 30 s while the app is open,
   // and when the app comes back to the front. Unknown (null) shows the short address instead.
-  const [balance, setBalance] = useState<number | null>(null);
+  // Kept with the address it belongs to: after switching wallets, the old wallet's balance is never
+  // shown for the new one (the pill shows the short address until the new balance arrives).
+  const [walletBal, setWalletBal] = useState<{ address: string; gram: number | null } | null>(null);
+  const balance = shownBalance(walletBal, wallet);
   useEffect(() => {
-    if (!wallet || !config) { setBalance(null); return; }
+    if (!wallet || !config) { setWalletBal(null); return; }
     let alive = true;
-    const get = () => { if (!document.hidden) api.balance(wallet).then((b) => { if (alive) setBalance(b.gram); }).catch(() => {}); };
+    const address = wallet;
+    const get = () => { if (!document.hidden) api.balance(address).then((b) => { if (alive) setWalletBal({ address, gram: b.gram }); }).catch(() => {}); };
     get();
     const id = setInterval(get, 30_000);
     document.addEventListener('visibilitychange', get);
@@ -196,27 +206,39 @@ export default function App() {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setClock(Date.now()), 60_000); return () => clearInterval(id); }, []);
   const cover = useMemo(() => latestCoverage(history, clock), [history, clock]);
-  const [renewing, setRenewing] = useState<{ planId: string; months: number } | null>(null);
+  // Renew: open the review for exactly the last purchase (same app, store, plan and term), or say it
+  // can't be renewed. The decisions are in renew.ts.
+  const [renewing, setRenewing] = useState<RenewTarget | null>(null);
+  const cantRenew = () => {
+    setRenewing(null);
+    setErr("That plan can't be renewed here right now.");
+    tg.notify('error');
+    // put the screen back on the prices of the store it shows
+    if (config && catalogStore !== store) api.catalog(config.region, store).then(applyCatalog).catch(() => {});
+  };
   function renew() {
-    if (!cover) return;
+    if (!cover || !config) return;
     const o = cover.order;
+    const target: RenewTarget = { product: o.product?.id || productId, store: o.store?.id ?? 'appstore', planId: o.plan.id, months: o.months ?? 1 };
     tg.tap('light');
-    if (o.product?.id && o.product.id !== productId) setProductPick(o.product.id);
-    if (o.store?.id && o.store.id !== store && storesPriced[o.store.id]) setStorePick(o.store.id);
-    setMonths(o.months ?? 1);
-    setRenewing({ planId: o.plan.id, months: o.months ?? 1 });
-  }
-  // once the carousel shows the renewed plan and term, open its review
-  useEffect(() => {
-    if (!renewing || !plans) return;
-    const i = plans.findIndex((p) => p.id === renewing.planId);
-    if (i < 0) { setRenewing(null); setErr('That plan is not available right now.'); return; }
-    if (i !== index) { setIndex(i); return; }
-    if (term?.months === renewing.months || plan?.terms?.every((t) => t.months !== renewing.months)) {
-      setRenewing(null);
-      reviewRef.current();
+    setErr(null);
+    if (target.product !== productId) setProductPick(target.product);
+    if (target.store !== store) {
+      // load that store's own prices first; the screen switches to it only if it's priced
+      setStorePick(target.store as StoreId);
+      setCatalogStore(null);
+      api.catalog(config.region, target.store as StoreId).then(applyCatalog).catch(cantRenew);
     }
-  }, [renewing, plans, index, term?.months]); // eslint-disable-line react-hooks/exhaustive-deps
+    setRenewing(target);
+  }
+  useEffect(() => {
+    if (!renewing) return;
+    const step = renewStep(renewing, { catalogStore, store, productId, plans, index, months: term?.months ?? months });
+    if (step.do === 'fail') cantRenew();
+    else if (step.do === 'index') setIndex(step.index);
+    else if (step.do === 'months') setMonths(step.months);
+    else if (step.do === 'open') { setRenewing(null); reviewRef.current(); }
+  }, [renewing, catalogStore, store, productId, plans, index, months, term?.months]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // live price: a small pulse whenever the GRAM rate moves the price of what's on screen
   const [pulse, setPulse] = useState(0);
@@ -472,7 +494,7 @@ export default function App() {
               </motion.div>
 
               {plans ? (
-                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} mosaic={!!mosaicLeft.current} />
+                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} mosaic={firstCarousel.current} onShown={carouselShown} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -491,7 +513,7 @@ export default function App() {
               <div className="blurb-row">
                 <AnimatePresence mode="wait" initial={false}>
                   {plan?.blurb && (
-                    <motion.p key={plan.id} className="blurb" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
+                    <motion.p key={plan.id} className="blurb" initial={{ opacity: 0, y: still ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: still ? 0 : -6 }} transition={{ duration: still ? 0.12 : 0.2 }}>
                       {plan.blurb}
                     </motion.p>
                   )}
