@@ -1,6 +1,6 @@
 # 012: Move the local setup to `main` and review the handoff update
 
-**Status:** open
+**Status:** done (2026-11-03: handoff review clean; local setup on `main` @ 67f4020; tests 131 + E2E + 6 web; /healthz gram from tonapi, supplier appstore:US fresh from the recorded fixture)
 **Base:** `claude/post-merge-handoff` (docs-only PR on top of `main` @ 67f4020).
 
 ## Context

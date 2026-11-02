@@ -1,6 +1,6 @@
 # 007: Multi-code purchase on testnet
 
-**Status:** open, pending until the owner adds test GRAM (wallet ~0.428 test GRAM on 2026-11-03; the GRAM purchase needs ~0.67).
+**Status:** open, pending until the owner adds test GRAM (wallet 0.4276 test GRAM on 2026-11-03; the latest quote for Pro, 3 months is ~0.68).
 **Base:** `main` @ 67f4020 or later.
 **Why Codex:** needs the owner's PC, testnet wallet and Telegram.
 
