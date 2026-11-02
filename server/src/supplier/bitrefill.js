@@ -46,7 +46,9 @@ async function call(path, init, { fetchImpl, env }) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = `Bitrefill ${init.method || 'GET'} ${path} failed: ${res.status} ${JSON.stringify(body).slice(0, 300)}`;
-    throw res.status === 404 ? new SupplierRefusal(msg) : new Error(msg);
+    // Bitrefill's documented answers that mean the cards can't be sold: not_found, out_of_stock
+    const code = [body?.error?.code, body?.code, body?.error, body?.error_code].find((c) => typeof c === 'string');
+    throw res.status === 404 || code === 'not_found' || code === 'out_of_stock' ? new SupplierRefusal(msg) : new Error(msg);
   }
   return body;
 }

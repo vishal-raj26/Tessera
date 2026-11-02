@@ -387,3 +387,62 @@ test('picker: never more than 20 codes (Bitrefill invoice limit)', () => {
   assert.equal(pickPackages(tiny, 200).packages.length, 20);
   assert.equal(pickPackages(tiny, 201), null);
 });
+
+// ---- regressions from the PR #17 re-review: refused purchases drop cached cards ----
+
+function cachedBitrefill(routes, { clock = () => T0 } = {}) {
+  const fake = fakeBitrefill(routes);
+  const b = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa","play:US":"google-play-usa"}' }, fetchImpl: fake.fetchImpl, now: clock });
+  return { c: cachedSupplier(b, { ttlMs: 5 * 60e3, maxAgeMs: 30 * 60e3, retryMs: 60e3, now: clock, log: {} }), seen: fake.seen };
+}
+const want = (store = 'appstore') => ({ region: 'US', store, currency: 'USD', now: T0, maxAgeMs: 30 * 60e3 });
+
+test('(re-review P2) a purchase refused by the pre-check drops that product\'s cached cards at once', async () => {
+  let detail = APPLE();
+  const { c, seen } = cachedBitrefill({ '/products/apple-usa': () => detail, '/products/google-play-usa': PLAY() });
+  const cards = usableCards(await c.snapshot('US', 'appstore'), want());
+  assert.equal(cards.length, 1);
+  assert.equal(usableCards(await c.snapshot('US', 'play'), want('play')).length, 1);
+  // (Codex repro) the product goes out of stock; the next purchase's pre-check refuses it
+  detail = APPLE({ in_stock: false });
+  await assert.rejects(() => c.purchase({ packages: cards, reference: 'o1' }), (e) => e.authoritative === true);
+  assert.ok(!seen.some((r) => r.startsWith('POST /invoices')));
+  assert.equal(await c.snapshot('US', 'appstore'), null, 'no cached cards right after the refusal');
+  const st = c.status().find((x) => x.key === 'appstore:US');
+  assert.equal(st.fresh, false);
+  assert.equal(st.cards, 0);
+  assert.match(st.error, /purchase refused/);
+  // another product's cards are untouched
+  assert.equal(usableCards(await c.snapshot('US', 'play'), want('play')).length, 1);
+});
+
+test('(re-review P2) an out_of_stock invoice answer also drops cached cards', async () => {
+  // the pre-check passes, then Bitrefill refuses the invoice with its documented error code
+  const fake = fakeBitrefill({ '/products/apple-usa': APPLE() });
+  const inner = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, now: () => T0,
+    fetchImpl: async (url, init) => (init.method === 'POST'
+      ? new Response(JSON.stringify({ error: { code: 'out_of_stock', message: 'Product unavailable' } }), { status: 400 })
+      : fake.fetchImpl(url, init)) });
+  const c = cachedSupplier(inner, { now: () => T0, log: {} });
+  const cards = usableCards(await c.snapshot('US', 'appstore'), want());
+  await assert.rejects(() => c.purchase({ packages: cards, reference: 'o2' }), SupplierRefusal);
+  assert.equal(await c.snapshot('US', 'appstore'), null);
+  assert.match(c.status()[0].error, /purchase refused/);
+});
+
+test('(re-review P2) a transient purchase failure keeps the cached cards', async () => {
+  const fake = fakeBitrefill({ '/products/apple-usa': APPLE() });
+  for (const fail of [
+    async () => { throw new Error('socket hang up'); },
+    async () => new Response('{"error":{"code":"internal_error"}}', { status: 500 }),
+    async () => new Response('{"error":{"code":"balance_too_low"}}', { status: 400 }),
+  ]) {
+    const inner = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, now: () => T0,
+      fetchImpl: async (url, init) => (init.method === 'POST' ? fail() : fake.fetchImpl(url, init)) });
+    const c = cachedSupplier(inner, { now: () => T0, log: {} });
+    const cards = usableCards(await c.snapshot('US', 'appstore'), want());
+    await assert.rejects(() => c.purchase({ packages: cards, reference: 'o4' }), (e) => !e.authoritative);
+    assert.equal(usableCards(await c.snapshot('US', 'appstore'), want()).length, 1);
+    assert.equal(c.status()[0].error, null);
+  }
+});

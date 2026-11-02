@@ -3,7 +3,7 @@
 // - If a refetch fails (timeout, server error), the last good snapshot is still used until it's maxAgeMs
 //   old; after that the store/region has no price (pricing.js refuses stale data), never an old price.
 // - If the supplier answers that the cards can't be sold (an error with authoritative: true, e.g. out of
-//   stock), the cached cards are dropped at once.
+//   stock), the cached cards are dropped at once. The same happens when a purchase is refused that way.
 // - Failures are retried after retryMs, not on every request.
 // status() reports every snapshot's age, source and last error for /healthz and the admin.
 
@@ -52,7 +52,30 @@ export function cachedSupplier(supplier, { ttlMs = 5 * 60e3, maxAgeMs = 30 * 60e
       }
       return entries.get(key)?.snap ?? null;
     },
-    purchase: (args) => supplier.purchase(args),
+    /**
+     * Buy through the supplier. If it refuses because the cards can't be sold (authoritative, e.g. the
+     * pre-purchase check finds a card gone, or the invoice says out_of_stock), every cached snapshot of
+     * that product is dropped at once so no one else is quoted those cards; the error is recorded and
+     * rethrown. Transient failures (timeouts, 5xx) leave the cache alone.
+     */
+    async purchase(args) {
+      try {
+        return await supplier.purchase(args);
+      } catch (err) {
+        if (err?.authoritative) {
+          const products = new Set((args?.packages || []).map((p) => p.productId));
+          for (const [key, e] of entries) {
+            if (e.snap && products.has(e.snap.productId)) {
+              e.snap = null;
+              e.error = `purchase refused: ${String(err?.message ?? err)}`;
+              e.triedAt = now(); // refetched after retryMs, like any other failure
+              log.warn?.(`[supplier] ${supplier.name} ${key}: cards dropped (${e.error})`);
+            }
+          }
+        }
+        throw err;
+      }
+    },
     status() {
       const t = now();
       return [...entries].map(([key, e]) => ({

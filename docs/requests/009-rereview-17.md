@@ -1,6 +1,6 @@
 # 009: Re-review PR #17 (store validation, stockout invalidation)
 
-**Status:** open
+**Status:** done (re-review 2026-11-03; one finding fixed in 010)
 **Base:** `claude/supplier-pricing` @ latest (PR #17).
 
 ## Your two findings, fixed
