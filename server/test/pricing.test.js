@@ -446,3 +446,111 @@ test('(re-review P2) a transient purchase failure keeps the cached cards', async
     assert.equal(c.status()[0].error, null);
   }
 });
+
+// ---- regression from the PR #17 re-review: an older refresh can't restore dropped cards ----
+
+test('(re-review P2) a refresh that started before a purchase refusal cannot bring the cards back', async () => {
+  let clock = T0;
+  let release;
+  let mode = 'now'; // 'now' answers at once; 'hold' waits for release()
+  let answer = () => APPLE();
+  const fake = fakeBitrefill({ '/products/apple-usa': () => answer() });
+  const fetchImpl = async (url, init) => {
+    if (mode === 'hold' && init.method !== 'POST' && url.endsWith('/products/apple-usa')) {
+      const res = await fake.fetchImpl(url, init); // captured now: still in stock
+      await new Promise((r) => { release = r; });
+      return res;
+    }
+    return fake.fetchImpl(url, init);
+  };
+  const inner = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl, now: () => clock });
+  const c = cachedSupplier(inner, { ttlMs: 5 * 60e3, maxAgeMs: 30 * 60e3, retryMs: 60e3, now: () => clock, log: {} });
+  const w = () => ({ region: 'US', store: 'appstore', currency: 'USD', now: clock, maxAgeMs: c.maxAgeMs });
+  const cards = usableCards(await c.snapshot('US'), w());
+
+  // (Codex repro) at 6 minutes a background refresh starts and captures in-stock data, but is slow
+  clock += 6 * 60e3;
+  mode = 'hold';
+  await c.snapshot('US'); // starts the background refresh, returns the cached cards
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(typeof release, 'function', 'refresh is in flight');
+
+  // meanwhile a purchase is refused: the product went out of stock
+  mode = 'now';
+  answer = () => APPLE({ in_stock: false });
+  await assert.rejects(() => c.purchase({ packages: cards, reference: 'o5' }), (e) => e.authoritative === true);
+  assert.equal(c.status()[0].cards, 0);
+
+  // the older refresh now finishes with its in-stock answer: ignored
+  release();
+  await new Promise((r) => setTimeout(r, 10));
+  const st = c.status()[0];
+  assert.equal(st.cards, 0, 'cards stay dropped');
+  assert.equal(st.fresh, false);
+  assert.match(st.error, /purchase refused/, 'the refusal stays recorded');
+  assert.equal(await c.snapshot('US'), null);
+
+  // after retryMs a new refresh runs and reflects the supplier's current answer
+  clock += 61e3;
+  assert.equal(await c.snapshot('US'), null, 'still out of stock');
+  answer = () => APPLE();
+  clock += 61e3;
+  assert.equal(usableCards(await c.snapshot('US'), w()).length, 1, 'back once the supplier has it again');
+});
+
+test('(re-review P2) an older refresh that fails after a refusal does not overwrite the recorded refusal', async () => {
+  let clock = T0;
+  let releaseFail;
+  let hold = false;
+  const fake = fakeBitrefill({ '/products/apple-usa': () => APPLE({ in_stock: false }) });
+  const fetchImpl = async (url, init) => {
+    if (hold && url.endsWith('/products/apple-usa') && init.method !== 'POST') {
+      await new Promise((r) => { releaseFail = r; });
+      throw new Error('socket hang up');
+    }
+    return url.endsWith('/products/apple-usa') && !hold && clock === T0
+      ? new Response(JSON.stringify(APPLE()), { status: 200 })
+      : fake.fetchImpl(url, init);
+  };
+  const inner = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl, now: () => clock });
+  const c = cachedSupplier(inner, { ttlMs: 5 * 60e3, retryMs: 60e3, now: () => clock, log: {} });
+  const cards = usableCards(await c.snapshot('US'), { region: 'US', store: 'appstore', currency: 'USD', now: clock });
+  clock += 6 * 60e3;
+  hold = true;
+  await c.snapshot('US');
+  await new Promise((r) => setTimeout(r, 0));
+  hold = false;
+  await assert.rejects(() => c.purchase({ packages: cards, reference: 'o6' }), (e) => e.authoritative === true);
+  releaseFail();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.match(c.status()[0].error, /purchase refused/);
+  assert.equal(c.status()[0].cards, 0);
+});
+
+test('(re-review P2) a first fetch still running when its product is refused cannot restore it either', async () => {
+  // nothing cached yet, so the cache doesn't know this entry's product when the refusal arrives
+  let release;
+  let holdNext = true;
+  const fake = fakeBitrefill({ '/products/apple-usa': APPLE() });
+  const fetchImpl = async (url, init) => {
+    if (init.method === 'POST') return new Response(JSON.stringify({ error: { code: 'out_of_stock' } }), { status: 400 });
+    if (holdNext && url.endsWith('/products/apple-usa')) {
+      holdNext = false; // only the first fetch (the snapshot) is slow; the purchase pre-check answers at once
+      const r = await fake.fetchImpl(url, init); // captured now: in stock
+      await new Promise((ok) => { release = ok; });
+      return r;
+    }
+    return fake.fetchImpl(url, init);
+  };
+  const inner = createBitrefillSupplier({ env: { ...ENV, BITREFILL_PRODUCT_IDS: '{"appstore:US":"apple-usa"}' }, fetchImpl, now: () => T0 });
+  const c = cachedSupplier(inner, { now: () => T0, log: {} });
+  const first = c.snapshot('US'); // waits on the slow first fetch
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(typeof release, 'function');
+  // an order quoted earlier (e.g. before a restart) is refused by Bitrefill for that product
+  const pk = [{ id: 'apple-usa<&>25', productId: 'apple-usa', value: 25, costUsd: 26 }];
+  await assert.rejects(() => c.purchase({ packages: pk, reference: 'o7' }), (e) => e.authoritative === true);
+  release();
+  assert.equal(await first, null, 'the in-stock answer from before the refusal is ignored');
+  assert.equal(c.status()[0].cards, 0);
+});

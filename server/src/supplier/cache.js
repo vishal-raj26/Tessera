@@ -8,29 +8,48 @@
 // status() reports every snapshot's age, source and last error for /healthz and the admin.
 
 export function cachedSupplier(supplier, { ttlMs = 5 * 60e3, maxAgeMs = 30 * 60e3, retryMs = 60e3, now = Date.now, log = console } = {}) {
-  const entries = new Map(); // `${store}:${region}` -> { snap, error, triedAt, inflight }
+  // `${store}:${region}` -> { snap, error, triedAt, inflight, gen }. `gen` goes up whenever cards are
+  // dropped; a refresh started before that finishes into nothing, so an older answer can never bring
+  // back cards the supplier has since refused.
+  const entries = new Map();
+  // productId -> when the supplier last refused it: a fetch of that product started earlier is ignored,
+  // even for an entry that had no cards yet when the refusal came (so its product wasn't known)
+  const refusedAt = new Map();
 
   async function refresh(key, region, store) {
-    const e = entries.get(key) || {};
+    const e = entries.get(key) || { gen: 0 };
     entries.set(key, e);
     if (e.inflight) return e.inflight;
-    e.inflight = (async () => {
-      e.triedAt = now();
+    const gen = e.gen;
+    const startedAt = now();
+    const run = (async () => {
+      e.triedAt = startedAt;
       try {
         const snap = await supplier.fetchSnapshot(region, store);
+        if (e.gen !== gen) return; // cards were dropped while this was in flight: ignore it
+        if ((refusedAt.get(snap?.productId) ?? -Infinity) >= startedAt) return; // its product was refused since
         e.snap = snap;
         e.error = null;
       } catch (err) {
+        if (e.gen !== gen) return;
         e.error = String(err?.message ?? err);
         // The supplier answered that these cards can't be sold (out of stock, gone, wrong product): drop the
         // cached cards now. A timeout or server error keeps them until maxAgeMs.
-        if (err?.authoritative) e.snap = null;
+        if (err?.authoritative) drop(e);
         log.warn?.(`[supplier] ${supplier.name} ${store} ${region}: ${e.error}`);
       } finally {
-        e.inflight = null;
+        if (e.inflight === run) e.inflight = null;
       }
     })();
-    return e.inflight;
+    e.inflight = run;
+    return run;
+  }
+
+  /** Drop an entry's cards and disown any refresh already running for it. */
+  function drop(e) {
+    e.snap = null;
+    e.gen += 1;
+    e.inflight = null;
   }
 
   return {
@@ -64,9 +83,10 @@ export function cachedSupplier(supplier, { ttlMs = 5 * 60e3, maxAgeMs = 30 * 60e
       } catch (err) {
         if (err?.authoritative) {
           const products = new Set((args?.packages || []).map((p) => p.productId));
+          for (const id of products) refusedAt.set(id, now());
           for (const [key, e] of entries) {
             if (e.snap && products.has(e.snap.productId)) {
-              e.snap = null;
+              drop(e); // also disowns a refresh that started before this refusal
               e.error = `purchase refused: ${String(err?.message ?? err)}`;
               e.triedAt = now(); // refetched after retryMs, like any other failure
               log.warn?.(`[supplier] ${supplier.name} ${key}: cards dropped (${e.error})`);

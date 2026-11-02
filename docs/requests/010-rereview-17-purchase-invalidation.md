@@ -1,6 +1,6 @@
 # 010: Re-review PR #17 (refused purchases drop cached cards)
 
-**Status:** open
+**Status:** done (re-review 2026-11-03; one finding fixed in 011)
 **Base:** `claude/supplier-pricing` @ latest (PR #17).
 
 ## Your finding, fixed
