@@ -16,7 +16,7 @@ PRs #1–#17 are merged into `main` (#17 → #16 → #15 → `main`; #1–#14 we
 **Verified:** `npm test` 131 server + E2E + 6 web (Linux and Windows), `tsc`, `vite build`. Testnet in Telegram: GRAM and Stars purchases delivered; on the final `main` code, a Pro 3-month GRAM purchase (0.68 test GRAM, memo `TS-B03C4D6FF7`) delivered 4 codes in ~8 s and the full redeem flow passed, with ticks kept after reopening (request 007); airplane-mode tick rollback, Pay/rays/toast checks on the owner's iPhone; Pro 1-month price ($22.40 needed, one $25 card).
 
 **Not verified (open):**
-- Bitrefill Business credentials, the real cost field and currency, real availability and costs per region, range (custom amount) pricing, an invoice price check before paying.
+- Bitrefill: pending credentials. Recording the real catalog and verifying the cost field and currency is request 013 (blocked until the owner has Business API credentials). After that: real availability and costs per region, range (custom amount) pricing, an invoice price check before paying.
 - `npm audit`: 2 high (server, `@ton/ton` → `zod`; `@ton/ton` isn't imported by server code) and 3 low (web, `@tonconnect/ui` → `deepmerge`).
 - Hosting and mainnet are separate, owner-authorised tasks.
 
