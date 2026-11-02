@@ -28,7 +28,7 @@ export interface Order {
   months: number; annual: boolean;
   credit: number; currency: string; method: PayMethod; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
   merchant: string | null; network: 'mainnet' | 'testnet'; receivedNano: string; paymentSeen: boolean; payload: string; status: OrderStatus; error: string | null;
-  txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number;
+  txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number; deliveredAt?: number | null;
 }
 export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; testScale?: number; products: Product[]; stores: Store[] }
 

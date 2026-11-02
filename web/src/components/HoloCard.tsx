@@ -4,6 +4,7 @@ import { motion, useMotionTemplate, useMotionValue, useSpring, useTransform, typ
 import { memo, useEffect, useRef, type ReactNode } from 'react';
 import { Emblem } from './Emblem';
 import type { PlanId } from '../api';
+import { tierOf } from '../tiers';
 
 /** Fallback labels for Claude's plans; the catalog's `label` is used whenever a caller has it. */
 export const PLAN_LABEL: Record<PlanId, string> = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
@@ -121,7 +122,7 @@ export const HoloCard = memo(function HoloCard({ planId, credit, region, term, t
   return (
     <div ref={ref} className={`card-wrap ${live ? 'live' : ''} ${className}`}>
       <motion.div
-        className={`card plan-${planId}`}
+        className={`card plan-${planId} tier-${tierOf(planId)}`}
         style={{ rotateX: rotX, rotateY: rotYTotal }}
       >
         <div className="face front">

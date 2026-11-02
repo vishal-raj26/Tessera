@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
 import { HoloCard, PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -9,10 +9,13 @@ import { Sheet } from './components/Sheet';
 import { Guide } from './components/Guide';
 import { GramIcon } from './components/GramIcon';
 import { Header } from './components/Header';
-import { Rolling } from './components/Rolling';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
+import { rememberTiers, tierOf, TIERS } from './tiers';
+import { shouldPlayMosaic } from './components/MosaicIntro';
+import { CountUp } from './components/CountUp';
+import { latestCoverage } from './coverage';
 import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
@@ -79,7 +82,6 @@ export default function App() {
     tg.getFlag('onboarded').then((seen) => setIntro(!seen));
   }, []);
   const finishIntro = useCallback(() => { tg.setFlag('onboarded'); setIntro(false); }, []);
-  const prevIndex = useRef(0);
 
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonAddress();
@@ -87,7 +89,7 @@ export default function App() {
   const [bootErr, setBootErr] = useState(false);
   const store: StoreId = storesPriced[storePick] ? storePick : 'appstore';
   const applyCatalog = useCallback((c: Awaited<ReturnType<typeof api.catalog>>) => {
-    setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating);
+    rememberTiers(c.plans); setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating);
     if (c.storesPriced) setStoresPriced(c.storesPriced);
   }, []);
   const load = useCallback(() => {
@@ -103,6 +105,8 @@ export default function App() {
       .catch(() => setBootErr(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { tg.boot(); load(); }, [load]);
+  // the buyer's orders, for the personal header (also what Your codes shows first)
+  useEffect(() => { if (config && history === null) api.orders().then(setHistory).catch(() => {}); }, [config]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live prices: refresh every 30s on the home screen and whenever the app comes back to the
   // front; the price rolls to its new value. Paused while the review sheet holds a price.
@@ -162,6 +166,47 @@ export default function App() {
   const heldOk = !!held && held.planId === plan?.id && held.store === store && held.months === term?.months ? held : null;
   const shown = sheet === 'review' && heldOk ? heldOk : term;
   const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
+  // the opening mosaic plays for the first carousel of the session only (not after a store or app switch)
+  const mosaicLeft = useRef<boolean | null>(null);
+  if (mosaicLeft.current === null) mosaicLeft.current = shouldPlayMosaic();
+  useEffect(() => { if (plans) mosaicLeft.current = false; }, [plans]);
+
+  // returning buyers: the plan they bought last and how long its credit still lasts
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setClock(Date.now()), 60_000); return () => clearInterval(id); }, []);
+  const cover = useMemo(() => latestCoverage(history, clock), [history, clock]);
+  const [renewing, setRenewing] = useState<{ planId: string; months: number } | null>(null);
+  function renew() {
+    if (!cover) return;
+    const o = cover.order;
+    tg.tap('light');
+    if (o.product?.id && o.product.id !== productId) setProductPick(o.product.id);
+    if (o.store?.id && o.store.id !== store && storesPriced[o.store.id]) setStorePick(o.store.id);
+    setMonths(o.months ?? 1);
+    setRenewing({ planId: o.plan.id, months: o.months ?? 1 });
+  }
+  // once the carousel shows the renewed plan and term, open its review
+  useEffect(() => {
+    if (!renewing || !plans) return;
+    const i = plans.findIndex((p) => p.id === renewing.planId);
+    if (i < 0) { setRenewing(null); setErr('That plan is not available right now.'); return; }
+    if (i !== index) { setIndex(i); return; }
+    if (term?.months === renewing.months || plan?.terms?.every((t) => t.months !== renewing.months)) {
+      setRenewing(null);
+      reviewRef.current();
+    }
+  }, [renewing, plans, index, term?.months]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // live price: a small pulse whenever the GRAM rate moves the price of what's on screen
+  const [pulse, setPulse] = useState(0);
+  const lastPrice = useRef<{ key: string; gram: number } | null>(null);
+  useEffect(() => {
+    if (!plan || !term?.gram) return;
+    const key = `${plan.id}:${term.months}:${store}`;
+    const prev = lastPrice.current;
+    if (prev && prev.key === key && prev.gram !== term.gram) setPulse((n) => n + 1);
+    lastPrice.current = { key, gram: term.gram };
+  }, [plan, term?.gram, term?.months, store]);
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
   const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
@@ -175,8 +220,6 @@ export default function App() {
   // closing any sheet also abandons a quote still on its way, and drops the one shown
   const quoteSeq = useRef(0);
   const closeSheet = useCallback(() => { quoteSeq.current++; setHeld(null); setSheet(null); }, []);
-  const rollDir = index >= prevIndex.current ? 1 : -1;
-  useEffect(() => { prevIndex.current = index; }, [index]);
 
   const home = useCallback(() => {
     setView('home'); setOrder(null); setErr(null); setSheet(null);
@@ -355,6 +398,10 @@ export default function App() {
     <>
       <div className="atmos" aria-hidden="true">
         <div className="beam" /><div className="beam" /><div className="beam" />
+        {/* the glow behind the front card takes the colour of its plan's tier */}
+        {TIERS.map((t, i) => (
+          <div key={t.name} className="tint" style={{ background: `radial-gradient(60% 42% at 50% 40%, ${t.glow}, transparent 70%)`, opacity: view === 'home' && plan && tierOf(plan.id) === i ? 1 : 0 }} />
+        ))}
         <div className="floor" />
       </div>
 
@@ -373,9 +420,27 @@ export default function App() {
           {view === 'home' && (
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
+                {cover ? (
+                  <div className={`hello ${cover.daysLeft <= 5 ? 'soon' : ''}`}>
+                    <div className="hello-text">
+                      {tg.firstName && <span className="hi">Hi {tg.firstName}</span>}
+                      <p>
+                        <b>{cover.order.product?.name ?? 'Claude'} {cover.order.plan.label ?? cover.order.plan.name}</b>{' '}
+                        {cover.daysLeft > 1 ? `covered for ${cover.daysLeft} more days`
+                          : cover.daysLeft === 1 ? 'covered until tomorrow'
+                          : cover.daysLeft === 0 ? 'runs out today'
+                          : `ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
+                      </p>
+                    </div>
+                    <button className="renew" onClick={renew}>Renew</button>
+                  </div>
+                ) : null}
                 {products.length > 1
                   ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
-                  : <h1>Choose your {product?.name ?? 'Claude'} plan</h1>}
+                  : !cover && <h1>Choose your {product?.name ?? 'Claude'} plan</h1>}
+                {!cover && history !== null && (
+                  <p className="promise">Pay with GRAM{config?.stars ? ' or Stars' : ''}. Your code arrives right after payment.</p>
+                )}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
                     options={[{ value: 'appstore', label: 'iPhone' }, { value: 'play', label: 'Android' }]} />
@@ -383,7 +448,7 @@ export default function App() {
               </motion.div>
 
               {plans ? (
-                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} />
+                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} mosaic={!!mosaicLeft.current} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -398,6 +463,16 @@ export default function App() {
               )}
 
               <motion.div className="below" style={{ opacity: belowOpacity, y: belowY }}>
+              {/* what the plan gives, from the catalog */}
+              <div className="blurb-row">
+                <AnimatePresence mode="wait" initial={false}>
+                  {plan?.blurb && (
+                    <motion.p key={plan.id} className="blurb" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
+                      {plan.blurb}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+              </div>
               <motion.div className="price" aria-live="polite" {...rise(0.75)}>
                 {plan?.available && term && (plan.terms?.length ?? 0) > 1 && (
                   <TermPicker terms={plan.terms!} months={term.months} onChange={pickTerm} />
@@ -405,11 +480,14 @@ export default function App() {
                 {plan?.available && term ? (
                   <>
                     <div className="gram">
-                      <Rolling text={payWith === 'stars' ? term.stars!.toLocaleString() : fmtGram(term.gram!)} dir={rollDir} />
+                      {payWith === 'stars'
+                        ? <CountUp value={term.stars!} format={fmtStars} />
+                        : <CountUp value={term.gram!} format={fmtGram} />}
                       {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
+                        {payWith !== 'stars' && <span className="live" title="Live price: follows the GRAM rate" aria-label="Live price"><i key={pulse} className={pulse ? 'ping' : ''} /></span>}
                         {testScale < 1
                           ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>
                           : <>≈ ${term.usd.toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>}

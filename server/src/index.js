@@ -231,6 +231,7 @@ const publicOrder = (o) => o && {
   txHash: o.tx_hash,
   codes: o.status === 'delivered' ? o.codes : null,
   createdAt: o.created_at,
+  deliveredAt: o.delivered_at ?? null,
   expiresAt: o.expires_at,
 };
 

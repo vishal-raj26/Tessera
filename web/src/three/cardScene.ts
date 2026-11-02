@@ -8,8 +8,9 @@ import {
   type BufferGeometry, type Texture,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { TIERS } from '../tiers';
 
-export interface Face { name: string; credit: string; term: string; top?: string }
+export interface Face { name: string; credit: string; term: string; top?: string; tier?: number }
 
 const ASPECT = 0.63;          // card width / height
 const TEX_W = 720;            // face texture size (kept small: phones have little GPU memory)
@@ -26,12 +27,13 @@ function paintFace(face: Face, back = false) {
   const d = detail.getContext('2d')!;
   const W = TEX_W, H = TEX_H, u = W / 100; // u = 1% of the card's width
 
-  // body: deep warm charcoal with a soft light falloff; satin, slightly metallic
+  const t = TIERS[face.tier ?? 0] ?? TIERS[0];
+  // body: the tier's colour with a soft light falloff; satin, slightly metallic
   const g = a.createLinearGradient(0, 0, W * 0.6, H);
-  g.addColorStop(0, '#24221f'); g.addColorStop(0.55, '#131211'); g.addColorStop(1, '#0c0b0b');
+  g.addColorStop(0, t.body[0]); g.addColorStop(0.55, t.body[1]); g.addColorStop(1, t.body[2]);
   a.fillStyle = g; a.fillRect(0, 0, W, H);
   const glow = a.createRadialGradient(W * 0.5, H * 0.38, 0, W * 0.5, H * 0.38, W * 0.7);
-  glow.addColorStop(0, 'rgba(255, 236, 214, 0.07)'); glow.addColorStop(1, 'rgba(255, 236, 214, 0)');
+  glow.addColorStop(0, t.sheen); glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
   a.fillStyle = glow; a.fillRect(0, 0, W, H);
   // fine grain, so the surface reads as a material rather than a flat fill
   const grain = a.getImageData(0, 0, W, H);
@@ -58,14 +60,14 @@ function paintFace(face: Face, back = false) {
 
   if (back) {
     // a dark stripe band and a small mark, like the back of a real card
-    ink((c, col) => { c.fillStyle = col; c.fillRect(0, H * 0.1, W, H * 0.1); }, '#0c0b0b', 30, 90, 200);
-    ink(emblem(W * 0.5, H * 0.55, u * 16, u * 1.1), '#bdb6aa', 255, 50, 255);
-    ink(text('Tessera', W * 0.5, H * 0.7, u * 6, 600, 'center', -u * 0.15), '#bdb6aa', 255, 50, 255);
+    ink((c, col) => { c.fillStyle = col; c.fillRect(0, H * 0.1, W, H * 0.1); }, t.body[2], 30, 90, 200);
+    ink(emblem(W * 0.5, H * 0.55, u * 16, u * 1.1), t.foil[1], 255, 50, 255);
+    ink(text('Tessera', W * 0.5, H * 0.7, u * 6, 600, 'center', -u * 0.15), t.foil[1], 255, 50, 255);
     return { albedo, detail };
   }
 
-  ink(text(face.top ?? 'Store credit', W / 2, u * 10.5, u * 4.3, 500, 'center', u * 0.05), 'rgba(214, 208, 198, 0.82)', 140, 90, 160);
-  ink(emblem(W / 2, H * 0.43, u * 22, u * 1.25), '#e3ddd2', 255, 35, 255);
+  ink(text(face.top ?? 'Store credit', W / 2, u * 10.5, u * 4.3, 500, 'center', u * 0.05), t.ink, 140, 90, 160);
+  ink(emblem(W / 2, H * 0.43, u * 22, u * 1.25), t.foil[1], 255, 35, 255);
   // the plan name, big and bleeding off the right edge, in polished foil
   const size = u * (face.name.length > 4 ? 25 : 31);
   const nameFill = (c: CanvasRenderingContext2D, color: string) => {
@@ -74,14 +76,14 @@ function paintFace(face: Face, back = false) {
     if ('letterSpacing' in c) (c as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${-size * 0.07}px`;
     if (c === a) {
       const sg = c.createLinearGradient(0, H * 0.9 - size, 0, H * 0.9);
-      sg.addColorStop(0, '#fffaf2'); sg.addColorStop(0.5, '#d9d2c5'); sg.addColorStop(1, '#8f877d');
+      sg.addColorStop(0, t.foil[0]); sg.addColorStop(0.5, t.foil[1]); sg.addColorStop(1, t.foil[2]);
       c.fillStyle = sg;
     } else c.fillStyle = color;
     c.fillText(face.name, u * 7, H - u * 16);
   };
   ink(nameFill, '', 255, 28, 255);
-  ink(text(face.credit, u * 8, H - u * 7.5, u * 4.4, 500, 'left'), 'rgba(214, 208, 198, 0.85)', 140, 90, 160);
-  ink(text(face.term, W - u * 8, H - u * 7.5, u * 4.4, 500, 'right'), 'rgba(214, 208, 198, 0.85)', 140, 90, 160);
+  ink(text(face.credit, u * 8, H - u * 7.5, u * 4.4, 500, 'left'), t.ink, 140, 90, 160);
+  ink(text(face.term, W - u * 8, H - u * 7.5, u * 4.4, 500, 'right'), t.ink, 140, 90, 160);
   return { albedo, detail };
 }
 
@@ -129,7 +131,9 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   const key = new DirectionalLight(new Color('#fff1e4'), 1.6);
   key.position.set(-1.4, 2.2, 3);
   scene.add(key);
-  const rim = new DirectionalLight(new Color('#d97757'), 0.9); // warm edge light from below right
+  const tier = () => TIERS[current.tier ?? 0] ?? TIERS[0];
+  let current = face;
+  const rim = new DirectionalLight(new Color(tier().rim), 0.9); // the tier's edge light from below right
   rim.position.set(1.8, -1.6, 1.2);
   scene.add(rim);
 
@@ -155,7 +159,7 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   const backSheet = sheet();
   backSheet.rotateY(Math.PI);
   backSheet.translate(0, 0, -DEPTH / 2 - BEVEL - 0.0006);
-  const edge = new MeshPhysicalMaterial({ color: '#1b1918', metalness: 0.8, roughness: 0.26, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const edge = new MeshPhysicalMaterial({ color: tier().edge.color, metalness: tier().edge.metal, roughness: tier().edge.rough, clearcoat: 1, clearcoatRoughness: 0.08 });
   const makeFace = (back: boolean, f: Face) => {
     const { albedo, detail } = paintFace(f, back);
     const map = new CanvasTexture(albedo); map.colorSpace = SRGBColorSpace; map.anisotropy = 4;
@@ -166,10 +170,11 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
     });
   };
   let front = makeFace(false, face);
-  const back = makeFace(true, face);
+  let back = makeFace(true, face);
   const frontMesh = new Mesh(frontSheet, front);
+  const backMesh = new Mesh(backSheet, back);
   const card = new Group();
-  card.add(new Mesh(body, edge), frontMesh, new Mesh(backSheet, back));
+  card.add(new Mesh(body, edge), frontMesh, backMesh);
   scene.add(card);
 
   const camera = new PerspectiveCamera(25, ASPECT, 0.1, 20);
@@ -183,10 +188,21 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   const disposeFace = (m: MeshPhysicalMaterial) => { m.map?.dispose(); (m.roughnessMap as Texture | null)?.dispose(); m.dispose(); };
   return {
     setFace(f) {
+      const tierChanged = (f.tier ?? 0) !== (current.tier ?? 0);
+      current = f;
       const next = makeFace(false, f);
       frontMesh.material = next;
       disposeFace(front);
       front = next;
+      if (tierChanged) {
+        const nb = makeFace(true, f);
+        backMesh.material = nb;
+        disposeFace(back);
+        back = nb;
+        const t = tier();
+        edge.color.set(t.edge.color); edge.metalness = t.edge.metal; edge.roughness = t.edge.rough;
+        rim.color.set(t.rim);
+      }
       request();
     },
     setTilt(x, y) {

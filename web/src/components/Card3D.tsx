@@ -6,6 +6,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PlanId } from '../api';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import type { CardScene } from '../three/cardScene';
+import { tierOf } from '../tiers';
 
 interface Props { planId: PlanId; label?: string; product?: string; store?: string; credit?: string; term?: string; interactive?: boolean; idle?: boolean; className?: string }
 
@@ -18,8 +19,8 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<CardScene | null>(null);
   const [ready, setReady] = useState(false);
-  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}` };
-  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}`;
+  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`, tier: tierOf(planId) };
+  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}|${face.tier}`;
 
   const px = useMotionValue(0);
   const py = useMotionValue(0);
