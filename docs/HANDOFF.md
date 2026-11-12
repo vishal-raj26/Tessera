@@ -1,6 +1,13 @@
 # Codex / Claude handoff
 
-## Latest: `claude/payment-followups` (Claude)
+## 2026-11-13 — Shared handoff workflow (Codex)
+
+- Branch: `codex/shared-handoff`, based on `origin/main` at `67f4020`.
+- The owner now assigns work directly to Codex or Claude. Each agent updates this file after its assigned work.
+- Scope: workflow documentation. Verification: `git diff --check` and review of the two documentation changes.
+- Supplier decision pending: Bitrefill supports balance-funded fulfillment and flexible values when a product exposes a `range`. Tessera's Windows environment lacks Bitrefill Business API credentials, so US Apple denominations and costs are unverified. Once the owner supplies credentials, the assigned agent can run `npm run supplier:record -- US` as a read-only check. The owner requested CryptoRefills if Bitrefill cannot supply the required amounts. CryptoRefills' public flow collects payment directly and requires buyer email and provider disclosure.
+
+## Earlier: `claude/payment-followups` (Claude)
 
 - Base: `codex/payment-repair-handoff` (PR #1) merged with `codex/testnet-fixtures` (PR #4). Merge those two first; this PR's own diff is then just the follow-ups.
 - **Real-payload tests** (`server/test/real-fixtures.test.js`): both readers accept Codex's captured fresh-wallet credit (`TS-628AF91308`, 0.209933333 GRAM). The stream payload has **no pre-decoded comment**, and the memo is decoded from the raw body. Both readers give the same hash, so the engine buys once.
@@ -31,9 +38,7 @@ Real wallet files, `.env`, and database history remain outside this checkout and
 
 ## Working together
 
-Use GitHub branches and pull requests as the shared record. Read this handoff and `AGENTS.md` at the start of a task, fetch current remote changes, and agree on ownership before touching the same files. Separate chats do not themselves constitute a handoff; record the relevant result here.
-
-Next milestone after review and merge: exercise the Mini App through Telegram on testnet. Telegram Stars checkout needs its own verification. Supplier credentials and any production/mainnet switch require a separate authorized task.
+Use GitHub branches and pull requests as the shared record. Read this handoff and `AGENTS.md` at the start of an assigned task and fetch current remote changes. Add the result here so the agent the owner assigns next can continue from it.
 
 ## Local commands
 

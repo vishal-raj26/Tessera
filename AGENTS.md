@@ -41,8 +41,8 @@ cd web && npx tsc -b --noEmit && npx vite build
 - Motion is purposeful (springs via framer-motion, haptics via `tg`). No decorative filler: no floating sparkles, badge pills, gradient blobs, orbiting icons, emoji.
 - Mobile first at 390px wide; respect the Telegram safe-area CSS variables.
 
-## Roles (set by the project owner; takes precedence over other workflow notes)
-- **Claude implements** every main task: features, fixes, refactors, docs. It works on `claude/<task>` branches and opens a PR for each one.
-- **Codex reviews** Claude's PRs, and does only the tasks Claude can't do from its cloud workspace. Typical examples: anything on the owner's Windows PC, live Telegram or testnet runs with local wallets and `.env`, tools that need local logins.
-- Claude sends those tasks as written requests in `docs/requests/NNN-<slug>.md`, using the template in `docs/requests/README.md`. The owner passes them to Codex.
-- Codex does exactly what a request asks, on `codex/<request-slug>` branches, and answers in the request's **Report back** format. If a request turns out to need code changes beyond its scope, Codex reports that instead of making the changes, and Claude implements them.
+## Roles (set by the project owner)
+- The owner assigns work directly to Codex or Claude. Either agent can implement, review, or verify a task the owner assigns.
+- The assigned agent owns the task and updates `docs/HANDOFF.md` before reporting back. Start by reading the latest handoff and use the branch or PR named by the owner.
+- Add a dated entry naming the agent, task, branch and base commit, with a PR link if available. Record what changed, the checks actually run, and any pending work or decisions. Preserve earlier entries and keep secrets out.
+- Leave follow-up tasks in the handoff for the owner to assign. The owner decides which agent takes the next task.
