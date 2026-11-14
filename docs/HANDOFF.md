@@ -1,5 +1,12 @@
 # Codex / Claude handoff
 
+## 2026-11-14 — CryptoRefills stock by country (Codex)
+
+- Queried the [documented brand catalog](https://www.cryptorefills.com/en/api-docs/developers) for all 233 listed countries and territories. Confirmed the eight out-of-stock results through the product endpoint with USDC. No purchases were made.
+- App Store credit: 35 countries listed at least one eligible brand, with 28 in stock. All eligible listings were out of stock in Ecuador (EC), El Salvador (SV), India (IN), Marshall Islands (MH), Micronesia (FM), Palau (PW), and Timor-Leste (TL).
+- Google Play: 43 countries listed the brand, with 42 in stock. South Korea (KR) was out of stock.
+- Counts exclude countries without a listing for the relevant store. Apple stock counts include Everything Apple and App Store & iTunes, and count a country as in stock when an eligible Apple listing is available.
+
 ## 2026-11-14 — CryptoRefills country stock scan (Codex)
 
 - Checked all 233 countries and territories from the [country list](https://www.cryptorefills.com/api/available-countries) against the [brand API](https://www.cryptorefills.com/en/api-docs/developers). All responses matched the requested country. Apple App Store credit includes the `App Store & iTunes`, `Everything Apple`, and `Apple Gift Card` listings. A store counts as in stock if any of its matching listings reports in stock.
