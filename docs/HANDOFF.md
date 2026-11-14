@@ -1,5 +1,10 @@
 # Codex / Claude handoff
 
+## 2026-11-14 — CryptoRefills India App Store stock (Codex)
+
+- The live India brand and product APIs mark `App Store & iTunes` as `is_out_of_stock: true`. The product response still lists ten fixed INR denominations from ₹100 to ₹10,000 with prices for both USDC and GRAM. Treat that stock flag as authoritative.
+- India Google Play is listed in stock as a separate product. US Everything Apple credit is only for US accounts. No orders were created.
+
 ## 2026-11-14 — CryptoRefills US Apple availability (Codex)
 
 - Branch: `codex/cryptorefills`, based on `codex/shared-handoff` at `dafe77d`.
