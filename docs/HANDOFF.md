@@ -1,5 +1,11 @@
 # Codex / Claude handoff
 
+## 2026-11-14 — CryptoRefills country stock scan (Codex)
+
+- Checked all 233 countries and territories from the [country list](https://www.cryptorefills.com/api/available-countries) against the [brand API](https://www.cryptorefills.com/en/api-docs/developers). All responses matched the requested country. Apple App Store credit includes the `App Store & iTunes`, `Everything Apple`, and `Apple Gift Card` listings. A store counts as in stock if any of its matching listings reports in stock.
+- Apple out of stock with Google Play in stock: Ecuador, El Salvador, India, Marshall Islands, Micronesia, Palau, and Timor-Leste. South Korea lists Google Play out of stock and has no Apple listing.
+- Both stores were in stock in 23 markets. Neither was in stock in 186 markets: 185 listed neither, and South Korea listed only the out-of-stock Google Play card. No market explicitly flagged both stores out of stock. Catalog snapshot only, with no checkout or purchase.
+
 ## 2026-11-14 — CryptoRefills India App Store stock (Codex)
 
 - The live India brand and product APIs mark `App Store & iTunes` as `is_out_of_stock: true`. The product response still lists ten fixed INR denominations from ₹100 to ₹10,000 with prices for both USDC and GRAM. Treat that stock flag as authoritative.
