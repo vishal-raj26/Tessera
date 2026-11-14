@@ -9,6 +9,7 @@ import { requiredCredit, usableCards, pickPackages, SupplierUnavailable } from '
 import { cachedSupplier } from './supplier/cache.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
+import { createCryptoRefillsCatalog } from './supplier/cryptorefills.js';
 import { orders, payments, settings } from './db.js';
 import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, normalize, friendly, NETWORK } from './chain.js';
 import { createEngine } from './engine.js';
@@ -19,18 +20,22 @@ import { telegramAuth } from './telegram.js';
 
 const PORT = Number(process.env.PORT || 8787);
 // Supplier cards are cached per store and region; data older than SUPPLIER_MAX_AGE_MIN is never priced.
-const SUPPLIER = cachedSupplier(process.env.SUPPLIER === 'bitrefill' ? bitrefillSupplier : mockSupplier, {
-  maxAgeMs: Number(process.env.SUPPLIER_MAX_AGE_MIN || 30) * 60e3,
+const CATALOG_PREVIEW = process.env.SUPPLIER === 'cryptorefills';
+const supplier = CATALOG_PREVIEW ? createCryptoRefillsCatalog()
+  : process.env.SUPPLIER === 'bitrefill' ? bitrefillSupplier : mockSupplier;
+const SUPPLIER = cachedSupplier(supplier, {
+  maxAgeMs: CATALOG_PREVIEW ? 60_000 : Number(process.env.SUPPLIER_MAX_AGE_MIN || 30) * 60e3,
+  ...(CATALOG_PREVIEW && { ttlMs: 60_000 }),
 });
-const PAYMENT_MODE = process.env.PAYMENT_MODE || 'mock'; // mock | chain
-const MERCHANT = process.env.MERCHANT_WALLET || '';
+const PAYMENT_MODE = CATALOG_PREVIEW ? 'preview' : process.env.PAYMENT_MODE || 'mock';
+const MERCHANT = CATALOG_PREVIEW ? '' : process.env.MERCHANT_WALLET || '';
 const MARGIN = Number(process.env.MARGIN ?? 0.08);
 // The App Store country we sell credit for. Set by you, never shown to users.
 const STORE_REGION = String(process.env.STORE_REGION || 'US').toUpperCase();
 const QUOTE_TTL_MS = 20 * 60 * 1000;
 // Telegram Stars: Telegram requires Stars for digital goods inside Mini Apps. STAR_USD is what one Star
 // is worth to you when you withdraw (not what buyers pay for it), so the Stars price covers your cost.
-const STARS = process.env.STARS !== 'off';
+const STARS = !CATALOG_PREVIEW && process.env.STARS !== 'off';
 const STAR_USD = Number(process.env.STAR_USD || 0.013);
 // Stars are priced to cost the buyer about the same as GRAM (STAR_BUYER_USD is roughly what a buyer
 // pays Telegram per Star), but never below our cost plus STARS_MIN_MARGIN at the payout rate.
@@ -116,6 +121,11 @@ async function quote(regionCode, planId, months = 1, store = 'appstore') {
   // the cheapest mix of them that covers it
   const pick = pickPackages(cards, needed);
   if (!pick) return { unavailable: 'no_mix', reason: `no mix of cards covers ${needed} ${region.currency}` };
+  if (CATALOG_PREVIEW) return {
+    months, annual: months === 12, monthly: inAppPrice(regionCode, findPlan(planId).plan.key, store),
+    appPrice: price, needed, currency: region.currency, credit: pick.faceValue, codes: pick.packages.length,
+    usd: round2(pick.costUsd), gram: null, stars: null,
+  };
   // demo and testnet tolerate an old rate (no real value moves); mainnet refuses to quote GRAM on a stale one
   const rate = await gramUsd({ allowStale: PAYMENT_MODE === 'mock' || NETWORK === 'testnet' });
   // On testnet everything is charged at TEST_PRICE_SCALE, Stars included: Telegram Stars are real money
@@ -159,7 +169,7 @@ app.get('/tonconnect-manifest.json', (req, res) => {
 app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE, gram: rateStatus(), supplier: { name: SUPPLIER.name, live: SUPPLIER.live, snapshots: SUPPLIER.status() } }));
 
 app.get('/api/config', (req, res) => {
-  const testScale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
+  const testScale = !CATALOG_PREVIEW && NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
   res.json({
     paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, supplier: SUPPLIER.name, supplierLive: SUPPLIER.live, region: STORE_REGION, stars: STARS, testScale,
     products: enabledProducts().map((p) => ({ id: p.id, name: p.name, app: p.app })),
@@ -167,11 +177,12 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// Regions the supplier can actually fulfil right now (App Store credit), intersected with regions we have prices for.
+// Regions with supplier stock for the selected store, intersected with Tessera's configured regions.
 app.get('/api/regions', async (req, res) => {
+  const store = storeOf(req.query.store);
   const list = await Promise.all(Object.entries(REGIONS).map(async ([code, r]) => {
-    const ok = await SUPPLIER.snapshot(code, 'appstore')
-      .then((snap) => usableCards(snap, { region: code, store: 'appstore', currency: r.currency, maxAgeMs: SUPPLIER.maxAgeMs }).length > 0)
+    const ok = await SUPPLIER.snapshot(code, store)
+      .then((snap) => usableCards(snap, { region: code, store, currency: r.currency, maxAgeMs: SUPPLIER.maxAgeMs }).length > 0)
       .catch(() => false);
     return ok ? { code, name: r.name, flag: r.flag, currency: r.currency } : null;
   }));
@@ -190,7 +201,7 @@ app.get('/api/catalog', async (req, res) => {
   const plans = await Promise.all(all.map(async ({ product, plan }) => {
     const quotes = await Promise.all(termsAt(code, plan.id, store).map((m) => quote(code, plan.id, m, store).catch(() => null)));
     if (quotes.some((q) => q?.stale)) stale = true;
-    const terms = quotes.filter((q) => q && (q.gram || q.stars)).map(pick);
+    const terms = quotes.filter((q) => q && (q.gram || q.stars || (CATALOG_PREVIEW && q.usd > 0))).map(pick);
     const one = terms.find((t) => t.months === 1);
     return {
       id: plan.id, name: plan.name, label: plan.label, blurb: plan.blurb, term: 'month',
@@ -239,6 +250,7 @@ const publicOrder = (o) => o && {
 const quotes = new Map();
 const pruneQuotes = () => { const now = Date.now(); for (const [k, q] of quotes) if (q.expiresAt < now) quotes.delete(k); };
 app.post('/api/quotes', telegramAuth, async (req, res) => {
+  if (CATALOG_PREVIEW) return res.status(409).json({ error: 'Purchases are unavailable in catalog preview.' });
   pruneQuotes();
   const { region, planId } = req.body || {};
   const months = Number(req.body?.months ?? 1);
@@ -256,6 +268,7 @@ app.post('/api/quotes', telegramAuth, async (req, res) => {
 });
 
 app.post('/api/orders', telegramAuth, async (req, res) => {
+  if (CATALOG_PREVIEW) return res.status(409).json({ error: 'Purchases are unavailable in catalog preview.' });
   const { region, planId, wallet } = req.body || {};
   const method = req.body?.method === 'stars' ? 'stars' : 'gram';
   const months = Number(req.body?.months ?? 1);
@@ -361,8 +374,9 @@ const prices = {
   region: STORE_REGION,
   rate: () => rateStatus(),
 };
-startRateFeed();
-const bot = startAdminBot({ getEngine: () => engine, orders, prices, publicUrl: process.env.PUBLIC_URL });
+if (!CATALOG_PREVIEW) startRateFeed();
+const bot = CATALOG_PREVIEW ? { notify() {} }
+  : startAdminBot({ getEngine: () => engine, orders, prices, publicUrl: process.env.PUBLIC_URL });
 
 // Keep each product's in-app prices in step with the App Store (APPLE_PRICE_SYNC=off to stop it).
 if (process.env.APPLE_PRICE_SYNC !== 'off') {
@@ -414,12 +428,14 @@ if (PAYMENT_MODE === 'chain' && process.env.TON_STREAM !== 'off') {
 
 let ticking = false;
 let lastTick = 0;
-setInterval(async () => {
-  if (ticking || (streamUp && Date.now() - lastTick < 15000)) return;
-  ticking = true;
-  try { await engine.tick(); } catch (e) { console.error(e); } finally { ticking = false; lastTick = Date.now(); }
-}, 5000);
-engine.resume().catch(console.error);
+if (!CATALOG_PREVIEW) {
+  setInterval(async () => {
+    if (ticking || (streamUp && Date.now() - lastTick < 15000)) return;
+    ticking = true;
+    try { await engine.tick(); } catch (e) { console.error(e); } finally { ticking = false; lastTick = Date.now(); }
+  }, 5000);
+  engine.resume().catch(console.error);
+}
 
 // Rate watchdog: alert once when the GRAM/USD feed goes stale, once when it recovers.
 let rateAlerted = false;
@@ -433,7 +449,7 @@ if (PAYMENT_MODE === 'chain' && NETWORK === 'mainnet') {
 }
 
 // Renewal reminders: checked hourly, sent ~3 days before the buyer's month ends.
-setInterval(() => { try { engine.remindRenewals(); } catch (e) { console.error(e); } }, 3600e3);
+if (!CATALOG_PREVIEW) setInterval(() => { try { engine.remindRenewals(); } catch (e) { console.error(e); } }, 3600e3);
 
 // Serve the built Mini App when present.
 const dist = path.resolve(process.env.WEB_DIST || '../web/dist');

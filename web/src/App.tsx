@@ -231,7 +231,7 @@ export default function App() {
   const reviewRef = useRef<() => void>(() => {});
   const onPull = useCallback(() => reviewRef.current(), []);
   function openReview() {
-    if (!plan?.available || !term) return;
+    if (config?.paymentMode === 'preview' || !plan?.available || !term) return;
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
@@ -383,7 +383,7 @@ export default function App() {
               </motion.div>
 
               {plans ? (
-                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} />
+                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={config?.paymentMode === 'preview' || !plan?.available} months={term?.months ?? months} pull={pull} hold={hold} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -405,8 +405,10 @@ export default function App() {
                 {plan?.available && term ? (
                   <>
                     <div className="gram">
-                      <Rolling text={payWith === 'stars' ? term.stars!.toLocaleString() : fmtGram(term.gram!)} dir={rollDir} />
-                      {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
+                      {config?.paymentMode === 'preview' ? fmtMoney(term.credit, term.currency) : <>
+                        <Rolling text={payWith === 'stars' ? term.stars!.toLocaleString() : fmtGram(term.gram!)} dir={rollDir} />
+                        {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
+                      </>}
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
@@ -431,7 +433,8 @@ export default function App() {
               </motion.div>
               {err && <p className="error" style={{ textAlign: 'center' }}>{err}</p>}
 
-              {plans && <motion.div className="pullhint" {...rise(0.95)}>
+              {plans && config?.paymentMode === 'preview' && <p className="meta">Catalog preview · Purchases unavailable</p>}
+              {plans && config?.paymentMode !== 'preview' && <motion.div className="pullhint" {...rise(0.95)}>
                 <div className="chev" aria-hidden="true"><span /><span /></div>
                 <span>{needsWallet ? 'Pull the card down to connect your wallet' : 'Pull the card down to buy'}</span>
                 <button onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>

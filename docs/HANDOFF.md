@@ -1,5 +1,12 @@
 # Codex / Claude handoff
 
+## 2026-11-14 — CryptoRefills catalog integration (Codex)
+
+- Branch: `codex/cryptorefills`, implementation based on `e004522`. Run the local server with `SUPPLIER=cryptorefills` to preview current Apple App Store and Google Play stock and estimated card costs.
+- The adapter checks both brand and product availability, matches the exact store, country and currency, and passes fixed denominations to the existing tax-aware package picker. USDC catalog amounts are indicative USD estimates. The preview refreshes each store and region after one minute.
+- Verified on Windows: 135 server tests, chain E2E, 6 web tests, TypeScript and Vite build. Live read-only smoke: US App Store Pro for one month required $22.40 of credit and the picker found $23 across three cards for an estimated $24.90. India App Store returned unavailable; a separate adapter check found India Google Play in stock and South Korea Google Play unavailable. Preview rejected quote creation and order creation with HTTP 409, and mock pay was absent.
+- Open: live checkout and fulfillment. CryptoRefills' public integration collects the buyer's payment and email directly, and requires branded disclosure. A standalone buyer checkout or a documented merchant fulfillment arrangement is needed for the next stage. Preview leaves payment workers and the Telegram bot disabled. No live orders were placed.
+
 ## 2026-11-14 — CryptoRefills stock by country (Codex)
 
 - Queried the [documented brand catalog](https://www.cryptorefills.com/en/api-docs/developers) for all 233 listed countries and territories. Confirmed the eight out-of-stock results through the product endpoint with USDC. No purchases were made.

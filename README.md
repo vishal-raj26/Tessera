@@ -124,6 +124,8 @@ Product, plan, term, store and region give the in-app price: the store's yearly 
 
 `SUPPLIER=mock` uses cards recorded from Bitrefill's public storefront (`server/src/supplier/recorded/`): real denominations, but retail prices, and only US App Store, US Google Play and Germany App Store. It issues fake codes, and the server refuses to start with it on mainnet with real payments.
 
+`SUPPLIER=cryptorefills` enables a read-only catalog preview. It checks stock by country and store and estimates the cheapest mix of available fixed denominations using the supplier's USDC catalog amounts. The estimate is in USD and may differ from a checkout price. This mode disables order creation, payment workers and the Telegram bot. Check each store with `/api/regions?store=appstore` or `/api/regions?store=play`. The catalog can be viewed locally with `/api/catalog?region=US&store=appstore`.
+
 ## Going live
 
 1. **Bitrefill Business API:** set `SUPPLIER=bitrefill` with `BITREFILL_API_ID` and `BITREFILL_API_SECRET`. Bitrefill's public docs don't say which package field holds your cost, so the adapter won't price anything until that's verified:
@@ -146,7 +148,7 @@ Product, plan, term, store and region give the in-app price: the store's yearly 
 | `BOT_TOKEN` | Telegram bot token; turns on initData verification and the admin bot |
 | `ADMIN_CHAT_IDS` | Who gets order alerts and can press Retry / Refund |
 | `STORE_REGION` | App Store country to sell credit for (default `US`; never shown to users) |
-| `SUPPLIER` | `mock` or `bitrefill` |
+| `SUPPLIER` | `mock`, `bitrefill`, or `cryptorefills` (catalog preview) |
 | `BITREFILL_API_ID` / `BITREFILL_API_SECRET` | Business API credentials |
 | `BITREFILL_COST_FIELD` / `BITREFILL_COST_CURRENCY` | Where a package's cost is, and its currency (`USD`); required, verified with `npm run supplier:record` |
 | `BITREFILL_PRODUCT_IDS` | Optional JSON map `{"<store>:<REGION>": "<product id>"}` when a store has several matching products |
