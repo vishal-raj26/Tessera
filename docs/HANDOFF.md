@@ -1,5 +1,12 @@
 # Codex / Claude handoff
 
+## 2026-11-14 — CryptoRefills US Apple availability (Codex)
+
+- Branch: `codex/cryptorefills`, based on `codex/shared-handoff` at `dafe77d`.
+- The [US product page](https://www.cryptorefills.com/en/united_states/gift_cards/everything_apple) lists Everything Apple as redeemable in the App Store. The [generic brand page](https://www.cryptorefills.com/en/everything-apple-crypto) says the US card is unavailable.
+- Read-only checks against the [documented catalog API](https://www.cryptorefills.com/en/api-docs/developers) returned `is_out_of_stock: false` and 20 fixed USD denominations from $2 to $500. The exact catalog family name is `Everything Apple`. The USDC query returned 2.17 USDC on Morph for the $2 card. The GRAM query returned catalog pricing on TON.
+- The product-list response had no ranged SKU. The separate price endpoint returned HTTP 404 for $2, $22.40, and $66 with the tested USDC request. Checkout and delivery remain unverified. No order was created and no funds were spent. The owner paused implementation to verify availability.
+
 ## 2026-11-13 — Shared handoff workflow (Codex)
 
 - Branch: `codex/shared-handoff`, based on `origin/main` at `67f4020`.
