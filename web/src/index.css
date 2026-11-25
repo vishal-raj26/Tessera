@@ -786,23 +786,23 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .app.fit { height: 100dvh; overflow: hidden; }
 .app.fit .wallet-view { min-height: 0; }
 
-/* --- rays around the held card ------------------------------------------ */
-/* from the card's top down to the bottom of the screen (--travel is measured on press) */
-.rays {
-  --travel: calc(var(--card-w) / 0.63 + 150px);
-  position: absolute; left: 0; right: 0; top: calc(50% - var(--card-w) / 0.63 / 2); height: var(--travel);
-  z-index: 0; pointer-events: none; overflow: hidden;
-}
-.rays:not(.on) { visibility: hidden; }
-.rays:not(.on) i { animation-play-state: paused; }
-.rays-layer { position: absolute; inset: 0; transform-origin: 50% 0; }
-.rays i {
-  position: absolute; top: 0; width: var(--w); height: var(--len); border-radius: 3px;
-  animation: ray var(--dur) linear var(--delay) infinite;
-}
-.rays.on i { will-change: transform; }
-@keyframes ray { from { transform: translate3d(0, calc(var(--len) * -1), 0); } to { transform: translate3d(0, var(--travel), 0); } }
-@media (prefers-reduced-motion: reduce) { .rays { display: none; } }
+/* --- the aurora (components/Aurora.tsx) ------------------------------------ */
+.aurora { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
+/* no WebGL: a still glow from the top edge instead */
+.aurora.no-gl { background: radial-gradient(70% 30% at 50% 0%, rgba(243, 176, 150, 0.45), rgba(217, 119, 87, 0.18) 45%, transparent 75%); }
+
+/* paying: the amount alone in the dark, the light gathered at the edge and the orb below */
+.pay-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; margin-top: 6vh; }
+.pay-amount { font-size: 44px; font-weight: 600; letter-spacing: -0.04em; }
+.pay-amount .amount { gap: 10px; }
+.pay-hero b { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.pay-sub { color: var(--mute); font-size: 13.5px; max-width: 300px; line-height: 1.45; }
+
+/* done: a check that draws itself and the credit counting up */
+.success { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 5vh; text-align: center; }
+.success .check { width: 52px; height: 52px; stroke: #f3b096; filter: drop-shadow(0 0 10px rgba(217, 119, 87, 0.7)); }
+.success-amount { font-size: 52px; font-weight: 600; letter-spacing: -0.045em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.success-sub { margin: 4px 0 0; color: var(--mute); font-size: 14px; max-width: 300px; line-height: 1.45; }
 
 /* --- the 3D card (three.js); the CSS card shows until it's ready ---------- */
 .card3d { position: relative; perspective: none; }

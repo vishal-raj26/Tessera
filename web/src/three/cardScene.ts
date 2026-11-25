@@ -1,124 +1,94 @@
-// A real 3D card for the plan carousel: a rounded box with thickness and bevelled edges, a satin
-// coated body, and the plan name and emblem in raised, polished foil, lit by a studio environment so
-// it shows true reflections, a glint that moves with the tilt and a highlight along its edges.
-// Loaded on demand (three.js is a separate chunk), one small WebGL canvas per card.
+// The plan card in 3D, from a real model made in Blender (public/models/card.glb, built by
+// design/card3d/build.py): a thick card with rounded, bevelled edges; a satin black front with the
+// emblem and plan name raised in polished silver; a holographic back in the product's own colours
+// (public/models/holo-<product>.jpg) whose colours slide as the card turns and drift slowly on their
+// own; a glossy edge that catches the light. The small print (store, credit, term) is drawn on thin
+// decals so it can change. Tap turns the card over (Card3D).
+//
+// The model and pictures load once and are shared by every card; each card has its own small canvas.
 import {
-  ACESFilmicToneMapping, CanvasTexture, Color, DirectionalLight, ExtrudeGeometry, Group, LinearSRGBColorSpace, Mesh,
-  MeshPhysicalMaterial, PerspectiveCamera, PMREMGenerator, Scene, Shape, ShapeGeometry, SRGBColorSpace, WebGLRenderer,
-  type BufferGeometry, type Texture,
+  ACESFilmicToneMapping, CanvasTexture, Color, DirectionalLight, Group, MathUtils, Mesh, MeshPhysicalMaterial,
+  MirroredRepeatWrapping, PerspectiveCamera, PMREMGenerator, Scene, SRGBColorSpace, TextureLoader, WebGLRenderer,
+  type Material, type Object3D, type Texture,
 } from 'three';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { TIERS } from '../tiers';
 
-export interface Face { name: string; credit: string; term: string; top?: string; tier?: number }
+export interface Face { name: string; credit: string; term: string; top?: string; tier?: number; product?: string }
 
-const ASPECT = 0.63;          // card width / height
-const TEX_W = 720;            // face texture size (kept small: phones have little GPU memory)
-const TEX_H = Math.round(TEX_W / ASPECT);
+const ASPECT = 0.63;          // card width / height (the model is 0.63 x 1)
+const H = 1;
 const FONT = "'Geist Variable', -apple-system, system-ui, sans-serif";
+/** plan names that are modelled in the file (Name_<key>); any other name is printed on the decal */
+const MODELLED: Record<string, string> = { 'Pro': 'Pro', 'Max 5×': 'Max5', 'Max 20×': 'Max20' };
+const BASE = import.meta.env.BASE_URL ?? '/';
 
-/** Draw the face twice: colour (albedo), and "detail" (R = height for the emboss, G = roughness, B = metalness). */
-function paintFace(face: Face, back = false) {
-  const albedo = document.createElement('canvas');
-  const detail = document.createElement('canvas');
-  albedo.width = detail.width = TEX_W;
-  albedo.height = detail.height = TEX_H;
-  const a = albedo.getContext('2d')!;
-  const d = detail.getContext('2d')!;
-  const W = TEX_W, H = TEX_H, u = W / 100; // u = 1% of the card's width
-
-  const t = TIERS[face.tier ?? 0] ?? TIERS[0];
-  // body: the tier's colour with a soft light falloff; satin, slightly metallic
-  const g = a.createLinearGradient(0, 0, W * 0.6, H);
-  g.addColorStop(0, t.body[0]); g.addColorStop(0.55, t.body[1]); g.addColorStop(1, t.body[2]);
-  a.fillStyle = g; a.fillRect(0, 0, W, H);
-  const glow = a.createRadialGradient(W * 0.5, H * 0.38, 0, W * 0.5, H * 0.38, W * 0.7);
-  glow.addColorStop(0, t.sheen); glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  a.fillStyle = glow; a.fillRect(0, 0, W, H);
-  // fine grain, so the surface reads as a material rather than a flat fill
-  const grain = a.getImageData(0, 0, W, H);
-  for (let i = 0; i < grain.data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 9;
-    grain.data[i] += n; grain.data[i + 1] += n; grain.data[i + 2] += n;
+let model: Promise<GLTF> | null = null;
+const loadModel = () => (model ??= new GLTFLoader().loadAsync(`${BASE}models/card.glb`));
+const holos = new Map<string, Promise<Texture>>();
+const loadHolo = (product: string) => {
+  let p = holos.get(product);
+  if (!p) {
+    p = new TextureLoader().loadAsync(`${BASE}models/holo-${product}.jpg`)
+      .catch(() => new TextureLoader().loadAsync(`${BASE}models/holo-claude.jpg`));
+    holos.set(product, p);
   }
-  a.putImageData(grain, 0, 0);
-  d.fillStyle = 'rgb(0, 120, 90)'; // flat, roughness ~0.47, metalness ~0.35
-  d.fillRect(0, 0, W, H);
+  return p;
+};
 
-  // print helpers: colour on the albedo, emboss/shine on the detail map
-  const ink = (draw: (c: CanvasRenderingContext2D, color: string) => void, color: string, height: number, rough: number, metal: number) => {
-    draw(a, color);
-    draw(d, `rgb(${height}, ${rough}, ${metal})`);
+/** The small print for one side, on a transparent canvas the size of the card. */
+function paintDecal(face: Face, back: boolean, printName: boolean) {
+  const W = 512, Hp = Math.round(W / ASPECT);
+  const c = document.createElement('canvas');
+  c.width = W; c.height = Hp;
+  const g = c.getContext('2d')!;
+  const u = W / 63; // one hundredth of the card's height, in pixels (the model is 63 x 100)
+  const text = (s: string, x: number, y: number, size: number, weight: number, align: CanvasTextAlign, color: string) => {
+    g.font = `${weight} ${size}px ${FONT}`;
+    g.textAlign = align; g.textBaseline = 'alphabetic'; g.fillStyle = color;
+    g.fillText(s, x, y);
   };
-  const text = (s: string, x: number, y: number, size: number, weight: number, align: CanvasTextAlign, track = 0) =>
-    (c: CanvasRenderingContext2D, color: string) => {
-      c.font = `${weight} ${size}px ${FONT}`;
-      c.textAlign = align; c.textBaseline = 'alphabetic'; c.fillStyle = color;
-      if ('letterSpacing' in c) (c as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${track}px`;
-      c.fillText(s, x, y);
-    };
-
   if (back) {
-    // a dark stripe band and a small mark, like the back of a real card
-    ink((c, col) => { c.fillStyle = col; c.fillRect(0, H * 0.1, W, H * 0.1); }, t.body[2], 30, 90, 200);
-    ink(emblem(W * 0.5, H * 0.55, u * 16, u * 1.1), t.foil[1], 255, 50, 255);
-    ink(text('Tessera', W * 0.5, H * 0.7, u * 6, 600, 'center', -u * 0.15), t.foil[1], 255, 50, 255);
-    return { albedo, detail };
-  }
-
-  ink(text(face.top ?? 'Store credit', W / 2, u * 10.5, u * 4.3, 500, 'center', u * 0.05), t.ink, 140, 90, 160);
-  ink(emblem(W / 2, H * 0.43, u * 22, u * 1.25), t.foil[1], 255, 35, 255);
-  // the plan name, big and bleeding off the right edge, in polished foil
-  const size = u * (face.name.length > 4 ? 25 : 31);
-  const nameFill = (c: CanvasRenderingContext2D, color: string) => {
-    c.font = `600 ${size}px ${FONT}`;
-    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-    if ('letterSpacing' in c) (c as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${-size * 0.07}px`;
-    if (c === a) {
-      const sg = c.createLinearGradient(0, H * 0.9 - size, 0, H * 0.9);
-      sg.addColorStop(0, t.foil[0]); sg.addColorStop(0.5, t.foil[1]); sg.addColorStop(1, t.foil[2]);
-      c.fillStyle = sg;
-    } else c.fillStyle = color;
-    c.fillText(face.name, u * 7, H - u * 16);
-  };
-  ink(nameFill, '', 255, 28, 255);
-  ink(text(face.credit, u * 8, H - u * 7.5, u * 4.4, 500, 'left'), t.ink, 140, 90, 160);
-  ink(text(face.term, W - u * 8, H - u * 7.5, u * 4.4, 500, 'right'), t.ink, 140, 90, 160);
-  return { albedo, detail };
-}
-
-/** The Tessera emblem (four rounded tiles set as a diamond, plus a dot), as strokes. */
-function emblem(cx: number, cy: number, size: number, line: number) {
-  return (c: CanvasRenderingContext2D, color: string) => {
-    const s = size / 44; // emblem drawn on a 44-unit grid
-    c.save();
-    c.translate(cx - 22 * s, cy - 22 * s);
-    c.scale(s, s);
-    c.strokeStyle = color; c.fillStyle = color; c.lineWidth = line / s;
-    for (const [x, y] of [[15.5, 3.5], [26.5, 15.5], [15.5, 27.5], [4.5, 15.5]]) {
-      c.save();
-      c.translate(x + 6.5, y + 6.5); c.rotate(Math.PI / 4);
-      c.beginPath(); c.roundRect(-6.5, -6.5, 13, 13, 3.6); c.stroke();
-      c.restore();
+    text('Tessera', W / 2, 9.4 * u, 4.4 * u, 500, 'center', 'rgba(40, 36, 44, 0.85)');
+  } else {
+    const ink = 'rgba(205, 200, 192, 0.82)';
+    text(face.top ?? 'Store credit', W / 2, 8.6 * u, 3.1 * u, 500, 'center', ink);
+    text(face.credit, 5 * u, Hp - 4.3 * u, 2.9 * u, 500, 'left', ink);
+    text(face.term, W - 5 * u, Hp - 4.3 * u, 2.9 * u, 500, 'right', ink);
+    if (printName) {
+      // a plan without a modelled name: print it in the same place, in a silver gradient
+      const size = (face.name.length > 6 ? 15 : 22) * u;
+      const sg = g.createLinearGradient(0, Hp - 11 * u - size, 0, Hp - 11 * u);
+      sg.addColorStop(0, '#fffaf2'); sg.addColorStop(0.55, '#d9d2c5'); sg.addColorStop(1, '#8f877d');
+      g.font = `600 ${size}px ${FONT}`; g.textAlign = 'left'; g.fillStyle = sg;
+      g.fillText(face.name, 4 * u, Hp - 11 * u, W - 8 * u);
     }
-    c.beginPath(); c.arc(22, 22, 1.6, 0, Math.PI * 2); c.fill();
-    c.restore();
-  };
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 4;
+  t.flipY = false; // glTF texture coordinates run top-down
+  return t;
 }
 
 export interface CardScene {
   setFace(face: Face): void;
   setTilt(x: number, y: number): void; // -1 … 1 each
+  /** show the holographic back (true) or the front */
+  setTurned(back: boolean): void;
   resize(width: number, height: number): void;
-  dispose(): void;
+  /** free everything; `release` also gives up the canvas's WebGL context (not when it will be reused) */
+  dispose(release?: boolean): void;
 }
 
 export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Promise<CardScene> {
-  await document.fonts?.ready; // the face is drawn with the app's font
+  await document.fonts?.ready; // the small print uses the app's font
+  const [gltf, holoSrc] = await Promise.all([loadModel(), loadHolo(face.product ?? 'claude')]);
+
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'default' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = SRGBColorSpace;
 
   const scene = new Scene();
@@ -126,101 +96,104 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   scene.environment = env;
   pmrem.dispose();
-
-  // a key light from the upper left: the moving glint as the card tilts
-  const key = new DirectionalLight(new Color('#fff1e4'), 1.6);
+  const key = new DirectionalLight(new Color('#fff1e4'), 1.4); // the glint, from the upper left
   key.position.set(-1.4, 2.2, 3);
   scene.add(key);
-  const tier = () => TIERS[current.tier ?? 0] ?? TIERS[0];
-  let current = face;
-  const rim = new DirectionalLight(new Color(tier().rim), 0.9); // the tier's edge light from below right
+  const rim = new DirectionalLight(new Color('#f3b096'), 0.7); // a warm edge light from below right
   rim.position.set(1.8, -1.6, 1.2);
   scene.add(rim);
 
-  // the card: a rounded rectangle given thickness, with bevelled (softened) edges
-  const H = 1 / ASPECT, R = 0.075, DEPTH = 0.014, BEVEL = 0.007;
-  const outline = new Shape();
-  outline.moveTo(-0.5 + R, -H / 2);
-  outline.lineTo(0.5 - R, -H / 2); outline.quadraticCurveTo(0.5, -H / 2, 0.5, -H / 2 + R);
-  outline.lineTo(0.5, H / 2 - R); outline.quadraticCurveTo(0.5, H / 2, 0.5 - R, H / 2);
-  outline.lineTo(-0.5 + R, H / 2); outline.quadraticCurveTo(-0.5, H / 2, -0.5, H / 2 - R);
-  outline.lineTo(-0.5, -H / 2 + R); outline.quadraticCurveTo(-0.5, -H / 2, -0.5 + R, -H / 2);
-  const body = new ExtrudeGeometry(outline, { depth: DEPTH, bevelEnabled: true, bevelThickness: BEVEL, bevelSize: BEVEL * 0.8, bevelSegments: 4, curveSegments: 10 });
-  body.translate(0, 0, -DEPTH / 2);
-  // the faces: the same outline as flat sheets just above each side, with UVs spanning the card
-  const sheet = (): BufferGeometry => {
-    const g = new ShapeGeometry(outline, 10);
-    const pos = g.attributes.position, uv = g.attributes.uv;
-    for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) + 0.5, pos.getY(i) / H + 0.5);
-    return g;
+  // this card's copy of the model (geometry is shared between cards) with its own materials
+  const card = gltf.scene.clone(true);
+  const holo = holoSrc.clone();
+  holo.colorSpace = SRGBColorSpace;
+  holo.wrapS = holo.wrapT = MirroredRepeatWrapping;
+  holo.flipY = false;
+  holo.needsUpdate = true;
+  const mats: Record<string, MeshPhysicalMaterial> = {
+    CardFront: new MeshPhysicalMaterial({ color: '#000000', roughness: 0.5, clearcoat: 0.15, clearcoatRoughness: 0.2, envMapIntensity: 0.12 }),
+    CardHolo: new MeshPhysicalMaterial({
+      map: holo, roughness: 0.25, metalness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.06,
+      iridescence: 0.55, iridescenceIOR: 1.3, iridescenceThicknessRange: [260, 460], envMapIntensity: 0.9,
+    }),
+    CardEdge: new MeshPhysicalMaterial({ color: '#1c1c1f', metalness: 0.55, roughness: 0.2, clearcoat: 0.5, clearcoatRoughness: 0.05 }),
+    Silver: new MeshPhysicalMaterial({ color: '#e4e1dc', metalness: 1, roughness: 0.16, envMapIntensity: 1.35 }),
+    Ink: new MeshPhysicalMaterial({ color: '#3a3640', metalness: 0.3, roughness: 0.35, clearcoat: 0.4 }),
   };
-  const frontSheet = sheet();
-  frontSheet.translate(0, 0, DEPTH / 2 + BEVEL + 0.0006);
-  const backSheet = sheet();
-  backSheet.rotateY(Math.PI);
-  backSheet.translate(0, 0, -DEPTH / 2 - BEVEL - 0.0006);
-  const edge = new MeshPhysicalMaterial({ color: tier().edge.color, metalness: tier().edge.metal, roughness: tier().edge.rough, clearcoat: 1, clearcoatRoughness: 0.08 });
-  const makeFace = (back: boolean, f: Face) => {
-    const { albedo, detail } = paintFace(f, back);
-    const map = new CanvasTexture(albedo); map.colorSpace = SRGBColorSpace; map.anisotropy = 4;
-    const det = new CanvasTexture(detail); det.colorSpace = LinearSRGBColorSpace;
-    return new MeshPhysicalMaterial({
-      map, roughnessMap: det, metalnessMap: det, bumpMap: det, bumpScale: 1.6,
-      roughness: 1, metalness: 1, clearcoat: 0.85, clearcoatRoughness: 0.14, envMapIntensity: 1.15,
-    });
+  const decal = (back: boolean, printName: boolean) => new MeshPhysicalMaterial({
+    map: paintDecal(current, back, printName), transparent: true, depthWrite: false, roughness: 0.6,
+    polygonOffset: true, polygonOffsetFactor: -2,
+  });
+  let current = face;
+  const names: Object3D[] = [];
+  let decalFront: Mesh | null = null, decalBack: Mesh | null = null;
+  card.traverse((o) => {
+    if (/^(Back)?Name_/.test(o.name)) names.push(o);
+    if (!(o instanceof Mesh)) return;
+    const m = o.material as Material;
+    if (o.name.startsWith('DecalFront') || m.name === 'DecalFront') decalFront = o;
+    else if (o.name.startsWith('DecalBack') || m.name === 'DecalBack') decalBack = o;
+    else if (mats[m.name]) o.material = mats[m.name];
+  });
+  const showName = (f: Face) => {
+    const key = MODELLED[f.name];
+    for (const n of names) n.visible = !!key && (n.name === `Name_${key}` || n.name === `BackName_${key}`);
+    return !key;
   };
-  let front = makeFace(false, face);
-  let back = makeFace(true, face);
-  const frontMesh = new Mesh(frontSheet, front);
-  const backMesh = new Mesh(backSheet, back);
-  const card = new Group();
-  card.add(new Mesh(body, edge), frontMesh, backMesh);
-  scene.add(card);
+  const paint = (f: Face) => {
+    const printName = showName(f);
+    for (const [mesh, back] of [[decalFront, false], [decalBack, true]] as const) {
+      if (!mesh) continue;
+      const old = mesh.material as MeshPhysicalMaterial;
+      mesh.material = decal(back, printName);
+      if (old && old !== mesh.material) { old.map?.dispose(); old.dispose(); }
+    }
+  };
+  paint(face);
 
+  const pivot = new Group();
+  pivot.add(card);
+  scene.add(pivot);
   const camera = new PerspectiveCamera(25, ASPECT, 0.1, 20);
-  // the canvas is 1.25x the card, so the card fills 80% of it and has room to tilt
+  // the canvas is 1.25x the card, so the card fills 80% of it and has room to tilt and turn
   camera.position.set(0, 0, (H / 0.8) / (2 * Math.tan((25 / 2) * Math.PI / 180)));
 
-  let raf = 0;
-  const draw = () => { raf = 0; renderer.render(scene, camera); };
+  // motion: the tilt under the finger, the turn (0 front … PI back), and the foil's drift
+  let tiltX = 0, tiltY = 0, turn = 0, turnTo = 0, raf = 0, last = 0, drift = 0;
+  const backShowing = () => Math.cos(turn + tiltX * 0.42) < 0.2;
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const draw = (now: number) => {
+    raf = 0;
+    const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+    last = now;
+    turn = still ? turnTo : MathUtils.damp(turn, turnTo, 7, dt);
+    if (Math.abs(turn - turnTo) < 0.001) turn = turnTo;
+    pivot.rotation.y = tiltX * 0.42 + turn;
+    pivot.rotation.x = -tiltY * 0.34;
+    key.position.set(-1.4 - tiltX * 1.6, 2.2 + tiltY * 1.4, 3);
+    // the colours slide with the angle the card is seen from, and drift on their own
+    if (!still) drift += dt * 0.035;
+    holo.offset.set(Math.sin(pivot.rotation.y) * 0.22 + drift, -pivot.rotation.x * 0.3 + Math.sin(drift * 3) * 0.05);
+    renderer.render(scene, camera);
+    // keep going while it turns, or while the back shows (its colours drift)
+    if (turn !== turnTo || (backShowing() && !still)) request();
+    else last = 0;
+  };
   const request = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  request();
 
-  const disposeFace = (m: MeshPhysicalMaterial) => { m.map?.dispose(); (m.roughnessMap as Texture | null)?.dispose(); m.dispose(); };
   return {
-    setFace(f) {
-      const tierChanged = (f.tier ?? 0) !== (current.tier ?? 0);
-      current = f;
-      const next = makeFace(false, f);
-      frontMesh.material = next;
-      disposeFace(front);
-      front = next;
-      if (tierChanged) {
-        const nb = makeFace(true, f);
-        backMesh.material = nb;
-        disposeFace(back);
-        back = nb;
-        const t = tier();
-        edge.color.set(t.edge.color); edge.metalness = t.edge.metal; edge.roughness = t.edge.rough;
-        rim.color.set(t.rim);
-      }
-      request();
-    },
-    setTilt(x, y) {
-      card.rotation.y = x * 0.42;
-      card.rotation.x = -y * 0.34;
-      // the glint travels against the tilt, like light on a real card
-      key.position.set(-1.4 - x * 1.6, 2.2 + y * 1.4, 3);
-      request();
-    },
-    resize(w, h) {
-      renderer.setSize(w, h, false);
-      request();
-    },
-    dispose() {
+    setFace(f) { current = f; paint(f); request(); },
+    setTilt(x, y) { tiltX = x; tiltY = y; request(); },
+    setTurned(back) { turnTo = back ? Math.PI : 0; request(); },
+    resize(w, h) { renderer.setSize(w, h, false); request(); },
+    dispose(release = true) {
       cancelAnimationFrame(raf);
-      body.dispose(); frontSheet.dispose(); backSheet.dispose(); edge.dispose(); disposeFace(front); disposeFace(back); env.dispose();
+      for (const m of Object.values(mats)) m.dispose();
+      for (const d of [decalFront, decalBack] as (Mesh | null)[]) { const m = d?.material as MeshPhysicalMaterial | undefined; m?.map?.dispose(); m?.dispose(); }
+      holo.dispose(); env.dispose();
       renderer.dispose();
-      renderer.forceContextLoss();
+      if (release) renderer.forceContextLoss();
     },
   };
 }

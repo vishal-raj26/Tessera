@@ -22,6 +22,9 @@ import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
 import { TermPicker } from './components/TermPicker';
 import { Segmented } from './components/Segmented';
+import { Aurora, type AuroraInputs } from './components/Aurora';
+import { Tally } from './components/Tally';
+import { PULL } from './components/PlanCarousel';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
 type SheetName = null | 'review' | 'guide';
@@ -68,14 +71,26 @@ export default function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [walletSent, setWalletSent] = useState(false);
   const [held, setHeld] = useState<Quote | null>(null); // price locked while the review sheet is open
-  const [flipped, setFlipped] = useState(true);
   const [settled, setSettled] = useState(false);
-  const reveal = useMotionValue(0);
   // how far the front card is pulled down; the price, terms and hint below make way as it comes
   const pull = useMotionValue(0);
   const hold = useMotionValue(0); // pressing the card already dims what's below, so the rays stand out
   const belowOpacity = useTransform([pull, hold] as MotionValue<number>[], ([p, h]: number[]) => Math.min(1 - Math.min(1, p / 60), 1 - h * 0.6));
   const belowY = useTransform(pull, [0, 140], [0, 48]);
+  // the aurora (components/Aurora.tsx): light hanging from the top edge. Pulling the card down draws it
+  // down the screen with the card (reach, glow); letting go pours it to the bottom (flood); then a
+  // glowing edge and an orb while paying (rim, orb)
+  const scene = useMotionValue(0);      // how lit the current screen is at rest
+  const flood = useMotionValue(0);      // 0 … 1: the light poured to the bottom after letting go
+  const auroraRim = useMotionValue(0);
+  const auroraOrb = useMotionValue(0);
+  const pullShare = useTransform(pull, (p) => Math.min(1.15, Math.max(0, p) / PULL));
+  const auroraSweep = useMotionValue(0);
+  const auroraSweepGlow = useMotionValue(0);
+  const auroraReach = useTransform([pullShare, flood] as MotionValue<number>[], ([q, f]: number[]) => Math.max(0.2 + q * 0.5, f * 1.15));
+  const auroraGlow = useTransform([pullShare, hold, flood, scene] as MotionValue<number>[], ([q, h, f, b]: number[]) =>
+    Math.min(1, b + h * 0.15 + q * 0.4 + Math.sin(Math.min(1, f) * Math.PI) * 0.5));
+  const aurora = useMemo<AuroraInputs>(() => ({ reach: auroraReach, glow: auroraGlow, sweep: auroraSweep, sweepGlow: auroraSweepGlow, rim: auroraRim, orb: auroraOrb }), [auroraReach, auroraGlow, auroraSweep, auroraSweepGlow, auroraRim, auroraOrb]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
   const [canHome, setCanHome] = useState(false);
   useEffect(() => {
@@ -304,21 +319,26 @@ export default function App() {
     return () => clearInterval(id);
   }, [view, order?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // the reveal: flip to the front, the pearl foil wipes across, sparks fly, then the codes arrive
+  // done: the check draws and the credit counts up while the edge glows, then the codes arrive
   useEffect(() => {
     if (view !== 'done') return;
-    setFlipped(true);
     setSettled(false);
-    reveal.set(0);
-    const t1 = setTimeout(() => { setFlipped(false); tg.tap('light'); }, 250);
-    const t2 = setTimeout(() => {
-      animate(reveal, 1, { duration: 1.4, ease: [0.65, 0, 0.35, 1] }).then(() => {
-        tg.notify('success');
-        setTimeout(() => setSettled(true), 250);
-      });
-    }, 1050);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [view, reveal]);
+    tg.notify('success');
+    const t = setTimeout(() => setSettled(true), 2100);
+    return () => clearTimeout(t);
+  }, [view]);
+
+  // how lit each screen is, and the edge and orb while paying and when it's done
+  useEffect(() => {
+    const failedNow = order?.status === 'failed' || order?.status === 'expired' || order?.status === 'refunded';
+    const to = (mv: MotionValue<number>, v: number, d = 0.8) => animate(mv, v, { duration: d, ease: 'easeInOut' });
+    if (view === 'home') { to(scene, sheet ? 0.22 : 0.62); to(auroraRim, 0); to(auroraOrb, 0); }
+    else if (view === 'paying') { to(scene, 0.12); to(auroraRim, failedNow ? 0.15 : 0.85, 1.2); to(auroraOrb, failedNow ? 0 : 1, 1.2); }
+    else if (view === 'done') {
+      to(scene, 0.18); to(auroraOrb, 0, 0.6);
+      animate(auroraRim, [auroraRim.get(), 1, 1, 0.3], { duration: 3.2, times: [0, 0.15, 0.6, 1] });
+    } else { to(scene, 0.25); to(auroraRim, 0); to(auroraOrb, 0); }
+  }, [view, sheet, order?.status, scene, auroraRim, auroraOrb]);
 
   useEffect(() => {
     if (!toast) return;
@@ -328,7 +348,14 @@ export default function App() {
 
   // stable handle for the memoised carousel, always calling the latest openReview
   const reviewRef = useRef<() => void>(() => {});
-  const onPull = useCallback(() => reviewRef.current(), []);
+  const onPull = useCallback(() => {
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // pour the light from where the pull left it down to the bottom, then let it settle
+      flood.set(0.75);
+      animate(flood, [0.75, 1.05, 0], { duration: 1.1, times: [0, 0.4, 1], ease: [[0.4, 0, 0.2, 1], [0.4, 0, 0.6, 1]] });
+    }
+    reviewRef.current();
+  }, [flood]);
   function openReview() {
     if (!plan?.available || !term || !prices.ready) return;
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
@@ -453,7 +480,7 @@ export default function App() {
   return (
     <>
       <div className="atmos" aria-hidden="true">
-        <div className="beam" /><div className="beam" /><div className="beam" />
+        <Aurora inputs={aurora} product={product?.id ?? 'claude'} />
         {/* the glow behind the front card takes the colour of its plan's tier */}
         {TIERS.map((t, i) => (
           <div key={t.name} className="tint" style={{ background: `radial-gradient(60% 42% at 50% 40%, ${t.glow}, transparent 70%)`, opacity: view === 'home' && plan && tierOf(plan.id) === i ? 1 : 0 }} />
@@ -579,23 +606,10 @@ export default function App() {
 
           {view === 'paying' && order && (
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <motion.div className="pay-stage" initial={{ y: 160, scale: 0.8, rotate: -6 }} animate={{ y: 0, scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 140, damping: 18 }}>
-                <HoloCard
-                  planId={order.plan.id}
-                  label={order.plan.label}
-                  product={order.product?.name}
-                  store={order.store?.label}
-                  term={termLabel(order.months ?? 1)}
-                  credit={fmtMoney(order.credit, order.currency)}
-                  flipped
-                  back={
-                    <>
-                      <b>{backLine}</b>
-                      <span className="amt"><Amount method={order.method} gram={order.gram} stars={order.stars} size={13} /></span>
-                      {!failed && <div className="charge"><i /></div>}
-                    </>
-                  }
-                />
+              <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
+                <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
+                <b>{failed ? backLine : `Paying for ${order.product?.name ?? 'Claude'} ${order.plan.label ?? PLAN_LABEL[order.plan.id]}`}</b>
+                {!failed && <span className="pay-sub">{backLine} · {fmtMoney(order.credit, order.currency)} {order.store?.label ?? 'App Store'} credit, {termLabel(order.months ?? 1)}</span>}
               </motion.div>
               {failed ? (
                 <>
@@ -640,28 +654,22 @@ export default function App() {
 
           {view === 'done' && order?.codes && (
             <motion.main key="done" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="reveal-stage">
-                <motion.div animate={settled ? { y: 0, scale: 1 } : { y: 30, scale: 1.06 }} transition={{ type: 'spring', stiffness: 120, damping: 18 }}>
-                  <HoloCard
-                    className="md"
-                    planId={order.plan.id}
-                    label={order.plan.label}
-                    product={order.product?.name}
-                    store={order.store?.label}
-                  term={termLabel(order.months ?? 1)}
-                    credit={fmtMoney(order.credit, order.currency)}
-                    reveal={reveal}
-                    flipped={flipped}
-                    interactive
-                    back={<><b>Ready</b><span className="amt"><Amount method={order.method} gram={order.gram} stars={order.stars} size={13} /></span></>}
-                  />
+              <div className="success">
+                <svg className="check" viewBox="0 0 52 52" aria-hidden="true">
+                  <motion.path d="M14 27.5 22.5 36 39 17" fill="none" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 0.55, ease: [0.65, 0, 0.35, 1], delay: 0.35 }} />
+                </svg>
+                <motion.div className="success-amount" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
+                  <Tally value={order.credit} format={(n) => fmtMoney(n, order.currency)} delay={0.3} duration={1.6} />
                 </motion.div>
+                <motion.p className="success-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
+                  {order.store?.label ?? 'App Store'} credit for {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}, {termLabel(order.months ?? 1)}
+                </motion.p>
               </div>
               {settled && (
                 <div style={{ width: '100%' }}>
                   <motion.div className="done-title" {...rise(0)}>
                     <h1>Your credit is ready</h1>
-                    <p>{fmtMoney(order.credit, order.currency)} for {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}, {termLabel(order.months ?? 1)}</p>
                   </motion.div>
                   <div className="actions">
                     <RedeemCodes order={order} copied={copied} onCopy={copy} onMark={markCode} delay={0.1} />

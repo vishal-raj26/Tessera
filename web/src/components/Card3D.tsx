@@ -1,5 +1,6 @@
 // The plan card as a real 3D object (see three/cardScene.ts). Shows the CSS card until three.js has
-// loaded, and keeps it if WebGL isn't available. Tilts only under the finger (no gyro, no idle sway:
+// loaded, and keeps it if WebGL isn't available. Tapping the front card turns it over to its
+// holographic back, and tapping again turns it back. Tilts only under the finger (no gyro, no idle sway:
 // a card that moves by itself reads as shaking), through the same springs as the CSS card.
 import { useMotionValue, useSpring } from 'framer-motion';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -19,7 +20,7 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<CardScene | null>(null);
   const [ready, setReady] = useState(false);
-  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`, tier: tierOf(planId) };
+  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`, tier: tierOf(planId), product: (product ?? 'Claude').toLowerCase() };
   const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}|${face.tier}`;
 
   const px = useMotionValue(0);
@@ -34,7 +35,8 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
     import('../three/cardScene')
       .then(({ createCardScene }) => createCardScene(canvas.current!, face))
       .then((s) => {
-        if (!alive) { s.dispose(); return; }
+        // unmounted meanwhile (or React ran this effect twice): keep the context, the canvas may be reused
+        if (!alive) { s.dispose(false); return; }
         // Phones (iOS especially) can drop a WebGL context under memory pressure. Then the canvas is
         // blank, so go back to the CSS card for good rather than leave an empty space.
         canvas.current!.addEventListener('webglcontextlost', (e) => {
@@ -53,6 +55,18 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
       .catch(() => { /* keep the CSS card */ });
     return () => { alive = false; scene.current?.dispose(); scene.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // tap (not a drag) turns the front card over; a card that leaves the front turns back
+  const [turned, setTurned] = useState(false);
+  useEffect(() => { if (!interactive) setTurned(false); }, [interactive]); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { scene.current?.setTurned(turned); }, [turned, ready]);
+  const down = useRef<{ x: number; y: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => { down.current = { x: e.clientX, y: e.clientY }; };
+  const onClick = (e: React.MouseEvent) => {
+    const d = down.current;
+    if (!interactive || !ready || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
+    setTurned((t) => !t);
+  };
 
   // new plan, credit or term: repaint the face
   useEffect(() => { scene.current?.setFace(face); }, [faceKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -104,7 +118,7 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   }, [idle, px, py]);
 
   return (
-    <div ref={wrap} className={`card-wrap card3d ${ready ? 'is-ready' : ''} ${className}`}>
+    <div ref={wrap} className={`card-wrap card3d ${ready ? 'is-ready' : ''} ${className}`} onPointerDown={onDown} onClick={onClick}>
       {!ready && <HoloCard planId={planId} label={label} product={product} store={store} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
       <canvas ref={canvas} className="card3d-canvas" aria-hidden="true" />
       <span className="card3d-shadow" aria-hidden="true" />
