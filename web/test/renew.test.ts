@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renewStep, type RenewState, type RenewTarget } from '../src/renew.ts';
+import { pricesShown, renewStep, type RenewState, type RenewTarget } from '../src/renew.ts';
 
 const pro = (terms: number[], available = true) => ({ id: 'pro_m', available, terms: terms.map((months) => ({ months })) });
 const max = { id: 'max5_m', available: true, terms: [{ months: 1 }, { months: 3 }, { months: 6 }] };
@@ -50,4 +50,19 @@ test('(review P1) a store that is not priced, a different app, a missing or unav
 test('nothing loaded yet: waits', () => {
   assert.equal(renewStep(appstore12, { ...base, plans: null }).do, 'wait');
   assert.equal(renewStep(appstore12, { ...base, catalogStore: null }).do, 'wait');
+});
+
+test('(review P2) prices keep the name of the store they belong to while another store loads or fails', () => {
+  // Renew switched the screen to App Store, but only Google Play prices are loaded
+  assert.deepEqual(pricesShown('appstore', 'play'), { store: 'play', ready: false });
+  // the App Store prices arrive
+  assert.deepEqual(pricesShown('appstore', 'appstore'), { store: 'appstore', ready: true });
+  // nothing loaded yet: the screen's own store
+  assert.deepEqual(pricesShown('play', null), { store: 'play', ready: true });
+});
+
+test('(review P2) a failed cross-store fetch never opens anything', () => {
+  // the App Store catalog never arrives: Renew keeps waiting (the app then restores the old store)
+  const stuck: RenewState = { ...base, catalogStore: 'play', store: 'appstore', plans: [pro([1, 3, 6]), max] };
+  assert.equal(renewStep(appstore12, stuck).do, 'wait');
 });

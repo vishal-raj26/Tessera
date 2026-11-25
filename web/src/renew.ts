@@ -34,3 +34,14 @@ export function renewStep(t: RenewTarget, s: RenewState): RenewStep {
   if (s.months !== t.months) return { do: 'months', months: t.months };
   return { do: 'open' };
 }
+
+/**
+ * Which store the prices on screen belong to. The screen's store can change before that store's prices
+ * arrive (Renew, or a store that stops being priced), so the label follows the loaded prices, never the
+ * other way round: Google Play prices are never called App Store prices. `ready` is false until the
+ * loaded prices are the screen's store's; nothing can be bought until then.
+ */
+export function pricesShown(store: string, catalogStore: string | null): { store: string; ready: boolean } {
+  const shown = catalogStore ?? store;
+  return { store: shown, ready: shown === store };
+}

@@ -15,7 +15,7 @@ import { RedeemCodes } from './components/RedeemCodes';
 import { rememberTiers, tierOf, TIERS } from './tiers';
 import { CountUp } from './components/CountUp';
 import { latestCoverage } from './coverage';
-import { renewStep, type RenewTarget } from './renew';
+import { pricesShown, renewStep, type RenewTarget } from './renew';
 import { shownBalance } from './balance';
 import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
@@ -145,8 +145,10 @@ export default function App() {
     const sellable = mine.filter((p) => p.available);
     return sellable.length ? sellable : mine;
   }, [allPlans, productId]);
-  const storeLabel = config?.stores?.find((s) => s.id === store)?.label ?? 'App Store';
-  const storeOwner = store === 'play' ? 'Google' : 'Apple';
+  // labels follow the prices actually loaded (renew.ts): another store's prices never get this store's name
+  const prices = pricesShown(store, catalogStore);
+  const storeLabel = config?.stores?.find((s) => s.id === prices.store)?.label ?? 'App Store';
+  const storeOwner = prices.store === 'play' ? 'Google' : 'Apple';
   function pickProduct(id: string) {
     if (id === productId) return;
     tg.select(); setProductPick(id); setIndex(0); setErr(null);
@@ -213,8 +215,6 @@ export default function App() {
     setRenewing(null);
     setErr("That plan can't be renewed here right now.");
     tg.notify('error');
-    // put the screen back on the prices of the store it shows
-    if (config && catalogStore !== store) api.catalog(config.region, store).then(applyCatalog).catch(() => {});
   };
   function renew() {
     if (!cover || !config) return;
@@ -222,12 +222,18 @@ export default function App() {
     const target: RenewTarget = { product: o.product?.id || productId, store: o.store?.id ?? 'appstore', planId: o.plan.id, months: o.months ?? 1 };
     tg.tap('light');
     setErr(null);
+    // where the screen was, to go back to if that store's prices can't be loaded
+    const before = { storePick, productPick };
     if (target.product !== productId) setProductPick(target.product);
     if (target.store !== store) {
-      // load that store's own prices first; the screen switches to it only if it's priced
+      // load that store's own prices first; until they arrive the screen keeps the loaded store's name
+      // and can't buy (pricesShown), and Renew waits for them (renewStep)
       setStorePick(target.store as StoreId);
-      setCatalogStore(null);
-      api.catalog(config.region, target.store as StoreId).then(applyCatalog).catch(cantRenew);
+      api.catalog(config.region, target.store as StoreId).then(applyCatalog).catch(() => {
+        setStorePick(before.storePick);
+        setProductPick(before.productPick);
+        cantRenew();
+      });
     }
     setRenewing(target);
   }
@@ -239,6 +245,13 @@ export default function App() {
     else if (step.do === 'months') setMonths(step.months);
     else if (step.do === 'open') { setRenewing(null); reviewRef.current(); }
   }, [renewing, catalogStore, store, productId, plans, index, months, term?.months]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the screen's store has no prices loaded (a store that stopped being priced, or a Renew that ended):
+  // load them. Renew loads its own and is waited for.
+  useEffect(() => {
+    if (!config || renewing || prices.ready) return;
+    api.catalog(config.region, store).then(applyCatalog).catch(() => {});
+  }, [config, renewing, prices.ready, store, applyCatalog]);
 
   // live price: a small pulse whenever the GRAM rate moves the price of what's on screen
   const [pulse, setPulse] = useState(0);
@@ -317,7 +330,7 @@ export default function App() {
   const reviewRef = useRef<() => void>(() => {});
   const onPull = useCallback(() => reviewRef.current(), []);
   function openReview() {
-    if (!plan?.available || !term) return;
+    if (!plan?.available || !term || !prices.ready) return;
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
