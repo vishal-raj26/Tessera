@@ -1,6 +1,7 @@
-// The aurora: soft curtains of light hanging from the top edge of the screen, in the product's colours,
-// their streaks always drifting downwards. Pulling the card down draws the light down the screen with
-// it; letting go past the pull point pours it all the way to the bottom. While paying, the light gathers into a glow around the screen's edge and an orb at the
+// The aurora: soft light resting along the bottom edge of the screen, in the product's colours, its
+// streaks always flowing down into the edge, as if the bottom were calling the card towards it.
+// Pulling the card down raises a path of light up to meet it; letting go past the pull point draws the
+// light back down into the bottom behind the card. While paying, the light gathers into a glow around the screen's edge and an orb at the
 // bottom; when the credit is ready the edge lights up once more.
 //
 // One full-screen WebGL canvas behind everything (a single fragment shader, no three.js), drawn only
@@ -9,7 +10,7 @@ import { useEffect, useRef } from 'react';
 import type { MotionValue } from 'framer-motion';
 
 export interface AuroraInputs {
-  /** how far down the light reaches from the top edge, as a share of the screen height */
+  /** how far up the light reaches from the bottom edge, as a share of the screen height */
   reach: MotionValue<number>;
   /** overall brightness of the resting glow 0 … 1 */
   glow: MotionValue<number>;
@@ -48,28 +49,27 @@ vec3 tone(float k, float streak) {
 void main() {
   vec2 px = gl_FragCoord.xy;
   vec2 uv = px / uRes;
-    float yt = 1.0 - uv.y;               // 0 at the top
+    float yb = uv.y;                     // 0 at the bottom edge, 1 at the top
   float x = uv.x - 0.5;
   float t = uTime;
   vec3 col = vec3(0.0); float a = 0.0;
 
-  // curtains of light hanging from the top edge, their streaks drifting down towards the bottom
+  // the light lives at the bottom edge, like a doorway; its streaks always flow down into it, so the
+  // bottom seems to draw things towards it. Pulling the card raises a path of light up to the card.
   float reach = max(uReach, 0.001);
-  float sway = fbm(vec2(x * 1.8 + t * 0.04, yt * 0.6 - t * 0.1));
-  float rays = fbm(vec2(x * 11.0 + sway * 2.2, yt * 0.9 - t * 0.5));
+  float sway = fbm(vec2(x * 1.8 + t * 0.04, yb * 0.6 + t * 0.1));
+  float rays = fbm(vec2(x * 11.0 + sway * 2.2, yb * 0.9 + t * 0.55));
   float streak = smoothstep(0.3, 0.9, rays);
-  // wide at the top edge, narrowing as it falls; the light reaches further down as the card is pulled
-  float width = mix(0.72, 0.34, clamp(yt / reach, 0.0, 1.0));
+  // wide at the bottom edge, narrowing into a path as it rises towards the card
+  float width = mix(0.7, 0.26, clamp(yb / reach, 0.0, 1.0));
   float side = exp(-pow(x / width, 2.0) * 2.0);
-  float fall = exp(-pow(yt / reach, 1.6) * 1.6);
-  float body = fall * side * (0.55 + 0.75 * streak * smoothstep(0.0, 0.35, yt / reach));
-  float edge = exp(-yt * 60.0) * smoothstep(0.66, 0.0, abs(x)) * 1.3;
-  float core = exp(-yt / (reach * 0.14)) * side;
+  float fall = exp(-pow(yb / reach, 1.5) * 1.6);
+  float body = fall * side * (0.55 + 0.75 * streak * smoothstep(0.0, 0.3, yb / reach));
+  float edge = exp(-yb * 55.0) * smoothstep(0.7, 0.0, abs(x)) * 1.4;
+  float core = exp(-yb / (reach * 0.13)) * side;
   vec3 c = tone(clamp(fall * side * 1.15 + streak * 0.15, 0.0, 1.0), streak);
-  c = mix(c, vec3(1.0, 0.93, 0.86), clamp(core * 0.9 + edge, 0.0, 1.0) * 0.6);
-  // kept soft right under the top bar so its text stays readable
-  float bar = mix(0.45, 1.0, smoothstep(0.03, 0.14, yt));
-  float aur = clamp((body * 1.6 + edge * 0.6 + core * 0.35) * uGlow * bar, 0.0, 1.0);
+  c = mix(c, vec3(1.0, 0.94, 0.88), clamp(core * 1.0 + edge, 0.0, 1.0) * 0.75);
+  float aur = clamp((body * 1.6 + edge * 0.8 + core * 0.5) * uGlow, 0.0, 1.0);
   col += c * aur; a = max(a, aur);
 
   // the edge of the screen glowing, and the orb at the bottom

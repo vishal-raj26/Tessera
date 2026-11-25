@@ -3,7 +3,7 @@ import { AnimatePresence, animate, motion, useMotionValue, useTransform, type Mo
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
-import { HoloCard, PLAN_LABEL } from './components/HoloCard';
+import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
 import { Sheet } from './components/Sheet';
 import { Guide } from './components/Guide';
@@ -12,7 +12,7 @@ import { Header } from './components/Header';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
-import { rememberTiers, tierOf, TIERS } from './tiers';
+import { rememberTiers } from './tiers';
 import { CountUp } from './components/CountUp';
 import { latestCoverage } from './coverage';
 import { pricesShown, renewStep, type RenewTarget } from './renew';
@@ -77,17 +77,17 @@ export default function App() {
   const hold = useMotionValue(0); // pressing the card already dims what's below, so the rays stand out
   const belowOpacity = useTransform([pull, hold] as MotionValue<number>[], ([p, h]: number[]) => Math.min(1 - Math.min(1, p / 60), 1 - h * 0.6));
   const belowY = useTransform(pull, [0, 140], [0, 48]);
-  // the aurora (components/Aurora.tsx): light hanging from the top edge. Pulling the card down draws it
-  // down the screen with the card (reach, glow); letting go pours it to the bottom (flood); then a
-  // glowing edge and an orb while paying (rim, orb)
+  // the aurora (components/Aurora.tsx): light resting at the bottom edge, flowing down into it. Pulling
+  // the card raises a path of light up to it (reach, glow); letting go draws it back down into the
+  // bottom (flood); then a glowing edge and an orb while paying (rim, orb)
   const scene = useMotionValue(0);      // how lit the current screen is at rest
-  const flood = useMotionValue(0);      // 0 … 1: the light poured to the bottom after letting go
+  const flood = useMotionValue(0);      // after letting go: rises to meet the card (→1), then sinks (→0)
   const auroraRim = useMotionValue(0);
   const auroraOrb = useMotionValue(0);
   const pullShare = useTransform(pull, (p) => Math.min(1.15, Math.max(0, p) / PULL));
   const auroraSweep = useMotionValue(0);
   const auroraSweepGlow = useMotionValue(0);
-  const auroraReach = useTransform([pullShare, flood] as MotionValue<number>[], ([q, f]: number[]) => Math.max(0.2 + q * 0.5, f * 1.15));
+  const auroraReach = useTransform([pullShare, flood] as MotionValue<number>[], ([q, f]: number[]) => Math.max(0.14 + q * 0.48, f * 0.72));
   const auroraGlow = useTransform([pullShare, hold, flood, scene] as MotionValue<number>[], ([q, h, f, b]: number[]) =>
     Math.min(1, b + h * 0.15 + q * 0.4 + Math.sin(Math.min(1, f) * Math.PI) * 0.5));
   const aurora = useMemo<AuroraInputs>(() => ({ reach: auroraReach, glow: auroraGlow, sweep: auroraSweep, sweepGlow: auroraSweepGlow, rim: auroraRim, orb: auroraOrb }), [auroraReach, auroraGlow, auroraSweep, auroraSweepGlow, auroraRim, auroraOrb]);
@@ -332,7 +332,7 @@ export default function App() {
   useEffect(() => {
     const failedNow = order?.status === 'failed' || order?.status === 'expired' || order?.status === 'refunded';
     const to = (mv: MotionValue<number>, v: number, d = 0.8) => animate(mv, v, { duration: d, ease: 'easeInOut' });
-    if (view === 'home') { to(scene, sheet ? 0.22 : 0.62); to(auroraRim, 0); to(auroraOrb, 0); }
+    if (view === 'home') { to(scene, sheet ? 0.18 : 0.42); to(auroraRim, 0); to(auroraOrb, 0); }
     else if (view === 'paying') { to(scene, 0.12); to(auroraRim, failedNow ? 0.15 : 0.85, 1.2); to(auroraOrb, failedNow ? 0 : 1, 1.2); }
     else if (view === 'done') {
       to(scene, 0.18); to(auroraOrb, 0, 0.6);
@@ -350,9 +350,9 @@ export default function App() {
   const reviewRef = useRef<() => void>(() => {});
   const onPull = useCallback(() => {
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      // pour the light from where the pull left it down to the bottom, then let it settle
-      flood.set(0.75);
-      animate(flood, [0.75, 1.05, 0], { duration: 1.1, times: [0, 0.4, 1], ease: [[0.4, 0, 0.2, 1], [0.4, 0, 0.6, 1]] });
+      // the path flares up to the card, then sinks back down into the bottom behind it
+      flood.set(0.85);
+      animate(flood, [0.85, 1, 0], { duration: 1.2, times: [0, 0.25, 1], ease: [[0.4, 0, 0.2, 1], [0.55, 0, 0.75, 0.2]] });
     }
     reviewRef.current();
   }, [flood]);
@@ -481,11 +481,6 @@ export default function App() {
     <>
       <div className="atmos" aria-hidden="true">
         <Aurora inputs={aurora} product={product?.id ?? 'claude'} />
-        {/* the glow behind the front card takes the colour of its plan's tier */}
-        {TIERS.map((t, i) => (
-          <div key={t.name} className="tint" style={{ background: `radial-gradient(60% 42% at 50% 40%, ${t.glow}, transparent 70%)`, opacity: view === 'home' && plan && tierOf(plan.id) === i ? 1 : 0 }} />
-        ))}
-        <div className="floor" />
       </div>
 
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
@@ -506,26 +501,23 @@ export default function App() {
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
                 {cover ? (
-                  <div className={`hello ${cover.daysLeft <= 5 ? 'soon' : ''}`}>
-                    <div className="hello-text">
-                      {tg.firstName && <span className="hi">Hi {tg.firstName}</span>}
-                      <p>
-                        <b>{cover.order.product?.name ?? 'Claude'} {cover.order.plan.label ?? cover.order.plan.name}</b>
-                        {' · '}
-                        {cover.daysLeft > 1 ? `${cover.daysLeft} days left`
-                          : cover.daysLeft === 1 ? '1 day left'
-                          : cover.daysLeft === 0 ? 'runs out today'
-                          : `ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
-                      </p>
-                    </div>
-                    <button className="renew" onClick={renew}>Renew</button>
-                  </div>
+                  <p className={`status-line ${cover.daysLeft <= 5 ? 'soon' : ''}`}>
+                    <span>
+                      {cover.order.product?.name ?? 'Claude'} {cover.order.plan.label ?? cover.order.plan.name}
+                      {' · '}
+                      {cover.daysLeft > 1 ? `${cover.daysLeft} days left`
+                        : cover.daysLeft === 1 ? '1 day left'
+                        : cover.daysLeft === 0 ? 'runs out today'
+                        : `ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
+                    </span>
+                    <button className="link" onClick={renew}>Renew</button>
+                  </p>
                 ) : null}
                 {products.length > 1
                   ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
-                  : !cover && <h1>Choose your {product?.name ?? 'Claude'} plan</h1>}
+                  : !cover && <h1>{product?.name ?? 'Claude'}, paid in GRAM</h1>}
                 {!cover && history !== null && (
-                  <p className="promise">Pay with GRAM{config?.stars ? ' or Stars' : ''}, get your code right away.</p>
+                  <p className="promise">Pick a plan, pull the card, get your code.</p>
                 )}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
@@ -596,9 +588,8 @@ export default function App() {
               {err && <p className="error" style={{ textAlign: 'center' }}>{err}</p>}
 
               {plans && <motion.div className="pullhint" {...rise(0.95)}>
-                <div className="chev" aria-hidden="true"><span /><span /></div>
-                <span>{needsWallet ? 'Pull the card down to connect your wallet' : 'Pull the card down to buy'}</span>
-                <button onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>
+                <span>{needsWallet ? 'Pull down to connect your wallet' : 'Pull the card down to buy'}</span>
+                <button className="link" onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>
               </motion.div>}
               </motion.div>
             </motion.main>
@@ -717,14 +708,9 @@ export default function App() {
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
         {plan?.available && term && shown && (
           <div className="st">
-            <div className="summary">
-              <motion.div initial={{ rotate: -14, y: 30, opacity: 0 }} animate={{ rotate: -6, y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 16, delay: 0.1 }}>
-                <HoloCard className="sm" planId={plan.id} label={plan.label} product={plan.product?.name} store={storeLabel} credit={fmtMoney(shown.credit, shown.currency)} term={termLabel(shown.months)} />
-              </motion.div>
-              <div className="what">
-                <b>{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}</b>
-                {termLabel(shown.months)} · delivered instantly
-              </div>
+            <div className="sheet-head">
+              <h2>{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}</h2>
+              <p className="sub">{termLabel(shown.months)} of {storeLabel} credit · delivered instantly</p>
             </div>
             <dl className="rows">
               <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` · ${shown.codes} codes` : ''}</dd></div>
@@ -778,7 +764,7 @@ export default function App() {
           <h2>Activate {guideFor?.product?.name ?? 'Claude'} {guideFor && (guideFor.plan.label ?? PLAN_LABEL[guideFor.plan.id])}</h2>
           <p className="sub">Four steps, about two minutes.</p>
           {guideFor && <Guide order={guideFor} />}
-          <button className="btn btn-quiet" style={{ marginTop: 18 }} onClick={view === 'wallet' ? closeSheet : home}>Done</button>
+          <button className="btn btn-quiet" onClick={view === 'wallet' ? closeSheet : home}>Done</button>
         </div>
       </Sheet>
 
