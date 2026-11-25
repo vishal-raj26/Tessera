@@ -34,6 +34,18 @@ nt.links.new(tx.outputs['Color'], em.inputs['Color']); em.inputs['Strength'].def
 nt.links.new(em.outputs['Emission'], nt.nodes['Material Output'].inputs['Surface'])
 bd.data.materials.append(m)
 bd.visible_shadow = False
+if os.environ.get('CLEAR'):
+    # transparent background, but the backdrop still lights the card and shows in its reflections
+    bd.visible_camera = False
+    sc.render.film_transparent = True
+    # a soft white board behind the camera, for the silver to reflect
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(-0.6, -7, 1.6), rotation=(math.radians(78), 0, math.radians(-5)))
+    rf = bpy.context.active_object; rf.scale = (5, 2.2, 1); rf.visible_camera = False
+    rm = bpy.data.materials.new('Reflector'); rm.use_nodes = True; rn = rm.node_tree
+    rn.nodes.remove(rn.nodes['Principled BSDF']); e2 = rn.nodes.new('ShaderNodeEmission'); e2.inputs['Strength'].default_value = 1.2
+    rn.links.new(e2.outputs['Emission'], rn.nodes['Material Output'].inputs['Surface']); rf.data.materials.append(rm)
+    # softer polish, so the foil catches the big lights from any angle
+    bpy.data.materials['Silver'].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 0.34
 
 # lights
 def area(name, loc, rot, size, power, color=(1, 1, 1), sx=None):
