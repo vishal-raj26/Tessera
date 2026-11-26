@@ -21,7 +21,7 @@ interface Props {
   onPick: (productId: string) => void;
   /** shown above the apps: the buyer's current plan, with Renew */
   notice?: ReactNode;
-  /** replays the intro: a quiet link under the apps */
+  /** replays the intro: a quiet text link under the apps, only until the buyer's first purchase */
   onGuide?: () => void;
 }
 
@@ -61,10 +61,7 @@ export function Showcase({ products, plans, onPick, notice, onGuide }: Props) {
           );
         })}
         {onGuide && (
-          <button className="guide-link" onClick={() => { tg.select(); onGuide(); }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M9.7 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1.1.9-1.1 1.6v.4" /><path d="M12 16.6v.01" strokeWidth="2.4" /></svg>
-            How Tessera works
-          </button>
+          <button className="guide-link" onClick={() => { tg.select(); onGuide(); }}>How Tessera works</button>
         )}
       </div>
 
