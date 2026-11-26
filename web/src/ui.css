@@ -103,7 +103,7 @@ html, body, #root { background: var(--void); }
 .paywith button { height: 46px; padding: 0 8px; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 1px solid var(--line); color: var(--mute); }
 .paywith button.on { color: var(--ink); }
 .paywith .pw-bg { border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1.5px solid var(--ink); box-shadow: none; inset: -1px; }
-.paywith .pw-amt { gap: 7px; font-size: 15px; font-weight: 500; letter-spacing: -0.01em; }
+.paywith .pw-amt { gap: 7px; font-size: 15px; font-weight: 500; letter-spacing: -0.01em; white-space: nowrap; }
 .paywith button:not(.on) .pw-amt svg { filter: grayscale(1); opacity: 0.5; }
 
 .agree { font-size: 13.5px; color: var(--mute); gap: 12px; margin: 0 0 18px; line-height: 1.4; }
@@ -269,3 +269,23 @@ html, body, #root { background: var(--void); }
 .app-title svg { color: var(--mute); }
 .app-title:active { background: rgba(255, 255, 255, 0.06); }
 .intro { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+/* --- another coin through Relay: the picker in the review sheet, and the deposit card while paying ----- */
+.coin-pick { display: grid; gap: 8px; margin: -6px 0 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { height: 34px; padding: 0 13px; border-radius: 99px; border: 1px solid var(--line); font-size: 14px; font-weight: 500; color: var(--mute); }
+.chips button.on { color: var(--void); background: var(--ink); border-color: var(--ink); }
+.chips.nets button { height: 30px; font-size: 13px; }
+.coin-note { margin: 2px 0 0; font-size: 12.5px; color: var(--mute); }
+.pay-coin { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; color: var(--mute); margin-left: 8px; }
+.relay-card { margin-top: 22px; width: min(320px, 100%); display: grid; gap: 10px; padding: 14px; border-radius: 20px; background: rgba(16, 16, 16, 0.86); box-shadow: inset 0 0 0 1px var(--line); }
+.relay-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+.relay-label { color: var(--mute); }
+.relay-val { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.relay-val b { font-weight: 600; }
+.relay-val svg, .relay-addr svg { color: var(--mute); flex: none; }
+.relay-qr { justify-self: center; padding: 6px; border-radius: 14px; background: #f5f3ef; line-height: 0; }
+.relay-addr { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--ink); text-align: left; }
+.relay-addr span { flex: 1; min-width: 0; word-break: break-all; }
+.relay-warn { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--mute); text-align: center; }
+.relay-sim { height: 42px; }

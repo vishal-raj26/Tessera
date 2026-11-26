@@ -53,7 +53,7 @@ export function openStore(file) {
   if (!cols.includes('seen_at')) db.exec('ALTER TABLE orders ADD COLUMN seen_at INTEGER');
   if (!cols.includes('delivered_at')) db.exec('ALTER TABLE orders ADD COLUMN delivered_at INTEGER');
   if (!cols.includes('reminded_at')) db.exec('ALTER TABLE orders ADD COLUMN reminded_at INTEGER');
-  // payment method: 'gram' (on-chain, matched by memo) or 'stars' (Telegram Stars invoice)
+  // payment method: 'gram' (on-chain, matched by memo), 'stars' (Telegram Stars invoice) or 'relay' (another coin, via Relay)
   if (!cols.includes('method')) db.exec("ALTER TABLE orders ADD COLUMN method TEXT NOT NULL DEFAULT 'gram'");
   if (!cols.includes('stars')) db.exec('ALTER TABLE orders ADD COLUMN stars INTEGER');
   if (!cols.includes('charge_id')) db.exec('ALTER TABLE orders ADD COLUMN charge_id TEXT');
@@ -61,20 +61,23 @@ export function openStore(file) {
   if (!cols.includes('months')) db.exec('ALTER TABLE orders ADD COLUMN months INTEGER NOT NULL DEFAULT 1');
   // where the credit is for: 'appstore' or 'play'
   if (!cols.includes('store')) db.exec("ALTER TABLE orders ADD COLUMN store TEXT NOT NULL DEFAULT 'appstore'");
+  // Relay orders: the deposit (coin, network, address, amount) as JSON
+  if (!cols.includes('relay')) db.exec('ALTER TABLE orders ADD COLUMN relay TEXT');
 
   const parse = (row) => row && {
     ...row,
     packages: JSON.parse(row.packages),
     codes: row.codes ? JSON.parse(row.codes) : null,
+    relay: row.relay ? JSON.parse(row.relay) : null,
   };
 
   const orders = {
     insert(o) {
       db.prepare(`INSERT INTO orders (id, tg_user_id, wallet, region, plan_id, packages, face_value, currency, cost_usd,
-        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars, months, store)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars, months, store, relay)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         o.id, o.tgUserId ?? null, o.wallet ?? null, o.region, o.planId, JSON.stringify(o.packages), o.faceValue, o.currency,
-        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null, o.months ?? 1, o.store ?? 'appstore');
+        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null, o.months ?? 1, o.store ?? 'appstore', o.relay ? JSON.stringify(o.relay) : null);
     },
     get: (id) => parse(db.prepare('SELECT * FROM orders WHERE id = ?').get(id)),
     byMemo: (memo) => parse(db.prepare('SELECT * FROM orders WHERE comment = ?').get(memo)),
