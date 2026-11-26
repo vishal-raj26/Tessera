@@ -82,11 +82,13 @@ void main() {
   if (uRim > 0.001 || uOrb > 0.001) {
     vec2 q = px - uRes * 0.5;
     float d = box(q, uRes * 0.5 - 1.0, uRadius);
-    // the middle of the screen is far from the edge and the orb: nothing to light there
-    vec2 o0 = vec2(px.x - uRes.x * 0.5, px.y - uRes.y * 0.035);
-    if (d < -uRes.x * 0.32 && length(o0) > uRes.x * 0.45) { gl_FragColor = vec4(col, a); return; }
     float pulse = 0.85 + 0.15 * sin(t * 2.4);
     float rimL = exp(d / 5.0) * 0.9 + exp(d / 38.0) * 0.45;
+    vec2 o0 = vec2(px.x - uRes.x * 0.5, px.y - uRes.y * 0.035);
+    float orb0 = exp(-length(o0 / vec2(1.0, 1.25)) / (uRes.x * 0.055)) * uOrb;
+    // skip the rest only where neither the edge nor the orb adds anything you could see (a fixed
+    // cut-off in screen space left a darker stripe down the middle, where the glow hadn't quite faded)
+    if (rimL * uRim < 0.0015 && orb0 < 0.0015) { gl_FragColor = vec4(col, a); return; }
     float travel = 0.6 + 0.4 * sin(atan(q.y, q.x) * 2.0 - t * 1.6);
     vec3 rc = mix(uMid, uLight, travel * 0.6);
     float r = clamp(rimL * uRim * pulse * travel, 0.0, 1.0);

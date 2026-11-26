@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type CoinRoute, type Plan, type Quote, type StoreId } from './api';
@@ -89,6 +89,7 @@ export default function App() {
   // the card raises a path of light up to it (reach, glow); letting go draws it back down into the
   // bottom (flood); then a glowing edge and an orb while paying (rim, orb)
   const scene = useMotionValue(0);      // how lit the current screen is at rest
+  const [flash, setFlash] = useState(0); // counts issued codes: each one flashes the whole screen once
   const flood = useMotionValue(0);      // after letting go: rises to meet the card (→1), then sinks (→0)
   const auroraRim = useMotionValue(0);
   const auroraOrb = useMotionValue(0);
@@ -354,12 +355,23 @@ export default function App() {
     const failedNow = order?.status === 'failed' || order?.status === 'expired' || order?.status === 'refunded';
     const to = (mv: MotionValue<number>, v: number, d = 0.8) => animate(mv, v, { duration: d, ease: 'easeInOut' });
     if (view === 'home') { to(scene, sheet ? 0.18 : 0.42); to(auroraRim, 0); to(auroraOrb, 0); }
-    else if (view === 'paying') { to(scene, 0.12); to(auroraRim, failedNow ? 0.15 : 0.85, 1.2); to(auroraOrb, failedNow ? 0 : 1, 1.2); }
+    else if (view === 'paying') {
+      // the light builds with the payment, a step at a time, and only completes when the code is issued:
+      // approve → seen on chain → confirmed and issuing
+      const st = order?.status;
+      const stage = failedNow ? -1 : st === 'paid' || st === 'fulfilling' || st === 'delivered' ? 3 : order?.paymentSeen || st === 'underpaid' ? 2 : walletSent ? 1 : 0;
+      const rim = [0.18, 0.34, 0.5, 0.68][stage] ?? 0.08;
+      const orb = [0.35, 0.5, 0.68, 0.85][stage] ?? 0;
+      to(scene, 0.12); to(auroraRim, rim, 1.4); to(auroraOrb, orb, 1.4);
+    }
     else if (view === 'done') {
-      to(scene, 0.18); to(auroraOrb, 0, 0.6);
-      animate(auroraRim, [auroraRim.get(), 1, 1, 0.3], { duration: 3.2, times: [0, 0.15, 0.6, 1] });
+      // issued: the light floods the whole screen once, then settles
+      to(scene, 0.18); to(auroraOrb, 0, 0.9);
+      animate(auroraRim, [auroraRim.get(), 1, 1, 0.3], { duration: 3.2, times: [0, 0.12, 0.55, 1] });
+      animate(flood, [0, 1, 0], { duration: 1.8, times: [0, 0.3, 1], ease: 'easeInOut' });
+      setFlash((n) => n + 1);
     } else { to(scene, 0.25); to(auroraRim, 0); to(auroraOrb, 0); }
-  }, [view, sheet, order?.status, scene, auroraRim, auroraOrb]);
+  }, [view, sheet, order?.status, order?.paymentSeen, walletSent, scene, auroraRim, auroraOrb, flood]);
 
   useEffect(() => {
     if (!toast) return;
@@ -516,6 +528,8 @@ export default function App() {
     <>
       <div className="atmos" aria-hidden="true">
         <Aurora inputs={aurora} product={product?.id ?? 'claude'} />
+        {/* the code is issued: one flash of the app's colour across the whole screen */}
+        {flash > 0 && <motion.div key={flash} className="flash" aria-hidden="true" style={{ '--flash': ({ chatgpt: '#7a9dff', grok: '#e5e7eb' } as Record<string, string>)[product?.id ?? ''] ?? '#e8875f' } as CSSProperties} initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.7, times: [0, 0.22, 1], ease: 'easeOut' }} />}
       </div>
 
       {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
