@@ -9,6 +9,7 @@ import { Sheet } from './components/Sheet';
 import { Guide } from './components/Guide';
 import { GramIcon } from './components/GramIcon';
 import { Header } from './components/Header';
+import { Showcase } from './components/Showcase';
 import { Emblem } from './components/Emblem';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
@@ -58,6 +59,8 @@ export default function App() {
   const [pricesUpdating, setPricesUpdating] = useState(false);
   const [index, setIndex] = useState(0);
   const [view, setView] = useState<View>('home');
+  // on the home view: the showcase of every app (true) or one app's plans and purchase (false)
+  const [browsing, setBrowsing] = useState(true);
   const [sheet, setSheet] = useState<SheetName>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [history, setHistory] = useState<Order[] | null>(null);
@@ -166,8 +169,9 @@ export default function App() {
   const storeLabel = config?.stores?.find((s) => s.id === prices.store)?.label ?? 'App Store';
   const storeOwner = prices.store === 'play' ? 'Google' : 'Apple';
   function pickProduct(id: string) {
-    if (id === productId) return;
-    tg.select(); setProductPick(id); setIndex(0); setErr(null);
+    tg.select();
+    if (id !== productId) { setProductPick(id); setIndex(0); }
+    setErr(null); setBrowsing(false);
   }
   function pickStore(s: StoreId) {
     if (s === store || !config) return;
@@ -228,6 +232,7 @@ export default function App() {
   };
   function renew() {
     if (!cover || !config) return;
+    setBrowsing(false);
     const o = cover.order;
     const target: RenewTarget = { product: o.product?.id || productId, store: o.store?.id ?? 'appstore', planId: o.plan.id, months: o.months ?? 1 };
     tg.tap('light');
@@ -282,6 +287,8 @@ export default function App() {
   }, []);
   const toHome = useCallback(() => { setView('home'); setSheet(null); }, []);
   useEffect(() => (view === 'done' && !sheet ? tg.back(home) : undefined), [view, sheet, home]);
+  // in one app's plans, Back returns to the showcase of every app
+  useEffect(() => (view === 'home' && !browsing && !sheet ? tg.back(() => setBrowsing(true)) : undefined), [view, browsing, sheet]);
 
 
   // don't let a stray swipe close the app while money is moving
@@ -462,6 +469,20 @@ export default function App() {
 
   const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? (order?.method === 'stars' ? 'Waiting for Telegram' : 'Waiting for wallet') : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
 
+  // the plan you have, only once it needs you: two weeks before it runs out, or after
+  const renewNotice = cover && cover.daysLeft <= 14 ? (
+    <button className="notice" onClick={renew}>
+      <span>
+        {cover.order.plan.label ?? cover.order.plan.name}
+        {cover.daysLeft > 1 ? ` runs out in ${cover.daysLeft} days`
+          : cover.daysLeft === 1 ? ' runs out tomorrow'
+          : cover.daysLeft === 0 ? ' runs out today'
+          : ` ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
+      </span>
+      <b>Renew</b>
+    </button>
+  ) : null;
+
   return (
     <>
       <div className="atmos" aria-hidden="true">
@@ -479,31 +500,26 @@ export default function App() {
           balance={balance}
           codesCount={codesLeft}
           onCodes={openOrders}
-          onHome={view === 'done' ? home : view === 'wallet' ? toHome : undefined}
+          onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : undefined}
           active={view === 'wallet'}
           onWallet={() => (wallet ? confirm('Disconnect wallet?') && tonConnectUI.disconnect() : tonConnectUI.openModal())}
         />
 
         <AnimatePresence mode="wait">
-          {view === 'home' && (
+          {view === 'home' && browsing && (
+            <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={renewNotice} />
+            </motion.main>
+          )}
+          {view === 'home' && !browsing && (
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
-                {/* the plan you have, only once it needs you: two weeks before it runs out, or after */}
-                {cover && cover.daysLeft <= 14 ? (
-                  <button className="notice" onClick={renew}>
-                    <span>
-                      {cover.order.plan.label ?? cover.order.plan.name}
-                      {cover.daysLeft > 1 ? ` runs out in ${cover.daysLeft} days`
-                        : cover.daysLeft === 1 ? ' runs out tomorrow'
-                        : cover.daysLeft === 0 ? ' runs out today'
-                        : ` ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
-                    </span>
-                    <b>Renew</b>
-                  </button>
-                ) : null}
-                {products.length > 1
-                  ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
-                  : null}
+                {/* which app this is; tap to see every app again */}
+                <button className="app-title" onClick={() => { tg.select(); setBrowsing(true); }} aria-label={`${product?.name ?? 'Claude'}: back to all apps`}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+                  <span>{product?.name ?? 'Claude'}</span>
+                </button>
+                {renewNotice}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
                     options={[{ value: 'appstore', label: 'iPhone' }, { value: 'play', label: 'Android' }]} />

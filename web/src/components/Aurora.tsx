@@ -27,7 +27,7 @@ export interface AuroraInputs {
 /** Product colours: deep, middle, light (the light core is near white). */
 const AURORA_COLORS: Record<string, [string, string, string]> = {
   claude: ['#FF6A2B', '#FF9C6B', '#FFE0CC'],
-  chatgpt: ['#10A37F', '#3CC29A', '#D6F3E8'], // OpenAI's ChatGPT green and its soft tint
+  chatgpt: ['#3941FF', '#7A9DFF', '#E4E0FF'], // the Codex palette: electric indigo, soft blue, lavender
   grok: ['#9CA3AF', '#D5D9E2', '#FFFFFF'], // Grok has no brand colour: greys to white
 };
 

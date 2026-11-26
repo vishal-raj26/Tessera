@@ -32,13 +32,13 @@ PALETTES = {
         [240, 196, 178],  # blush
         [248, 240, 230],  # ivory
     ],
-    # ChatGPT: OpenAI's own green (#10A37F) with its deeper and softer tints, on white
+    # ChatGPT: the Codex palette (lavender, soft blue, electric indigo) on white
     'chatgpt': [
-        [214, 243, 232],  # soft green #D6F3E8
-        [250, 250, 250],  # off white #FAFAFA
-        [116, 170, 156],  # sage #74AA9C
-        [16, 163, 127],   # ChatGPT green #10A37F
-        [26, 127, 100],   # deep green #1A7F64
+        [177, 167, 255],  # lavender #B1A7FF
+        [244, 243, 255],  # white with a lilac cast
+        [122, 157, 255],  # soft blue #7A9DFF
+        [57, 65, 255],    # electric indigo #3941FF
+        [205, 214, 255],  # pale blue
         [255, 255, 255],  # white
     ],
     # Grok: no colour, by design: black, greys and white, like polished chrome
