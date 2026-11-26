@@ -436,3 +436,23 @@ html, body, #root { background: var(--void); }
 .dock button:active { background: rgba(255, 255, 255, 0.07); }
 .dock-ico { position: relative; display: grid; place-items: center; height: 24px; }
 .dock-badge { position: absolute; top: -6px; left: 14px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center; background: var(--clay); color: var(--void); font-size: 10.5px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 2px #18181a; }
+
+/* --- Add GRAM, with room to breathe: header, coins, networks, address; picking one blurs the others ------- */
+.topup { display: grid; gap: 22px; }
+.tu-head { display: grid; gap: 6px; }
+.tu-head h2, .tu-head .sub { margin: 0; }
+.tu-head .topup-need { margin: 4px 0 0; }
+.tu-step { display: grid; gap: 10px; overflow: hidden; }
+.tu-label { margin: 0; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+.tu-grid { display: grid; gap: 10px; }
+.tu-grid.coins { grid-template-columns: repeat(5, 1fr); }
+.tu-grid.nets { grid-template-columns: repeat(3, 1fr); }
+.tu-grid button { display: grid; justify-items: center; gap: 8px; padding: 12px 4px 10px; border-radius: 16px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: 13px; font-weight: 500;
+  transition: filter 0.25s var(--ease), opacity 0.25s var(--ease), transform 0.2s var(--ease), background 0.2s var(--ease), box-shadow 0.2s var(--ease); }
+.tu-grid.nets button { grid-auto-flow: column; justify-content: center; align-items: center; gap: 6px; padding: 11px 6px; font-size: 12.5px; white-space: nowrap; }
+.tu-grid button.on { background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0 1.5px var(--ink); transform: scale(1.03); }
+/* once one is picked, the rest step back */
+.tu-grid.has-pick button:not(.on) { filter: blur(1.5px); opacity: 0.38; }
+.tu-grid.has-pick button:not(.on):active { filter: none; opacity: 1; }
+.chip-logo.big { width: 34px; height: 34px; font-size: 14px; }
+.topup .topup-card { margin: 0; }
