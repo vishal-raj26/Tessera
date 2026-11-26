@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
@@ -9,6 +9,7 @@ import { Sheet } from './components/Sheet';
 import { Guide } from './components/Guide';
 import { GramIcon } from './components/GramIcon';
 import { Header } from './components/Header';
+import { Emblem } from './components/Emblem';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
@@ -186,18 +187,12 @@ export default function App() {
   const heldOk = !!held && held.planId === plan?.id && held.store === store && held.months === term?.months ? held : null;
   const shown = sheet === 'review' && heldOk ? heldOk : term;
   const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
-  // the opening mosaic plays for the first carousel of the session only (not after a store or app switch)
-  // (offered to the first carousel that actually appears, e.g. after onboarding; see PlanCarousel)
-  const firstCarousel = useRef(true);
-  const carouselShown = useCallback(() => { firstCarousel.current = false; }, []);
 
   // a purchase just delivered: refresh the buyer's orders so the header and the codes badge include it
   useEffect(() => {
     if (order?.status === 'delivered') api.orders().then(setHistory).catch(() => {});
   }, [order?.id, order?.status]);
 
-  // Reduce Motion: no slides (fades only); also set app-wide in main.tsx (MotionConfig reducedMotion="user")
-  const still = useReducedMotion() ?? false;
 
   // codes bought but not redeemed yet: the badge on the top bar's codes button
   const codesLeft = (history ?? []).reduce((n, o) => n + (o.status === 'delivered' ? (o.codes ?? []).filter((c) => !c.redeemedAt).length : 0), 0);
@@ -268,16 +263,6 @@ export default function App() {
     api.catalog(config.region, store).then(applyCatalog).catch(() => {});
   }, [config, renewing, prices.ready, store, applyCatalog]);
 
-  // live price: a small pulse whenever the GRAM rate moves the price of what's on screen
-  const [pulse, setPulse] = useState(0);
-  const lastPrice = useRef<{ key: string; gram: number } | null>(null);
-  useEffect(() => {
-    if (!plan || !term?.gram) return;
-    const key = `${plan.id}:${term.months}:${store}`;
-    const prev = lastPrice.current;
-    if (prev && prev.key === key && prev.gram !== term.gram) setPulse((n) => n + 1);
-    lastPrice.current = { key, gram: term.gram };
-  }, [plan, term?.gram, term?.months, store]);
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
   const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
@@ -483,6 +468,8 @@ export default function App() {
         <Aurora inputs={aurora} product={product?.id ?? 'claude'} />
       </div>
 
+      {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
+      {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={36} stroke={1.8} /></div>}
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
       {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
@@ -500,25 +487,22 @@ export default function App() {
           {view === 'home' && (
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
-                {cover ? (
-                  <p className={`status-line ${cover.daysLeft <= 5 ? 'soon' : ''}`}>
+                {/* the plan you have, only once it needs you: two weeks before it runs out, or after */}
+                {cover && cover.daysLeft <= 14 ? (
+                  <button className="notice" onClick={renew}>
                     <span>
-                      {cover.order.product?.name ?? 'Claude'} {cover.order.plan.label ?? cover.order.plan.name}
-                      {' · '}
-                      {cover.daysLeft > 1 ? `${cover.daysLeft} days left`
-                        : cover.daysLeft === 1 ? '1 day left'
-                        : cover.daysLeft === 0 ? 'runs out today'
-                        : `ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
+                      {cover.order.plan.label ?? cover.order.plan.name}
+                      {cover.daysLeft > 1 ? ` runs out in ${cover.daysLeft} days`
+                        : cover.daysLeft === 1 ? ' runs out tomorrow'
+                        : cover.daysLeft === 0 ? ' runs out today'
+                        : ` ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
                     </span>
-                    <button className="link" onClick={renew}>Renew</button>
-                  </p>
+                    <b>Renew</b>
+                  </button>
                 ) : null}
                 {products.length > 1
                   ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
-                  : !cover && <h1>{product?.name ?? 'Claude'}, paid in GRAM</h1>}
-                {!cover && history !== null && (
-                  <p className="promise">Pick a plan, pull the card, get your code.</p>
-                )}
+                  : null}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
                     options={[{ value: 'appstore', label: 'iPhone' }, { value: 'play', label: 'Android' }]} />
@@ -526,7 +510,7 @@ export default function App() {
               </motion.div>
 
               {plans ? (
-                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} mosaic={firstCarousel.current} onShown={carouselShown} />
+                <PlanCarousel key={`${productId}:${store}`} plans={plans} index={index} onIndex={setIndex} storeLabel={storeLabel} onPull={onPull} disabled={!plan?.available} months={term?.months ?? months} pull={pull} hold={hold} />
               ) : bootErr ? (
                 <motion.div className="carousel boot-err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="card-ghost still" />
@@ -541,16 +525,6 @@ export default function App() {
               )}
 
               <motion.div className="below" style={{ opacity: belowOpacity, y: belowY }}>
-              {/* what the plan gives, from the catalog */}
-              <div className="blurb-row">
-                <AnimatePresence mode="wait" initial={false}>
-                  {plan?.blurb && (
-                    <motion.p key={plan.id} className="blurb" initial={{ opacity: 0, y: still ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: still ? 0 : -6 }} transition={{ duration: still ? 0.12 : 0.2 }}>
-                      {plan.blurb}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
               <motion.div className="price" aria-live="polite" {...rise(0.75)}>
                 {plan?.available && term && (plan.terms?.length ?? 0) > 1 && (
                   <TermPicker terms={plan.terms!} months={term.months} onChange={pickTerm} />
@@ -565,10 +539,9 @@ export default function App() {
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
-                        {payWith !== 'stars' && <span className="price-live" title="Live price: follows the GRAM rate" aria-label="Live price"><i key={pulse} className={pulse ? 'ping' : ''} /></span>}
                         {testScale < 1
-                          ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>
-                          : <>≈ ${term.usd.toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>}
+                          ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)}</>
+                          : <>≈ ${term.usd.toFixed(2)}</>}
                         {term.annual && term.monthly > 0 && <span className="save"> · {Math.round((1 - term.appPrice / (term.monthly * 12)) * 100)}% less than monthly</span>}
                         {bothMethods && (
                           <button className="alt-price" onClick={() => chooseMethod(payWith === 'stars' ? 'gram' : 'stars')} aria-label="Switch currency">
@@ -581,15 +554,14 @@ export default function App() {
                 ) : plan ? (
                   <div className="meta" style={{ paddingTop: 12 }}>{pricesUpdating ? 'Prices are updating. Try again in a minute.' : "This plan isn't available right now"}</div>
                 ) : null}
-                {plans && (
-                  <div className="dots">{plans.map((p, i) => <motion.i key={p.id} layout className={i === index ? 'on' : ''} />)}</div>
-                )}
               </motion.div>
               {err && <p className="error" style={{ textAlign: 'center' }}>{err}</p>}
 
               {plans && <motion.div className="pullhint" {...rise(0.95)}>
-                <span>{needsWallet ? 'Pull down to connect your wallet' : 'Pull the card down to buy'}</span>
-                <button className="link" onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>
+                <button onClick={openReview} disabled={!plan?.available || !term}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+                  {needsWallet ? 'Pull down to connect your wallet' : 'Pull down to buy'}
+                </button>
               </motion.div>}
               </motion.div>
             </motion.main>
@@ -599,8 +571,7 @@ export default function App() {
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
                 <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
-                <b>{failed ? backLine : `Paying for ${order.product?.name ?? 'Claude'} ${order.plan.label ?? PLAN_LABEL[order.plan.id]}`}</b>
-                {!failed && <span className="pay-sub">{backLine} · {fmtMoney(order.credit, order.currency)} {order.store?.label ?? 'App Store'} credit, {termLabel(order.months ?? 1)}</span>}
+                <span className="pay-sub">{failed ? backLine : `${order.product?.name ?? 'Claude'} ${order.plan.label ?? PLAN_LABEL[order.plan.id]} · ${termLabel(order.months ?? 1)}`}</span>
               </motion.div>
               {failed ? (
                 <>
@@ -651,21 +622,18 @@ export default function App() {
                     initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 0.55, ease: [0.65, 0, 0.35, 1], delay: 0.35 }} />
                 </svg>
                 <motion.div className="success-amount" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
-                  <Tally value={order.credit} format={(n) => fmtMoney(n, order.currency)} delay={0.3} duration={1.6} />
+                  <Tally value={order.credit} format={(n) => fmtMoney(Number.isInteger(order.credit) ? Math.round(n) : n, order.currency)} delay={0.3} duration={1.6} />
                 </motion.div>
                 <motion.p className="success-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  {order.store?.label ?? 'App Store'} credit for {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}, {termLabel(order.months ?? 1)}
+                  {order.store?.label ?? 'App Store'} credit · {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
                 </motion.p>
               </div>
               {settled && (
                 <div style={{ width: '100%' }}>
-                  <motion.div className="done-title" {...rise(0)}>
-                    <h1>Your credit is ready</h1>
-                  </motion.div>
                   <div className="actions">
                     <RedeemCodes order={order} copied={copied} onCopy={copy} onMark={markCode} delay={0.1} />
-                    <motion.button className="btn btn-quiet" onClick={() => openGuide(order)} whileTap={{ scale: 0.97 }} {...rise(0.38)}>
-                      How to activate {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
+                    <motion.button className="text-btn" onClick={() => openGuide(order)} {...rise(0.38)}>
+                      How to activate {order.plan.label ?? PLAN_LABEL[order.plan.id]}
                     </motion.button>
                     {canHome && (
                       <button className="link-btn add-home" onClick={() => { tg.addToHome(); setCanHome(false); }}>
@@ -708,18 +676,11 @@ export default function App() {
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
         {plan?.available && term && shown && (
           <div className="st">
+            {/* what you're buying, then what it costs: the one number that matters, large */}
             <div className="sheet-head">
-              <h2>{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}</h2>
-              <p className="sub">{termLabel(shown.months)} of {storeLabel} credit · delivered instantly</p>
+              <p className="eyebrow">{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name} · {termLabel(shown.months)}</p>
+              <div className="total amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={28} /></div>
             </div>
-            <dl className="rows">
-              <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` · ${shown.codes} codes` : ''}</dd></div>
-              <div className="row">
-                <dt>{shown.annual ? 'Yearly plan in app' : 'In-app price'}</dt>
-                <dd>{shown.months > 1 && !shown.annual ? `${shown.months} × ${fmtMoney(shown.monthly, shown.currency)}` : fmtMoney(shown.appPrice, shown.currency)}</dd>
-              </div>
-              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={17} /></dd></div>
-            </dl>
             {shown.months > 1 && (
               <p className="term-note">
                 {shown.annual
@@ -732,12 +693,18 @@ export default function App() {
                 {(['gram', 'stars'] as const).map((m) => (
                   <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
                     {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
-                    <span className="pw-amt"><Amount method={m} gram={shown.gram} stars={shown.stars} size={15} /></span>
-                    <span className="pw-sub">{m === 'gram' ? (wallet || config?.paymentMode === 'mock' ? 'Wallet' : 'Connect wallet') : 'Telegram Stars'}</span>
+                    <span className="pw-amt">{m === 'gram' ? <GramIcon size={15} /> : <StarIcon size={15} />}{m === 'gram' ? 'GRAM' : 'Stars'}</span>
                   </button>
                 ))}
               </div>
             )}
+            <dl className="rows">
+              <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` in ${shown.codes} codes` : ''}</dd></div>
+              <div className="row">
+                <dt>{shown.annual ? 'Yearly plan in the app' : 'Plan price in the app'}</dt>
+                <dd>{shown.months > 1 && !shown.annual ? `${shown.months} × ${fmtMoney(shown.monthly, shown.currency)}` : fmtMoney(shown.appPrice, shown.currency)}</dd>
+              </div>
+            </dl>
             <label className="agree">
               <input type="checkbox" checked={agree} onChange={(e) => { tg.select(); setAgree(e.target.checked); }} />
               <span>I understand {storeLabel} credit can't be refunded once issued.</span>
@@ -747,11 +714,11 @@ export default function App() {
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
               <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk} onClick={pay} whileTap={!agree || busy || !heldOk ? undefined : { scale: 0.97 }}>
-                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={19} /></span></>}
+                {busy ? <span className="spin" /> : 'Pay'}
               </motion.button>
             )}
             <p className="fine">
-              {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Locking your price…'}
+              {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Holding your price…'}
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
               {testScale < 1 ? ` · Testnet: you pay ${Math.round(testScale * 100)}% of the real price` : ''}
             </p>

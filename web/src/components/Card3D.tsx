@@ -35,17 +35,10 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
     import('../three/cardScene')
       .then(({ createCardScene }) => createCardScene(canvas.current!, face))
       .then((s) => {
-        // unmounted meanwhile (or React ran this effect twice): keep the context, the canvas may be reused
-        if (!alive) { s.dispose(false); return; }
-        // Phones (iOS especially) can drop a WebGL context under memory pressure. Then the canvas is
-        // blank, so go back to the CSS card for good rather than leave an empty space.
-        canvas.current!.addEventListener('webglcontextlost', (e) => {
-          e.preventDefault();
-          scene.current?.dispose();
-          scene.current = null;
-          if (alive) setReady(false);
-        }, { once: true });
-        if ((canvas.current!.getContext('webgl2') ?? canvas.current!.getContext('webgl'))?.isContextLost()) { s.dispose(); return; }
+        if (!alive) { s.dispose(); return; } // unmounted meanwhile
+        // Phones (iOS especially) can drop the WebGL context under memory pressure: then go back to
+        // the 2D card for good rather than leave an empty space.
+        s.onLost(() => { scene.current?.dispose(); scene.current = null; if (alive) setReady(false); });
         scene.current = s;
         const r = wrap.current!.getBoundingClientRect();
         s.resize(r.width * 1.25, r.height * 1.25);
@@ -55,6 +48,14 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
       .catch(() => { /* keep the CSS card */ });
     return () => { alive = false; scene.current?.dispose(); scene.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the 2D card stays under the 3D one until the 3D one has faded in, so the card never blinks out
+  const [flat, setFlat] = useState(true);
+  useEffect(() => {
+    if (!ready) { setFlat(true); return; } // eslint-disable-line react-hooks/set-state-in-effect
+    const t = setTimeout(() => setFlat(false), 500);
+    return () => clearTimeout(t);
+  }, [ready]);
 
   // tap (not a drag) turns the front card over; a card that leaves the front turns back
   const [turned, setTurned] = useState(false);
@@ -119,7 +120,7 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
 
   return (
     <div ref={wrap} className={`card-wrap card3d ${ready ? 'is-ready' : ''} ${className}`} onPointerDown={onDown} onClick={onClick}>
-      {!ready && <HoloCard planId={planId} label={label} product={product} store={store} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
+      {flat && <HoloCard planId={planId} label={label} product={product} store={store} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
       <canvas ref={canvas} className="card3d-canvas" aria-hidden="true" />
       <span className="card3d-shadow" aria-hidden="true" />
     </div>

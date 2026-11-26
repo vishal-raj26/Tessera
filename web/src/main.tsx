@@ -6,6 +6,12 @@ import './index.css';
 import './ui.css';
 import App from './App';
 
+// Get the 3D card ready (code, renderer, compiled shaders) while the app's data loads, instead of after
+// the plans arrive; but only once the first screen has been drawn, so it never holds that up. (The
+// model and picture already download with the page: index.html.)
+const preload = () => { import('./three/cardScene').then((m) => m.preloadCards()).catch(() => {}); };
+requestAnimationFrame(() => setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(preload, { timeout: 800 }) : preload()), 0));
+
 const manifestUrl = import.meta.env.VITE_TONCONNECT_MANIFEST ?? `${location.origin}/tonconnect-manifest.json`;
 
 createRoot(document.getElementById('root')!).render(

@@ -497,10 +497,6 @@ ol.codes { list-style: none; padding: 0; margin: 0 0 14px; }
 .card.tier-2 .base .cc-name { background-image: linear-gradient(180deg, #fff1e6 0%, #ebc2a6 45%, #b0765a 100%); }
 .card.tier-2 .rim { box-shadow: inset 0 0 0 1px rgba(217, 119, 87, 0.28), inset 0 1px 0 rgba(255, 214, 190, 0.22); }
 
-/* --- opening moment: tiles forming the first card (MosaicIntro) --- */
-.mosaic { position: absolute; width: var(--card-w); aspect-ratio: 0.63; z-index: 30; pointer-events: none; }
-.mosaic i { position: absolute; border-radius: 3px; will-change: transform, opacity; }
-
 /* --- home: personal header, plan value line, live price --- */
 .promise { margin: 6px auto 0; font-size: 13px; color: var(--dim); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* short screens (iPhone SE and smaller): the card comes first */

@@ -101,7 +101,7 @@ export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop,
                     {o.codes?.length ? (
                       <>
                         <RedeemCodes order={o} copied={copied} onCopy={onCopy} onMark={onMark} />
-                        <button className="btn btn-quiet" onClick={() => onGuide(o)}>How to activate {name}</button>
+                        <button className="text-btn" onClick={() => onGuide(o)}>How to activate</button>
                       </>
                     ) : (
                       <>

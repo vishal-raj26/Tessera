@@ -1,11 +1,9 @@
 // Swipe sideways to pick a plan; pull the front card down to buy it.
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { Card3D } from './Card3D';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
-import { tierOf } from '../tiers';
-import { MosaicIntro, MOSAIC_FORMED, shouldPlayMosaic } from './MosaicIntro';
 
 interface Props {
   plans: Plan[];
@@ -20,10 +18,6 @@ interface Props {
   storeLabel?: string;
   /** optional shared hold amount (0…1 while the front card is pressed) */
   hold?: MotionValue<number>;
-  /** this is the first carousel of the page: it may play the mosaic opening (once per session) */
-  mosaic?: boolean;
-  /** called once the carousel is on screen (the app then stops offering the opening) */
-  onShown?: () => void;
 }
 
 export const PULL = 110;
@@ -76,16 +70,7 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel, int
   );
 }
 
-export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel, mosaic = false, onShown }: Props) {
-  // decided once, when the carousel first appears: only here is the session's opening used up
-  const [intro] = useState(() => (mosaic && shouldPlayMosaic() ? { at: MOSAIC_FORMED, front: index } : null));
-  useEffect(() => { onShown?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [showMosaic, setShowMosaic] = useState(!!intro);
-  useEffect(() => {
-    if (!showMosaic) return;
-    const id = setTimeout(() => setShowMosaic(false), (MOSAIC_FORMED + 0.6) * 1000);
-    return () => clearTimeout(id);
-  }, [showMosaic]);
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel }: Props) {
   const pos = useMotionValue(index);
   const ownPull = useMotionValue(0);
   const pull = sharedPull ?? ownPull;
@@ -177,10 +162,9 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
         if (e.key === 'Enter' && !disabled) onPull();
       }}
     >
-      {showMosaic && plans[intro!.front] && <MosaicIntro tier={tierOf(plans[intro!.front].id)} />}
       {plans.map((p, i) => (
         <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} storeLabel={storeLabel}
-          introAt={intro?.at ?? 0} formed={!!intro && i === intro.front} />
+          introAt={0} formed={false} />
       ))}
     </motion.div>
   );

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -147,6 +148,8 @@ async function quote(regionCode, planId, months = 1, store = 'appstore') {
 }
 
 const app = express();
+// gzip everything that compresses (the app's scripts, the 3D model, API answers)
+app.use(compression({ filter: (req, res) => /\.(glb)$/.test(req.path) || compression.filter(req, res) }));
 app.use(cors());
 app.use(express.json());
 
@@ -451,8 +454,16 @@ setInterval(() => { try { engine.remindRenewals(); } catch (e) { console.error(e
 // Serve the built Mini App when present.
 const dist = path.resolve(process.env.WEB_DIST || '../web/dist');
 if (fs.existsSync(dist)) {
-  app.use(express.static(dist));
-  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.use(express.static(dist, {
+    setHeaders(res, file) {
+      // built files carry a content hash in their name: cache them for good. The model and pictures
+      // change rarely: a day. The page itself is always checked, so a new version shows at once.
+      if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      else if (file.includes(`${path.sep}models${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=86400');
+      else res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
+  app.get(/^\/(?!api\/).*/, (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(dist, 'index.html')); });
 }
 
 app.listen(PORT, () => console.log(`Tessera API on :${PORT} · supplier=${SUPPLIER.name} · payments=${PAYMENT_MODE} · network=${NETWORK}`));
