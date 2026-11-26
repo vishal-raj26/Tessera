@@ -21,9 +21,11 @@ interface Props {
   onPick: (productId: string) => void;
   /** shown above the apps: the buyer's current plan, with Renew */
   notice?: ReactNode;
+  /** replays the intro: a quiet link under the apps */
+  onGuide?: () => void;
 }
 
-export function Showcase({ products, plans, onPick, notice }: Props) {
+export function Showcase({ products, plans, onPick, notice, onGuide }: Props) {
   const [countUp] = useState(() => !counted);
   useEffect(() => { if (plans?.length) counted = true; }, [plans]);
   return (
@@ -51,12 +53,19 @@ export function Showcase({ products, plans, onPick, notice }: Props) {
               transition={{ delay: 0.08 + i * 0.07, duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
               whileTap={{ scale: 0.98 }}
             >
+              <span className="tile-grain" aria-hidden="true" />
               <span className="tile-name">{p.name}</span>
               {mine.length > 0 && <span className="tile-plans">{mine.map((x) => x.label ?? x.name).join(' · ')}</span>}
               <span className="tile-from">{from != null ? <>from <b>{countUp ? <CountUp value={from} format={fmtGram} from={0} delay={splashLeft() + 0.1 + i * 0.08} duration={1.1} /> : fmtGram(from)}</b><GramIcon size={13} /></> : '\u00a0'}</span>
             </motion.button>
           );
         })}
+        {onGuide && (
+          <button className="guide-link" onClick={() => { tg.select(); onGuide(); }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M9.7 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1.1.9-1.1 1.6v.4" /><path d="M12 16.6v.01" strokeWidth="2.4" /></svg>
+            How Tessera works
+          </button>
+        )}
       </div>
 
 
