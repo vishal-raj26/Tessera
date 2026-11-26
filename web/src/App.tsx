@@ -619,8 +619,9 @@ export default function App() {
           region={region ? { code: region, flag: regions.find((r) => r.code === region)?.flag ?? '' } : null}
           onRegion={() => { tg.select(); setPop((x) => (x === 'region' ? null : 'region')); }}
           onPopClose={() => setPop(null)}
+          popFrom={pop}
           pop={pop === 'region' ? { key: 'region', content: <RegionPop regions={regions} value={region} onPick={(c) => { pickRegion(c); setPop(null); }} /> }
-            : pop === 'wallet' && wallet ? { key: 'wallet', content: <WalletSheet address={wallet} balance={balance} canTopUp={canTopUp}
+            : pop === 'wallet' && wallet ? { key: 'wallet', content: <WalletSheet address={wallet} balance={balance} network={config?.network} canTopUp={canTopUp}
                 onTopUp={() => { setPop(null); openTopUp(); }}
                 onCopy={() => navigator.clipboard?.writeText(wallet).then(() => setToast('Address copied')).catch(() => {})}
                 onDisconnect={() => { setPop(null); tonConnectUI.disconnect(); }} /> }
