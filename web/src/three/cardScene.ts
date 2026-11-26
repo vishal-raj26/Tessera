@@ -6,11 +6,13 @@
 // decals so it can change. Tap turns the card over (Card3D).
 //
 // Everything heavy happens once and is shared by every card: one WebGL renderer (one context, shaders
-// compiled once, one studio environment), the model and the pictures. Each card has its own scene and
-// a plain 2D canvas on the page; the shared renderer draws a card and copies the picture into it.
+// compiled once, one studio environment), the model and the pictures. Each card has its own scene.
+// Only the front card is live: the renderer's own canvas sits in it and is drawn straight to the
+// screen. The other cards show a still picture on a 2D canvas, copied once when they change (copying
+// a WebGL picture makes the browser wait for the GPU, so it never happens per frame).
 // preloadCards() starts all of it as the app opens, so the 3D card is ready by the time plans arrive.
 import {
-  ACESFilmicToneMapping, CanvasTexture, Color, DirectionalLight, Group, MathUtils, Mesh, MeshPhysicalMaterial,
+  ACESFilmicToneMapping, CanvasTexture, MeshBasicMaterial, MeshStandardMaterial, Color, DirectionalLight, Group, MathUtils, Mesh, MeshPhysicalMaterial,
   MirroredRepeatWrapping, PerspectiveCamera, PMREMGenerator, Scene, SRGBColorSpace, TextureLoader, WebGLRenderer,
   type Material, type Object3D, type Texture,
 } from 'three';
@@ -26,20 +28,27 @@ const FONT = "'Geist Variable', -apple-system, system-ui, sans-serif";
 const MODELLED: Record<string, string> = { 'Pro': 'Pro', 'Max 5×': 'Max5', 'Max 20×': 'Max20' };
 const BASE = import.meta.env.BASE_URL ?? '/';
 
-interface Shared { renderer: WebGLRenderer; env: Texture; lost: boolean; onLost: Set<() => void> }
+interface Shared { renderer: WebGLRenderer; env: Texture; lost: boolean; onLost: Set<() => void>; owner: Live | null }
+/** the card that currently has the renderer's canvas on screen */
+interface Live { redraw(): void; release(): void }
 let shared: Shared | null = null;
 function getShared(): Shared {
   if (shared && !shared.lost) return shared;
   const canvas = document.createElement('canvas');
-  const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'default', preserveDrawingBuffer: true });
+  // (no preserveDrawingBuffer: still pictures are copied in the same task as their render, so the
+  // buffer is still there, and phones skip a copy every frame)
+  const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'default' });
   renderer.setPixelRatio(1); // sizes below are already in device pixels
+  // don't stop to read each shader's error log (a development aid that makes the browser wait)
+  renderer.debug.checkShaderErrors = import.meta.env.DEV;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = SRGBColorSpace;
   const pmrem = new PMREMGenerator(renderer);
   const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
-  const s: Shared = { renderer, env, lost: false, onLost: new Set() };
+  canvas.className = 'card3d-canvas';
+  const s: Shared = { renderer, env, lost: false, onLost: new Set(), owner: null };
   // phones can drop a WebGL context under memory pressure: every card goes back to its 2D card
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); s.lost = true; for (const f of s.onLost) f(); }, { once: true });
   shared = s;
@@ -94,16 +103,16 @@ function paintDecal(face: Face, back: boolean, printName: boolean) {
   return t;
 }
 
-function makeMats(holo: Texture): Record<string, MeshPhysicalMaterial> {
+// Lighter materials where the extra layers can't be seen (a phone draws every pixel of these each
+// frame the card moves): plain standard materials for the black face, the edge, the foil and the ink;
+// the clear coat only on the holographic side, whose colours slide with the angle on their own.
+function makeMats(holo: Texture): Record<string, MeshStandardMaterial> {
   return {
-    CardFront: new MeshPhysicalMaterial({ color: '#000000', roughness: 0.55, specularIntensity: 0.35, clearcoat: 0.12, clearcoatRoughness: 0.22, envMapIntensity: 0.1 }),
-    CardHolo: new MeshPhysicalMaterial({
-      map: holo, roughness: 0.25, metalness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.06,
-      iridescence: 0.55, iridescenceIOR: 1.3, iridescenceThicknessRange: [260, 460], envMapIntensity: 0.9,
-    }),
-    CardEdge: new MeshPhysicalMaterial({ color: '#1c1c1f', metalness: 0.55, roughness: 0.2, clearcoat: 0.5, clearcoatRoughness: 0.05 }),
-    Silver: new MeshPhysicalMaterial({ color: '#e4e1dc', metalness: 1, roughness: 0.16, envMapIntensity: 1.35 }),
-    Ink: new MeshPhysicalMaterial({ color: '#3a3640', metalness: 0.3, roughness: 0.35, clearcoat: 0.4 }),
+    CardFront: new MeshPhysicalMaterial({ color: '#000000', roughness: 0.55, specularIntensity: 0.35, envMapIntensity: 0.1 }), // no clear coat: still cheap
+    CardHolo: new MeshPhysicalMaterial({ map: holo, roughness: 0.25, metalness: 0.1, clearcoat: 0.4, clearcoatRoughness: 0.06, envMapIntensity: 0.9 }),
+    CardEdge: new MeshStandardMaterial({ color: '#1c1c1f', metalness: 0.55, roughness: 0.2 }),
+    Silver: new MeshStandardMaterial({ color: '#e4e1dc', metalness: 1, roughness: 0.16, envMapIntensity: 1.35 }),
+    Ink: new MeshStandardMaterial({ color: '#3a3640', metalness: 0.3, roughness: 0.3 }),
   };
 }
 
@@ -120,7 +129,7 @@ export function preloadCards(product = 'claude') {
     const warm = gltf.scene.clone(true);
     const pic = holo.clone(); pic.colorSpace = SRGBColorSpace; // as the cards use it
     const mats = makeMats(pic);
-    const decal = new MeshPhysicalMaterial({ map: pic, transparent: true, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 });
+    const decal = new MeshBasicMaterial({ map: pic, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     warm.traverse((o) => {
       if (!(o instanceof Mesh)) return;
       const n = (o.material as Material).name;
@@ -141,6 +150,8 @@ export interface CardScene {
   /** show the holographic back (true) or the front */
   setTurned(back: boolean): void;
   resize(width: number, height: number): void;
+  /** the front card: draw it live on screen (true), or show it as a still picture (false) */
+  setLive(on: boolean, host: HTMLElement): void;
   /** called if the shared WebGL context is lost (the card should fall back to its 2D look) */
   onLost(f: () => void): void;
   dispose(): void;
@@ -150,7 +161,8 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   await document.fonts?.ready; // the small print uses the app's font
   const [gltf, holoSrc] = await Promise.all([loadModel(), loadHolo(face.product ?? 'claude')]);
 
-  const { renderer, env } = getShared();
+  const gl = getShared();
+  const { renderer, env } = gl;
   const out = canvas.getContext('2d')!;
   let width = canvas.width || 300, height = canvas.height || 400;
 
@@ -171,8 +183,9 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   holo.flipY = false;
   holo.needsUpdate = true;
   const mats = makeMats(holo);
-  const decal = (back: boolean, printName: boolean) => new MeshPhysicalMaterial({
-    map: paintDecal(current, back, printName), transparent: true, depthWrite: false, roughness: 0.6,
+  // the small print is printed, not lit: a plain material is enough
+  const decal = (back: boolean, printName: boolean) => new MeshBasicMaterial({
+    map: paintDecal(current, back, printName), transparent: true, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2,
   });
   let current = face;
@@ -195,7 +208,7 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
     const printName = showName(f);
     for (const [mesh, back] of [[decalFront, false], [decalBack, true]] as const) {
       if (!mesh) continue;
-      const old = mesh.material as MeshPhysicalMaterial;
+      const old = mesh.material as MeshBasicMaterial;
       mesh.material = decal(back, printName);
       if (old && old !== mesh.material) { old.map?.dispose(); old.dispose(); }
     }
@@ -225,16 +238,34 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
     // the colours slide with the angle the card is seen from, and drift on their own
     if (!still) drift += dt * 0.035;
     holo.offset.set(Math.sin(pivot.rotation.y) * 0.22 + drift, -pivot.rotation.x * 0.3 + Math.sin(drift * 3) * 0.05);
-    // draw with the shared renderer, then copy the picture onto this card's canvas
-    if (renderer.domElement.width !== width || renderer.domElement.height !== height) renderer.setSize(width, height, false);
-    renderer.render(scene, camera);
-    out.clearRect(0, 0, width, height);
-    out.drawImage(renderer.domElement, 0, 0);
+    render();
     // keep going while it turns, or while the back shows (its colours drift)
     if (turn !== turnTo || (backShowing() && !still)) request();
     else last = 0;
   };
   const request = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  const sized = () => { if (renderer.domElement.width !== width || renderer.domElement.height !== height) renderer.setSize(width, height, false); };
+  // live: straight onto the screen. Still: render, copy into this card's own canvas, and put the live
+  // card's picture back on the shared canvas at once (same task, so it never shows the wrong card).
+  let live = false;
+  const render = () => {
+    sized();
+    renderer.render(scene, camera);
+    if (live) return;
+    out.clearRect(0, 0, width, height);
+    out.drawImage(renderer.domElement, 0, 0);
+    gl.owner?.redraw();
+  };
+  const me: Live = {
+    redraw() { sized(); renderer.render(scene, camera); },
+    release() {
+      // hand the canvas over: keep a still picture of where the card is now
+      live = false;
+      render();
+      canvas.style.visibility = '';
+      if (gl.owner === me) gl.owner = null;
+    },
+  };
   const lostHandlers: (() => void)[] = [];
   request();
 
@@ -243,17 +274,30 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
     setTilt(x, y) { tiltX = x; tiltY = y; request(); },
     setTurned(back) { turnTo = back ? Math.PI : 0; request(); },
     resize(w, h) {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // 1.5x is sharp on a phone for a card this size, and draws far fewer pixels than 3x
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       width = Math.max(1, Math.round(w * dpr)); height = Math.max(1, Math.round(h * dpr));
       canvas.width = width; canvas.height = height;
+      request();
+    },
+    setLive(on, host) {
+      if (on === live) return;
+      if (!on) { if (gl.owner === me) { me.release(); renderer.domElement.remove(); } return; }
+      if (gl.owner && gl.owner !== me) gl.owner.release();
+      gl.owner = me;
+      live = true;
+      if (renderer.domElement.parentElement !== host) host.appendChild(renderer.domElement);
+      canvas.style.visibility = 'hidden';
+      me.redraw();
       request();
     },
     onLost(f) { lostHandlers.push(f); getShared().onLost.add(f); },
     dispose() {
       cancelAnimationFrame(raf);
+      if (gl.owner === me) { gl.owner = null; renderer.domElement.remove(); }
       for (const f of lostHandlers) shared?.onLost.delete(f);
       for (const m of Object.values(mats)) m.dispose();
-      for (const d of [decalFront, decalBack] as (Mesh | null)[]) { const m = d?.material as MeshPhysicalMaterial | undefined; m?.map?.dispose(); m?.dispose(); }
+      for (const d of [decalFront, decalBack] as (Mesh | null)[]) { const m = d?.material as MeshBasicMaterial | undefined; m?.map?.dispose(); m?.dispose(); }
       holo.dispose();
     },
   };

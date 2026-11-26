@@ -438,7 +438,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 1.5px solid var(--ink)
 .app.fit .wallet-view { min-height: 0; }
 
 /* --- the aurora (components/Aurora.tsx) ------------------------------------ */
-.aurora { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; }
+.aurora { position: absolute; inset: 0; width: 100%; height: 100%; } /* no blend mode: over the black page it looks the same, and phones would recomposite the whole screen every frame */
 /* no WebGL: a still glow from the bottom edge instead */
 .aurora.no-gl { background: radial-gradient(70% 30% at 50% 100%, rgba(243, 176, 150, 0.45), rgba(217, 119, 87, 0.18) 45%, transparent 75%); }
 

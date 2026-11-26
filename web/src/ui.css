@@ -69,7 +69,7 @@ html, body, #root { background: var(--void); }
 
 /* how to buy: one pill that is also the button (pulling the card does the same) */
 .pullhint { padding: 22px 0 max(26px, env(safe-area-inset-bottom)); }
-.pullhint button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 99px; font-size: 14px; font-weight: 500; text-decoration: none; color: var(--ink); background: rgba(10, 10, 10, 0.55); border: 1px solid rgba(255, 255, 255, 0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.pullhint button { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 99px; font-size: 14px; font-weight: 500; text-decoration: none; color: var(--ink); background: rgba(16, 16, 16, 0.86); border: 1px solid rgba(255, 255, 255, 0.12); }
 .pullhint button svg { animation: nudge 1.8s var(--ease) infinite; }
 @keyframes nudge { 0%, 100% { translate: 0 -1px; } 50% { translate: 0 2px; } }
 @media (prefers-reduced-motion: reduce) { .pullhint button svg { animation: none; } }
@@ -78,7 +78,7 @@ html, body, #root { background: var(--void); }
 .card-ghost { background: linear-gradient(110deg, #141414 30%, #1e1e1e 50%, #141414 70%); background-size: 200% 100%; border-radius: 12cqw; }
 
 /* --- sheets -------------------------------------------------------------------------------------- */
-.scrim { background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.scrim { background: rgba(0, 0, 0, 0.66); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .sheet { background: var(--panel); border: 0; border-top: 1px solid var(--line); border-radius: 24px 24px 0 0; padding: 10px var(--pad) max(20px, env(safe-area-inset-bottom)); }
 .grabber { width: 34px; height: 4px; background: rgba(255, 255, 255, 0.14); margin-bottom: 18px; }
 .sheet h2 { font-size: 22px; letter-spacing: -0.04em; }
@@ -180,7 +180,10 @@ html, body, #root { background: var(--void); }
 .ob-skip { font-size: 15px; color: var(--mute); text-decoration: none; }
 .ob-stage { flex: 1; min-height: 0; display: grid; place-items: center; perspective: 900px; }
 .ob-art { height: 100%; max-height: 420px; display: grid; place-items: center; }
-.ob-art img { height: min(50vh, 370px); width: auto; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.7)); user-select: none; -webkit-user-drag: none; }
+.ob-art { position: relative; }
+.ob-art img { position: relative; height: min(50vh, 370px); width: auto; user-select: none; -webkit-user-drag: none; will-change: transform; }
+/* a still shadow under the card (a filter on a moving image would be redrawn every frame) */
+.ob-art::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 4%; height: 26px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.75), transparent); filter: blur(6px); z-index: -1; }
 .ob-copy { padding: 0 var(--pad); min-height: 120px; text-align: center; }
 .ob-copy h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.055em; line-height: 1.08; margin: 0 0 10px; }
 .ob-copy p { margin: 0 auto; max-width: 300px; font-size: 15px; line-height: 1.45; color: var(--mute); }

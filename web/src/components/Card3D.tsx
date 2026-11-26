@@ -28,20 +28,25 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   const sx = useSpring(px, { stiffness: 140, damping: 18 });
   const sy = useSpring(py, { stiffness: 140, damping: 18 });
 
-  // create the scene once (three.js loads on first use)
+  // create the scene once (three.js loads on first use). The front card first; the cards beside it
+  // once the browser is idle, so they never hold up the one being looked at.
   useEffect(() => {
     if (!webgl) return;
     let alive = true;
-    import('../three/cardScene')
-      .then(({ createCardScene }) => createCardScene(canvas.current!, face))
+    const idleFirst = interactive ? Promise.resolve() : new Promise<void>((r) => ('requestIdleCallback' in window ? requestIdleCallback(() => r(), { timeout: 1200 }) : setTimeout(r, 300)));
+    idleFirst
+      .then(() => import('../three/cardScene'))
+      .then(({ createCardScene }) => { if (!alive) throw new Error('gone'); return createCardScene(canvas.current!, face); })
       .then((s) => {
         if (!alive) { s.dispose(); return; } // unmounted meanwhile
         // Phones (iOS especially) can drop the WebGL context under memory pressure: then go back to
         // the 2D card for good rather than leave an empty space.
         s.onLost(() => { scene.current?.dispose(); scene.current = null; if (alive) setReady(false); });
         scene.current = s;
-        const r = wrap.current!.getBoundingClientRect();
-        s.resize(r.width * 1.25, r.height * 1.25);
+        // the card's own size, not its on-screen size (side cards are shrunk by a transform): every card
+        // then shares one size, and the shared renderer never has to be resized between them
+        const el = wrap.current!;
+        s.resize(el.offsetWidth * 1.25, el.offsetHeight * 1.25);
         s.setTilt(sx.get(), sy.get());
         setReady(true);
       })
@@ -69,6 +74,9 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
     setTurned((t) => !t);
   };
 
+  // only the front card is drawn live; the others are still pictures (see three/cardScene.ts)
+  useEffect(() => { if (ready && wrap.current) scene.current?.setLive(!!interactive, wrap.current); }, [interactive, ready]);
+
   // new plan, credit or term: repaint the face
   useEffect(() => { scene.current?.setFace(face); }, [faceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -93,15 +101,19 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   useEffect(() => {
     if (!interactive) { px.set(0); py.set(0); return; }
     const el = wrap.current;
+    // the card's box is measured when the finger arrives, not on every move (no forced layout)
+    let r = el!.getBoundingClientRect();
+    const enter = () => { r = el!.getBoundingClientRect(); };
     const move = (e: PointerEvent) => {
-      const r = el!.getBoundingClientRect();
       px.set(Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1)));
       py.set(Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1)));
     };
     const leave = () => { px.set(0); py.set(0); };
+    el?.addEventListener('pointerenter', enter);
+    el?.addEventListener('pointerdown', enter);
     el?.addEventListener('pointermove', move);
     el?.addEventListener('pointerleave', leave);
-    return () => { el?.removeEventListener('pointermove', move); el?.removeEventListener('pointerleave', leave); };
+    return () => { el?.removeEventListener('pointerenter', enter); el?.removeEventListener('pointerdown', enter); el?.removeEventListener('pointermove', move); el?.removeEventListener('pointerleave', leave); };
   }, [interactive, px, py]);
 
   // slow idle sway so the light moves across it even untouched (paused while the app is hidden)

@@ -39,7 +39,7 @@ float n(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
 }
-float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * n(p); p *= 2.03; a *= 0.5; } return s; }
+float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { s += a * n(p); p *= 2.03; a *= 0.5; } return s / 0.875; }
 float box(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
 vec3 tone(float k, float streak) {
   vec3 c = mix(uDeep, uMid, smoothstep(0.0, 0.5, k));
@@ -57,13 +57,17 @@ void main() {
   // the light lives at the bottom edge, like a doorway; its streaks always flow down into it, so the
   // bottom seems to draw things towards it. Pulling the card raises a path of light up to the card.
   float reach = max(uReach, 0.001);
-  float sway = fbm(vec2(x * 1.8 + t * 0.04, yb * 0.6 + t * 0.1));
-  float rays = fbm(vec2(x * 11.0 + sway * 2.2, yb * 0.9 + t * 0.55));
-  float streak = smoothstep(0.3, 0.9, rays);
   // wide at the bottom edge, narrowing into a path as it rises towards the card
   float width = mix(0.7, 0.26, clamp(yb / reach, 0.0, 1.0));
   float side = exp(-pow(x / width, 2.0) * 2.0);
   float fall = exp(-pow(yb / reach, 1.5) * 1.6);
+  // the streaks (the costly part) only where the light can be seen: most of the screen is dark
+  float streak = 0.0;
+  if (uGlow > 0.002 && fall * side * uGlow > 0.003) {
+    float sway = fbm(vec2(x * 1.8 + t * 0.04, yb * 0.6 + t * 0.1));
+    float rays = fbm(vec2(x * 11.0 + sway * 2.2, yb * 0.9 + t * 0.55));
+    streak = smoothstep(0.3, 0.9, rays);
+  }
   float body = fall * side * (0.55 + 0.75 * streak * smoothstep(0.0, 0.3, yb / reach));
   float edge = exp(-yb * 55.0) * smoothstep(0.7, 0.0, abs(x)) * 1.4;
   float core = exp(-yb / (reach * 0.13)) * side;
@@ -76,6 +80,9 @@ void main() {
   if (uRim > 0.001 || uOrb > 0.001) {
     vec2 q = px - uRes * 0.5;
     float d = box(q, uRes * 0.5 - 1.0, uRadius);
+    // the middle of the screen is far from the edge and the orb: nothing to light there
+    vec2 o0 = vec2(px.x - uRes.x * 0.5, px.y - uRes.y * 0.035);
+    if (d < -uRes.x * 0.32 && length(o0) > uRes.x * 0.45) { gl_FragColor = vec4(col, a); return; }
     float pulse = 0.85 + 0.15 * sin(t * 2.4);
     float rimL = exp(d / 5.0) * 0.9 + exp(d / 38.0) * 0.45;
     float travel = 0.6 + 0.4 * sin(atan(q.y, q.x) * 2.0 - t * 1.6);
@@ -117,16 +124,20 @@ export function Aurora({ inputs, product = 'claude' }: { inputs: AuroraInputs; p
     const U = { res: u('uRes'), time: u('uTime'), reach: u('uReach'), glow: u('uGlow'), sweep: u('uSweep'), sweepGlow: u('uSweepGlow'), rim: u('uRim'), orb: u('uOrb'), radius: u('uRadius'), deep: u('uDeep'), mid: u('uMid'), light: u('uLight') };
     gl.uniform3fv(U.deep, hex(colors[0])); gl.uniform3fv(U.mid, hex(colors[1])); gl.uniform3fv(U.light, hex(colors[2]));
 
-    // a lower resolution is plenty for soft light, and much cheaper on phones
-    const scale = Math.min(1, window.devicePixelRatio || 1) * 0.6;
-    const size = () => {
-      const w = Math.round(canvas.clientWidth * scale), h = Math.round(canvas.clientHeight * scale);
+    // soft light needs few pixels: drawn at ~40% of the screen's size and scaled up (much cheaper on
+    // phones). The size comes from a ResizeObserver, never read in the frame loop (no forced layout).
+    const scale = 0.42;
+    const size = (cw: number, ch: number) => {
+      const w = Math.max(1, Math.round(cw * scale)), h = Math.max(1, Math.round(ch * scale));
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
       gl.uniform2f(U.res, w, h);
       gl.uniform1f(U.radius, 40 * scale);
     };
+    size(canvas.clientWidth, canvas.clientHeight);
+    const ro = new ResizeObserver(([e]) => size(e.contentRect.width, e.contentRect.height));
+    ro.observe(canvas);
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let raf = 0, cleared = false;
+    let raf = 0, cleared = false, odd = false, last = '';
     const t0 = performance.now();
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -138,7 +149,13 @@ export function Aurora({ inputs, product = 'claude' }: { inputs: AuroraInputs; p
         return;
       }
       cleared = false;
-      size();
+      // while something moves it (a pull, a release, a screen change): every frame. At rest it only
+      // drifts slowly, so every other frame is enough, which halves its cost.
+      const key = `${glow.toFixed(3)}${inputs.reach.get().toFixed(3)}${rim.toFixed(3)}${orb.toFixed(3)}`;
+      const moving = key !== last;
+      last = key;
+      odd = !odd;
+      if (!moving && odd && !still) return;
       gl.uniform1f(U.time, still ? 4 : (now - t0) / 1000);
       gl.uniform1f(U.reach, inputs.reach.get());
       gl.uniform1f(U.glow, glow);
@@ -150,7 +167,7 @@ export function Aurora({ inputs, product = 'claude' }: { inputs: AuroraInputs; p
     };
     raf = requestAnimationFrame(frame);
     // (the context isn't thrown away: React may run this effect again on the same canvas)
-    return () => { cancelAnimationFrame(raf); gl.deleteBuffer(buf); gl.deleteProgram(prog); };
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); gl.deleteBuffer(buf); gl.deleteProgram(prog); };
   }, [inputs, colors]);
 
   return <canvas ref={ref} className="aurora" aria-hidden="true" />;
