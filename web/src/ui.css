@@ -317,7 +317,10 @@ html, body, #root { background: var(--void); }
 .tile { min-height: 140px; }
 /* the app's own logo, printed small and many times across the tile */
 /* the little logos, tiled on a diagonal: a larger layer turned 30°, so rows run corner to corner */
-.tile::after { content: ''; position: absolute; inset: -60%; background: var(--print) 0 0 / 64px; opacity: 0.09; transform: rotate(-30deg); pointer-events: none; }
+.tile::after { content: ''; position: absolute; inset: -60%; background: var(--print) 0 0 / 64px; opacity: 0.09; transform: rotate(-30deg); pointer-events: none; animation: tile-drift 10s linear infinite; animation-delay: var(--drift-delay, 0s); }
+/* the logos glide slowly along their diagonal: one tile every 10 s, each card a little out of step */
+@keyframes tile-drift { from { transform: rotate(-30deg) translateX(0); } to { transform: rotate(-30deg) translateX(64px); } }
+@media (prefers-reduced-motion: reduce) { .tile::after { animation: none; } }
 .tile > * { z-index: 1; }
 
 /* --- the store country: the chip in the top bar, and the list (onboarding and its sheet) --------------------- */
