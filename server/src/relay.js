@@ -1,12 +1,13 @@
-// Cross-chain payments through Relay (relay.link). A buyer who doesn't hold GRAM pays with a coin they
-// have (USDT, USDC, ETH, SOL or BTC) by sending it to a one-time Relay deposit address; Relay swaps it
-// and delivers the order's exact GRAM amount to our merchant wallet. We never touch the other chain:
-// we ask Relay for the address and the amount, then ask Relay how that deposit went.
+// Top-ups from other chains through Relay (relay.link). Telegram lets bots accept only Stars or GRAM for
+// digital services, so Tessera never takes other coins. Instead a buyer gets their own Relay deposit
+// address for a coin they hold (USDT, USDC, ETH, SOL or BTC): whatever they send there is swapped and
+// arrives as GRAM in *their* TON wallet, and they pay for the plan in GRAM as usual. The address is open
+// (reusable, any amount) and its refunds go back to whoever sent the coin.
 //
 // Modes
-//   live  mainnet with on-chain payments: real deposit addresses, real swaps
-//   test  anything else (testnet, demo): real Relay prices when it answers, but no deposit address, and
-//         the app offers "Simulate payment" instead (Relay can't deliver to TON testnet)
+//   live  mainnet with on-chain payments: real addresses, real swaps
+//   test  anything else (testnet, demo): real Relay prices when it answers, but no address; the app
+//         simulates a deposit instead (Relay can't deliver to TON testnet)
 //   off   RELAY=off
 //
 // Relay's /quote/v3 and Solana or Bitcoin deposit addresses need an API key (RELAY_API_KEY, sent as
@@ -35,20 +36,26 @@ export const ROUTES = [
 // a valid sender on each kind of chain, for price-only quotes in test mode
 const PLACEHOLDER_USER = { evm: '0x0000000000000000000000000000000000000000', svm: '11111111111111111111111111111111', bvm: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' };
 
-/** Where a deposit stands, from Relay's request records for its address. */
-export function readStatus(requests) {
-  const list = Array.isArray(requests) ? requests : [];
-  const ok = list.find((r) => r.status === 'success');
-  if (ok) return { state: 'success', requestId: ok.id, outTx: ok.data?.outTxs?.[0]?.hash ?? null };
-  const refund = list.find((r) => r.status === 'refund' || r.status === 'refunded');
-  if (refund) return { state: 'refunded', requestId: refund.id, outTx: refund.data?.outTxs?.[0]?.hash ?? null };
-  const failed = list.find((r) => r.status === 'failure' || r.status === 'failed');
-  if (failed) return { state: 'failed', requestId: failed.id };
-  // a deposit Relay has seen but not finished (pending, depositing, waiting with an in-tx)
-  const seen = list.find((r) => r.status === 'pending' || r.status === 'depositing' || (r.data?.inTxs?.length ?? 0) > 0);
-  if (seen) return { state: 'seen', requestId: seen.id };
-  return { state: 'waiting' };
+/**
+ * How the latest deposit to a top-up address went, ignoring any made before `since` (ms): the address is
+ * reused, so an old success mustn't look like this one.
+ */
+export function readStatus(requests, since = 0) {
+  const t = (r) => Date.parse(r.createdAt ?? r.updatedAt ?? 0) || 0;
+  const list = (Array.isArray(requests) ? requests : []).filter((r) => t(r) >= since).sort((a, b) => t(b) - t(a));
+  const r = list[0];
+  if (!r) return { state: 'waiting' };
+  const outTx = r.data?.outTxs?.[0]?.hash ?? null;
+  if (r.status === 'success') return { state: 'success', requestId: r.id, outTx };
+  if (r.status === 'refund' || r.status === 'refunded') return { state: 'refunded', requestId: r.id, outTx };
+  if (r.status === 'failure' || r.status === 'failed') return { state: 'failed', requestId: r.id };
+  return { state: 'seen', requestId: r.id };
 }
+
+// a typical first deposit, in each coin's smallest units: an open address is quoted once with this, then
+// accepts any amount
+const NOMINAL = { USDT: 20, USDC: 20, ETH: 0.01, SOL: 0.1, BTC: 0.0003 };
+const nominal = (coin, decimals) => (BigInt(Math.round((NOMINAL[coin] ?? 1) * 1e8)) * 10n ** BigInt(decimals) / 10n ** 8n).toString();
 
 export function createRelay({
   mode = 'off', apiKey = '', base = 'https://api.relay.link', fetchImpl = globalThis.fetch, now = () => Date.now(), log = console,
@@ -94,69 +101,65 @@ export function createRelay({
     return out.length || mode !== 'test' ? out : offered().map((r) => ({ key: r.key, coin: r.coin, network: r.network }));
   }
 
-  /**
-   * A deposit for one order: send `amountIn` of the coin to `address` and Relay delivers exactly
-   * `gramNano` GRAM to `recipient`. In test mode there's no address (nothing must be sent).
-   */
-  async function createDeposit({ routeKey, gramNano, recipient }) {
+  const routeOf = (routeKey) => {
     const route = offered().find((r) => r.key === routeKey);
     if (!route) throw Object.assign(new Error('This coin isn’t available right now.'), { status: 400 });
-    if (mode === 'test') {
-      // test mode never sends anything, so a Relay outage only costs the shown amount
-      try { return await quoteDeposit(route, gramNano, recipient); } catch (e) {
-        log.warn?.('[relay] test quote failed:', e.message);
-        return { route: route.key, coin: route.coin, network: route.network, chainId: route.chainId, address: null, test: true, requestId: null, amount: null, amountFormatted: null, decimals: null, usd: null, feeUsd: null };
-      }
-    }
-    return quoteDeposit(route, gramNano, recipient);
-  }
+    return route;
+  };
 
-  async function quoteDeposit(route, gramNano, recipient) {
+  /**
+   * The buyer's top-up address for one coin: an open Relay deposit address whose deposits arrive as GRAM
+   * in `recipient` (the buyer's own TON wallet). In test mode there's no address.
+   */
+  async function topUpAddress({ routeKey, recipient }) {
+    const route = routeOf(routeKey);
+    const base = { route: route.key, coin: route.coin, network: route.network, test: mode !== 'live', address: null };
+    if (mode !== 'live') return base;
     const cur = await currencyOf(route);
     if (!cur) throw Object.assign(new Error('This coin isn’t available right now.'), { status: 400 });
     const ton = (await chainList()).get(TON_CHAIN);
-    const live = mode === 'live';
-    const body = {
-      user: live ? cur.refundTo : PLACEHOLDER_USER[cur.vm] ?? PLACEHOLDER_USER.evm,
-      recipient,
-      originChainId: route.chainId,
-      destinationChainId: TON_CHAIN,
-      originCurrency: cur.address,
-      destinationCurrency: ton?.currency?.address,
-      amount: String(gramNano),
-      tradeType: 'EXACT_OUTPUT',
-      ...(live && {
-        useDepositAddress: true,
-        strict: true,
-        // the chain's native-coin address means "refund whoever sent it", which also works when the buyer
-        // sends from an exchange (their own address there isn't theirs)
-        refundTo: cur.refundTo,
+    const q = await call(apiKey ? '/quote/v3' : '/quote/v2', {
+      method: 'POST',
+      body: JSON.stringify({
+        user: cur.refundTo, recipient,
+        originChainId: route.chainId, destinationChainId: TON_CHAIN,
+        originCurrency: cur.address, destinationCurrency: ton?.currency?.address,
+        amount: nominal(route.coin, cur.decimals), tradeType: 'EXACT_INPUT',
+        // open (reusable, any amount); refunds go to whoever sent the coin, which also covers exchanges
+        useDepositAddress: true, strict: false, refundTo: cur.refundTo,
       }),
-    };
-    const q = await call(apiKey ? '/quote/v3' : '/quote/v2', { method: 'POST', body: JSON.stringify(body) });
-    const dep = (q.steps || []).find((s) => s.depositAddress || s.id === 'deposit');
+    });
+    const dep = (q.steps || []).find((st) => st.depositAddress || st.id === 'deposit');
     const address = typeof dep?.depositAddress === 'string' ? dep.depositAddress : dep?.depositAddress?.address ?? null;
-    if (live && !address) throw Object.assign(new Error('Relay didn’t return a deposit address. Try again.'), { status: 502 });
-    const inAmt = q.details?.currencyIn;
-    return {
-      route: route.key, coin: route.coin, network: route.network, chainId: route.chainId,
-      address: live ? address : null,
-      test: !live,
-      requestId: q.requestId ?? dep?.requestId ?? null,
-      amount: inAmt?.amount ?? null, // smallest units
-      amountFormatted: inAmt?.amountFormatted ?? null,
-      decimals: inAmt?.currency?.decimals ?? cur.decimals,
-      usd: inAmt?.amountUsd ? Number(inAmt.amountUsd) : null,
-      feeUsd: q.fees?.relayer?.amountUsd ? Number(q.fees.relayer.amountUsd) : null,
-    };
+    if (!address) throw Object.assign(new Error('Relay didn’t return an address. Try again.'), { status: 502 });
+    return { ...base, address };
   }
 
-  /** How a live deposit is going: waiting, seen, success, refunded or failed. */
-  async function status(address) {
+  /** About how much of a coin buys `gramNano` GRAM right now (a price only; nothing is created). */
+  async function estimate({ routeKey, gramNano, recipient }) {
+    const route = routeOf(routeKey);
+    const cur = await currencyOf(route);
+    if (!cur) return null;
+    const ton = (await chainList()).get(TON_CHAIN);
+    const q = await call(apiKey ? '/quote/v3' : '/quote/v2', {
+      method: 'POST',
+      body: JSON.stringify({
+        user: PLACEHOLDER_USER[cur.vm] ?? PLACEHOLDER_USER.evm, recipient,
+        originChainId: route.chainId, destinationChainId: TON_CHAIN,
+        originCurrency: cur.address, destinationCurrency: ton?.currency?.address,
+        amount: String(gramNano), tradeType: 'EXACT_OUTPUT',
+      }),
+    });
+    const inAmt = q.details?.currencyIn;
+    return inAmt?.amountFormatted ? { amount: inAmt.amountFormatted, usd: inAmt.amountUsd ? Number(inAmt.amountUsd) : null } : null;
+  }
+
+  /** How the latest deposit (since `since`) to a live top-up address is going. */
+  async function status(address, since = 0) {
     if (!address) return { state: 'waiting' };
     const j = await call(`/requests/v3?depositAddress=${encodeURIComponent(address)}`);
-    return readStatus(j.requests);
+    return readStatus(j.requests, since);
   }
 
-  return { mode, options, createDeposit, status, hasKey: !!apiKey, log };
+  return { mode, options, topUpAddress, estimate, status, hasKey: !!apiKey };
 }

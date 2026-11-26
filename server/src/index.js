@@ -13,7 +13,7 @@ import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
 import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, walletBalance, normalize, friendly, NETWORK } from './chain.js';
 import { createRelay } from './relay.js';
-import { createEngine, LATE_MS } from './engine.js';
+import { createEngine } from './engine.js';
 import { startApplePriceSync } from './applePrices.js';
 import { startPaymentStream } from './stream.js';
 import { startAdminBot } from './bot.js';
@@ -53,12 +53,13 @@ if (!SUPPLIER.live && NETWORK === 'mainnet' && (PAYMENT_MODE === 'chain' || (STA
 }
 const MERCHANT_FRIENDLY = MERCHANT && normalize(MERCHANT) ? friendly(MERCHANT, NETWORK) : null;
 
-// Cross-chain payments through Relay (relay.js): live only on mainnet with on-chain payments, since
-// Relay delivers real GRAM on TON mainnet; anywhere else the app shows real prices but simulates the deposit.
+// Top-ups from other chains through Relay (relay.js). Telegram lets bots take only Stars or GRAM for digital
+// services, so we never accept other coins: a buyer sends USDT, USDC, ETH, SOL or BTC to their own Relay
+// address and it arrives as GRAM in *their* TON wallet, which then pays us in GRAM as usual.
+// Live only on mainnet with on-chain payments (Relay delivers real GRAM on TON mainnet); elsewhere the app
+// shows real prices but simulates the deposit.
 const RELAY_MODE = process.env.RELAY === 'off' ? 'off' : PAYMENT_MODE === 'chain' && NETWORK === 'mainnet' ? 'live' : 'test';
 const relay = createRelay({ mode: RELAY_MODE, apiKey: process.env.RELAY_API_KEY || '' });
-// Relay needs a real TON address to quote for, even in test mode (nothing is sent there in test mode)
-const RELAY_RECIPIENT = RELAY_MODE === 'live' ? friendly(MERCHANT, 'mainnet') : 'EQCD39VS5jcptHL8vMjEXrzGaRcCVYto7HUn4bpAOg8xqB2N';
 
 const NANO = 1_000_000_000n;
 const toNano = (gram) => BigInt(Math.ceil(gram * 100)) * (NANO / 100n); // round up to 0.01 GRAM
@@ -229,7 +230,6 @@ const publicOrder = (o) => o && {
   currency: o.currency,
   method: o.method,
   stars: o.stars,
-  relay: o.relay && { coin: o.relay.coin, network: o.relay.network, address: o.relay.address, amount: o.relay.amountFormatted, usd: o.relay.usd, test: !!o.relay.test },
   gram: fromNano(o.amount_nano),
   amountNano: o.amount_nano,
   comment: o.comment,
@@ -247,11 +247,56 @@ const publicOrder = (o) => o && {
   expiresAt: o.expires_at,
 };
 
-// The coins a buyer can pay with through Relay, for the review sheet's "Other coin" choice.
+// The coins a buyer can top up from, for the Top up GRAM sheet.
 app.get('/api/relay/options', telegramAuth, async (req, res) => {
   if (RELAY_MODE === 'off') return res.json({ mode: 'off', options: [] });
   try { res.json({ mode: RELAY_MODE, options: await relay.options() }); } catch { res.json({ mode: RELAY_MODE, options: [] }); }
 });
+
+// The buyer's own top-up address for one coin: anything sent there arrives as GRAM in their wallet. One per
+// buyer, wallet and coin, kept and reused. `needNano` (optional) also prices what's missing for a purchase.
+app.post('/api/relay/topup', telegramAuth, async (req, res) => {
+  if (RELAY_MODE === 'off') return res.status(400).json({ error: 'Top-ups are off right now.' });
+  const wallet = String(req.body?.wallet || '');
+  const routeKey = String(req.body?.route || '');
+  if (!normalize(wallet)) return res.status(400).json({ error: 'Connect your TON wallet first.' });
+  const recipient = friendly(wallet, 'mainnet'); // Relay delivers on TON mainnet
+  const key = `topup:${req.tgUser.id}:${normalize(wallet)}:${routeKey}`;
+  try {
+    let saved = settings.get(key);
+    let t = saved ? JSON.parse(saved) : null;
+    if (!t || (RELAY_MODE === 'live' && !t.address)) {
+      t = await relay.topUpAddress({ routeKey, recipient });
+      if (t.address) settings.set(key, JSON.stringify(t));
+    }
+    const need = /^\d+$/.test(String(req.body?.needNano || '')) && BigInt(req.body.needNano) > 0n
+      ? await relay.estimate({ routeKey, gramNano: String(req.body.needNano), recipient }).catch(() => null) : null;
+    res.json({ ...t, need, mode: RELAY_MODE });
+  } catch (e) {
+    console.warn('[relay] top-up address failed:', e.message);
+    res.status(e.status && e.status < 500 ? 400 : 502).json({ error: /available|address/.test(e.message) ? e.message : 'Couldn’t get a top-up address right now. Try another coin.' });
+  }
+});
+
+// How the buyer's deposits to a top-up address are going (latest first). Test mode simulates one.
+const simTopups = new Map();
+app.get('/api/relay/topup/status', telegramAuth, async (req, res) => {
+  const address = String(req.query.address || '');
+  const sim = simTopups.get(`${req.tgUser.id}:${req.query.route}`);
+  if (RELAY_MODE === 'test') {
+    if (!sim || sim < (Number(req.query.since) || 0)) return res.json({ state: 'waiting' });
+    const age = Date.now() - sim;
+    return res.json(age < 1200 ? { state: 'waiting' } : age < 4500 ? { state: 'seen' } : { state: 'success', test: true });
+  }
+  if (!address) return res.status(400).json({ error: 'No address' });
+  try { res.json(await relay.status(address, Number(req.query.since) || 0)); } catch { res.json({ state: 'unknown' }); }
+});
+if (RELAY_MODE === 'test') {
+  app.post('/api/relay/topup/sim', telegramAuth, (req, res) => {
+    simTopups.set(`${req.tgUser.id}:${req.body?.route}`, Date.now());
+    res.json({ ok: true });
+  });
+}
 
 // Held quotes: the review sheet asks for one when it opens, so the price it shows ("held for 20:00")
 // is the price the order gets. Kept in memory; after a restart the order simply re-quotes.
@@ -276,8 +321,7 @@ app.post('/api/quotes', telegramAuth, async (req, res) => {
 
 app.post('/api/orders', telegramAuth, async (req, res) => {
   const { region, planId, wallet } = req.body || {};
-  const method = ['stars', 'relay'].includes(req.body?.method) ? req.body.method : 'gram';
-  if (method === 'relay' && RELAY_MODE === 'off') return res.status(400).json({ error: 'Paying with other coins is off right now.' });
+  const method = req.body?.method === 'stars' ? 'stars' : 'gram';
   const months = Number(req.body?.months ?? 1);
   const code = String(region || STORE_REGION).toUpperCase();
   const store = storeOf(req.body?.store);
@@ -287,19 +331,8 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
     && held.regionCode === code && held.store === store && held.expiresAt > Date.now();
   const q = useHeld ? held : await quote(code, planId, months, store).catch((e) => { console.error(e); return null; });
   if (!q || (!q.gram && !q.stars)) return res.status(q?.stale ? 503 : 400).json({ error: q?.stale ? 'Prices are updating. Try again in a minute.' : 'This plan is not available right now.' });
-  if (method !== 'stars' && !q.gram) return res.status(503).json({ error: 'GRAM prices are updating. Pay with Stars, or try again in a minute.' });
+  if (method === 'gram' && !q.gram) return res.status(503).json({ error: 'GRAM prices are updating. Pay with Stars, or try again in a minute.' });
   if (method === 'stars' && !q.stars) return res.status(400).json({ error: 'Stars payments are off right now.' });
-  // another coin: Relay quotes how much of it delivers this order's exact GRAM, and (live) gives the
-  // one-time address to send it to
-  let deposit = null;
-  if (method === 'relay') {
-    try {
-      deposit = await relay.createDeposit({ routeKey: String(req.body?.route || ''), gramNano: q.amountNano, recipient: RELAY_RECIPIENT });
-    } catch (e) {
-      console.warn('[relay] deposit failed:', e.message);
-      return res.status(e.status && e.status < 500 ? 400 : 502).json({ error: /available|address/.test(e.message) ? e.message : 'Couldn’t get a price for that coin right now. Try another, or pay with GRAM.' });
-    }
-  }
   const now = Date.now();
   const id = crypto.randomUUID();
   const memo = 'TS-' + crypto.randomBytes(5).toString('hex').toUpperCase();
@@ -307,10 +340,9 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
     id, tgUserId: String(req.tgUser.id), wallet: wallet || null, region: code, planId,
     packages: q.packages, faceValue: q.credit, currency: q.currency, costUsd: q.costUsd,
     // a held quote keeps its own deadline, but the buyer always gets at least 10 minutes to pay
-    amountNano: method === 'stars' ? '0' : q.amountNano, comment: memo, createdAt: now,
-    // another coin gets an hour: moving it off an exchange or waiting for Bitcoin confirmations takes a while
-    expiresAt: method === 'relay' ? now + 60 * 60e3 : useHeld ? Math.max(held.expiresAt, now + 10 * 60e3) : now + QUOTE_TTL_MS,
-    method, stars: method === 'stars' ? q.stars : null, months, store, relay: deposit,
+    amountNano: method === 'gram' ? q.amountNano : '0', comment: memo, createdAt: now,
+    expiresAt: useHeld ? Math.max(held.expiresAt, now + 10 * 60e3) : now + QUOTE_TTL_MS,
+    method, stars: method === 'stars' ? q.stars : null, months, store,
   });
   let invoiceLink = null;
   if (method === 'stars') {
@@ -366,9 +398,7 @@ if (PAYMENT_MODE === 'mock') {
   app.post('/api/orders/:id/mock-pay', telegramAuth, (req, res) => {
     const o = orders.get(req.params.id);
     if (!o || o.tg_user_id !== String(req.tgUser.id)) return res.status(404).json({ error: 'Order not found' });
-    if (o.status === 'awaiting_payment' && o.method === 'relay') {
-      simulateRelay(o);
-    } else if (o.status === 'awaiting_payment' && o.method === 'stars') {
+    if (o.status === 'awaiting_payment' && o.method === 'stars') {
       // simulate Telegram's successful_payment arriving
       const chargeId = 'mock_' + crypto.randomBytes(8).toString('hex');
       setTimeout(() => engine.applyStars({ orderId: o.id, amount: o.stars, chargeId, userId: o.tg_user_id }).catch(console.error), 900);
@@ -378,21 +408,6 @@ if (PAYMENT_MODE === 'mock') {
       setTimeout(() => engine.seePending(tx), 600); // like the stream's "pending"
       setTimeout(() => engine.applyTransfer(tx).catch(console.error), 2500); // like "finalized"
     }
-    res.json(publicOrder(orders.get(o.id)));
-  });
-}
-
-// Relay outside mainnet: there's no real deposit, so the app can simulate one (seen, then swapped and paid).
-function simulateRelay(o) {
-  const requestId = 'test_' + crypto.randomBytes(8).toString('hex');
-  setTimeout(() => engine.applyRelay({ orderId: o.id, state: 'seen', requestId }).catch(console.error), 700);
-  setTimeout(() => engine.applyRelay({ orderId: o.id, state: 'success', requestId, outTx: null }).catch(console.error), 3200);
-}
-if (RELAY_MODE === 'test') {
-  app.post('/api/orders/:id/relay-sim', telegramAuth, (req, res) => {
-    const o = orders.get(req.params.id);
-    if (!o || o.tg_user_id !== String(req.tgUser.id) || o.method !== 'relay') return res.status(404).json({ error: 'Order not found' });
-    if (o.status === 'awaiting_payment') simulateRelay(o);
     res.json(publicOrder(orders.get(o.id)));
   });
 }
@@ -481,25 +496,6 @@ setInterval(async () => {
   try { await engine.tick(); } catch (e) { console.error(e); } finally { ticking = false; lastTick = Date.now(); }
 }, 5000);
 engine.resume().catch(console.error);
-
-// Relay deposits: ask Relay how each open one is going, every 15 seconds.
-if (RELAY_MODE === 'live') {
-  let relayBusy = false;
-  setInterval(async () => {
-    if (relayBusy) return;
-    relayBusy = true;
-    try {
-      const open = orders.byStatus('awaiting_payment', 'underpaid', 'expired')
-        .filter((o) => o.method === 'relay' && o.relay?.address && (o.status !== 'expired' || Date.now() - o.expires_at < LATE_MS));
-      for (const o of open) {
-        try {
-          const st = await relay.status(o.relay.address);
-          if (st.state !== 'waiting') await engine.applyRelay({ orderId: o.id, ...st });
-        } catch (e) { console.warn(`[relay] status ${o.id}:`, e.message); }
-      }
-    } finally { relayBusy = false; }
-  }, 15000);
-}
 
 // Rate watchdog: alert once when the GRAM/USD feed goes stale, once when it recovers.
 let rateAlerted = false;
