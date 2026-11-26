@@ -159,6 +159,21 @@ export const tg = {
       cs.getItem(key, (err, v) => { clearTimeout(t); res(!err && v === '1'); });
     });
   },
+  /** A per-user value (e.g. the store country), in CloudStorage with a localStorage copy. */
+  getValue(key: string): Promise<string | null> {
+    const cs = inTelegram ? wa?.CloudStorage : undefined;
+    let local: string | null = null;
+    try { local = localStorage.getItem(key); } catch { /* ignore */ }
+    if (!cs || local) return Promise.resolve(local);
+    return new Promise((res) => {
+      const t = setTimeout(() => res(local), 1500);
+      cs.getItem(key, (err, v) => { clearTimeout(t); res(!err && v ? v : local); });
+    });
+  },
+  setValue(key: string, value: string) {
+    try { localStorage.setItem(key, value); } catch { /* ignore */ }
+    if (inTelegram) wa?.CloudStorage?.setItem(key, value);
+  },
   setFlag(key: string) {
     try { localStorage.setItem(key, '1'); } catch { /* ignore */ }
     if (inTelegram) wa?.CloudStorage?.setItem(key, '1');

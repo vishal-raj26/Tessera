@@ -1,17 +1,20 @@
 // First-run intro: three calm pages on black, each with a real render of the card (made in Blender,
 // design/card3d), a short headline and one button, then a last page that connects the TON wallet
-// (or leaves it for later; Stars need no wallet). Swipe or tap Continue; Skip leaves at once.
+// (or leaves it for later; Stars need no wallet). Before it, the buyer picks their store country, which
+// can't be skipped. Swipe or tap Continue; Skip jumps to the country (or leaves, once it's chosen).
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type PanInfo } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { Emblem } from './Emblem';
 import { GramIcon } from './GramIcon';
+import { RegionList, regionNote } from './Region';
+import type { Region } from '../api';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
 const BG = '#0a0a0a';
 
-interface Page { img: string; alt: string; title: string; body: string; pull?: boolean; wallet?: boolean }
+interface Page { img: string; alt: string; title: string; body: string; pull?: boolean; wallet?: boolean; region?: boolean }
 
 const PAGES: Page[] = [
   {
@@ -30,6 +33,11 @@ const PAGES: Page[] = [
     body: 'You get App Store or Google Play credit. Redeem it, then subscribe in the app.',
   },
   {
+    img: '', alt: '', region: true,
+    title: 'Where’s your store?',
+    body: regionNote,
+  },
+  {
     img: '', alt: '', wallet: true,
     title: 'Connect your wallet.',
     body: 'Link your TON wallet to pay in GRAM. Paying with Stars needs no wallet.',
@@ -38,7 +46,7 @@ const PAGES: Page[] = [
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
-export function Onboarding({ onDone }: { onDone: () => void }) {
+export function Onboarding({ onDone, regions, region, onRegion }: { onDone: () => void; regions: Region[]; region: string | null; onRegion: (code: string) => void }) {
   const [i, setI] = useState(0);
   const [dir, setDir] = useState(1);
   const p = PAGES[i];
@@ -71,13 +79,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const finish = useCallback(() => { tg.chrome(BG); onDone(); }, [onDone]);
   const finishRef = useRef(finish);
   finishRef.current = finish;
+  const regionAt = PAGES.findIndex((x) => x.region);
   const go = useCallback((n: number) => {
     if (n < 0) return;
+    // the country can't be skipped: going past it needs one chosen
+    if (n > regionAt && i <= regionAt && !region) { n = regionAt; if (i === regionAt) { tg.notify('warning'); return; } }
     if (n >= PAGES.length) { finish(); return; }
     setDir(n > i ? 1 : -1);
     setI(n);
     tg.select();
-  }, [i, finish]);
+  }, [i, finish, region, regionAt]);
 
   const onPanEnd = (_: PointerEvent, info: PanInfo) => {
     if (Math.abs(info.offset.x) < 50 && Math.abs(info.velocity.x) < 400) return;
@@ -90,7 +101,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
       <div className="ob-top">
         <span className="nav-brand"><Emblem size={18} stroke={1.9} /> <span>Tessera</span></span>
-        {!last && <button className="link ob-skip" onClick={finish}>Skip</button>}
+        {!last && !(p.region && !region) && <button className="link ob-skip" onClick={() => (region ? finish() : go(regionAt))}>Skip</button>}
       </div>
 
       <div className="ob-stage">
@@ -101,7 +112,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             exit={{ opacity: 0, x: dir * -50, rotate: dir * -4 }}
             transition={{ duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
           >
-            {p.wallet ? (
+            {p.region ? (
+              <RegionList regions={regions} value={region} onPick={(c) => { tg.select(); onRegion(c); }} />
+            ) : p.wallet ? (
               <motion.div className={`ob-wallet ${address ? 'on' : ''}`} style={{ rotateX, rotateY }} animate={{ y: [0, -6, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}>
                 <GramIcon size={88} />
                 <AnimatePresence>
@@ -149,7 +162,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <button className="link ob-later" onClick={finish}>Not now</button>
           </div>
         ) : (
-          <motion.button className="btn btn-pearl" onClick={() => { tg.tap('medium'); go(i + 1); }} whileTap={{ scale: 0.97 }}>
+          <motion.button className="btn btn-pearl" disabled={p.region && !region} onClick={() => { tg.tap('medium'); go(i + 1); }} whileTap={{ scale: 0.97 }}>
             {last ? 'Get started' : 'Continue'}
           </motion.button>
         )}
