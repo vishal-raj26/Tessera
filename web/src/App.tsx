@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type CoinRoute, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type Region, type PayMethod, type CoinRoute, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
 import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -27,10 +27,11 @@ import { Aurora, type AuroraInputs } from './components/Aurora';
 import { Tally } from './components/Tally';
 import { PULL } from './components/PlanCarousel';
 import { TopUp } from './components/TopUp';
-import { Menu } from './components/Menu';
+import { RegionSheet } from './components/Region';
+import { WalletSheet } from './components/WalletSheet';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
-type SheetName = null | 'review' | 'guide' | 'topup' | 'menu';
+type SheetName = null | 'review' | 'guide' | 'topup' | 'region' | 'wallet';
 
 const rise = (delay = 0) => ({
   initial: { opacity: 0, y: 12 },
@@ -126,6 +127,14 @@ export default function App() {
   const devWallet = import.meta.env.DEV ? new URLSearchParams(location.search).get('devwallet') ?? '' : '';
   const wallet = useTonAddress() || devWallet;
 
+  // the buyer's store country: which region's cards and prices are theirs. Chosen in onboarding (or the
+  // region sheet), kept in their Telegram cloud storage; until then the server's default region prices.
+  const [region, setRegionState] = useState<string | null>(() => { try { return localStorage.getItem('region'); } catch { return null; } });
+  const regionRef = useRef(region);
+  regionRef.current = region;
+  useEffect(() => { tg.getValue('region').then((v) => { if (v && v !== regionRef.current) setRegionState(v); }); }, []);
+  const [regions, setRegions] = useState<Region[]>([]);
+
   const [bootErr, setBootErr] = useState(false);
   const store: StoreId = storesPriced[storePick] ? storePick : 'appstore';
   // which store's prices are loaded (Renew waits for the right one)
@@ -139,14 +148,31 @@ export default function App() {
     api.config()
       .then(async (c) => {
         setConfig(c);
-        let cat = await api.catalog(c.region, storePick);
+        api.regions().then(setRegions).catch(() => {});
+        const rc = regionRef.current ?? c.region;
+        let cat = await api.catalog(rc, storePick);
         // the preferred store has nothing priced (e.g. Google Play not set up yet): use the App Store
-        if (storePick !== 'appstore' && cat.storesPriced && !cat.storesPriced[storePick]) cat = await api.catalog(c.region, 'appstore');
+        if (storePick !== 'appstore' && cat.storesPriced && !cat.storesPriced[storePick]) cat = await api.catalog(rc, 'appstore');
         applyCatalog(cat);
       })
       .catch(() => setBootErr(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { tg.boot(); load(); }, [load]);
+  const R = region ?? config?.region ?? 'US';
+  // a new store country: its prices
+  const firstRegion = useRef(true);
+  useEffect(() => {
+    if (firstRegion.current) { firstRegion.current = false; return; }
+    if (config) api.catalog(R, store).then(applyCatalog).catch(() => {});
+  }, [R]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (intro === false && config && !region && regions.length && view === 'home') setSheet((x) => x ?? 'region');
+  }, [intro, config, region, regions.length, view]);
+  const pickRegion = useCallback((code: string) => {
+    setRegionState(code);
+    tg.setValue('region', code);
+    tg.notify('success');
+  }, []);
   // the buyer's orders, for the personal header (also what Your codes shows first)
   useEffect(() => { if (config && history === null) api.orders().then(setHistory).catch(() => {}); }, [config]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -156,13 +182,13 @@ export default function App() {
     if (!config || view !== 'home' || sheet) return;
     const refresh = () => {
       if (document.hidden) return;
-      api.catalog(config.region, store).then(applyCatalog).catch(() => {});
+      api.catalog(R, store).then(applyCatalog).catch(() => {});
     };
     const id = setInterval(refresh, 30_000);
     const onShow = () => { if (!document.hidden) refresh(); };
     document.addEventListener('visibilitychange', onShow);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onShow); };
-  }, [config, view, sheet, store, applyCatalog]);
+  }, [config, view, sheet, store, applyCatalog, R]);
 
   // connection state: show a quiet bar when offline, reload what failed when it comes back
   useEffect(() => {
@@ -197,7 +223,7 @@ export default function App() {
     if (s === store || !config) return;
     tg.select(); setStorePick(s); setIndex(0); setErr(null);
     try { localStorage.setItem('store', s); } catch { /* ignore */ }
-    api.catalog(config.region, s).then(applyCatalog).catch(() => {});
+    api.catalog(R, s).then(applyCatalog).catch(() => {});
   }
   const plan = plans?.[index];
   // testnet charges a fraction of the real price (TEST_PRICE_SCALE); the app says so next to the price
@@ -264,7 +290,7 @@ export default function App() {
       // load that store's own prices first; until they arrive the screen keeps the loaded store's name
       // and can't buy (pricesShown), and Renew waits for them (renewStep)
       setStorePick(target.store as StoreId);
-      api.catalog(config.region, target.store as StoreId).then(applyCatalog).catch(() => {
+      api.catalog(R, target.store as StoreId).then(applyCatalog).catch(() => {
         setStorePick(before.storePick);
         setProductPick(before.productPick);
         cantRenew();
@@ -285,7 +311,7 @@ export default function App() {
   // load them. Renew loads its own and is waited for.
   useEffect(() => {
     if (!config || renewing || prices.ready) return;
-    api.catalog(config.region, store).then(applyCatalog).catch(() => {});
+    api.catalog(R, store).then(applyCatalog).catch(() => {});
   }, [config, renewing, prices.ready, store, applyCatalog]);
 
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
@@ -425,7 +451,7 @@ export default function App() {
     // lock this price for 20 minutes; the sheet shows it and the order uses it. Only the answer to this
     // request counts: one for a review that was closed or reopened since is ignored.
     const seq = ++quoteSeq.current;
-    api.quote(config!.region, store, plan.id, term.months)
+    api.quote(R, store, plan.id, term.months)
       .then((q) => { if (seq === quoteSeq.current) setHeld(q); })
       .catch((e) => { if (seq === quoteSeq.current) setErr(e instanceof Error ? e.message : String(e)); });
   }
@@ -437,7 +463,7 @@ export default function App() {
     setBusy(true);
     setErr(null);
     try {
-      const o = await api.createOrder(config.region, store, plan.id, term.months, payWith, wallet || undefined, heldOk?.id);
+      const o = await api.createOrder(R, store, plan.id, term.months, payWith, wallet || undefined, heldOk?.id);
       setOrder(o);
       setWalletSent(false);
       if (payWith === 'stars' && o.invoiceLink) {
@@ -577,25 +603,25 @@ export default function App() {
       </div>
 
       {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
-      <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
+      <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} regions={regions} region={region} onRegion={pickRegion} />}</AnimatePresence>
 
       {/* data-product: the accent colour follows the app being bought (ui.css) */}
       {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`} data-product={productId}>
         <Header
           wallet={wallet}
           balance={balance}
-          codesCount={codesLeft}
-          onCodes={openOrders}
-          active={view === 'wallet'}
-          onMenu={() => { tg.select(); setSheet('menu'); }}
+          onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : () => {}}
           onConnect={() => tonConnectUI.openModal()}
+          onWallet={() => { tg.select(); setSheet('wallet'); }}
           onTopUp={canTopUp ? openTopUp : undefined}
+          region={region ? { code: region, flag: regions.find((r) => r.code === region)?.flag ?? '' } : null}
+          onRegion={() => { tg.select(); setSheet('region'); }}
         />
 
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} codesCount={codesLeft} onCodes={openOrders} onHelp={config?.bot ? () => tg.openTelegramLink(`https://t.me/${config.bot}`) : undefined} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
@@ -858,14 +884,14 @@ export default function App() {
         )}
       </Sheet>
 
-      <Sheet open={sheet === 'menu'} onClose={closeSheet} label="Menu">
-        <Menu wallet={wallet} codesCount={codesLeft} canTopUp={canTopUp}
-          onCodes={() => { closeSheet(); openOrders(); }}
-          onTopUp={openTopUp}
-          onHowItWorks={() => { closeSheet(); setIntro(true); }}
-          onHelp={() => { tg.select(); if (config?.bot) tg.openTelegramLink(`https://t.me/${config.bot}`); else setToast('Write to us in the bot chat'); }}
-          onConnect={() => { closeSheet(); tonConnectUI.openModal(); }}
-          onDisconnect={() => { closeSheet(); tonConnectUI.disconnect(); }} />
+      <Sheet open={sheet === 'region'} onClose={closeSheet} label="Store country">
+        <RegionSheet regions={regions} value={region} onPick={(c) => { pickRegion(c); closeSheet(); }} />
+      </Sheet>
+
+      <Sheet open={sheet === 'wallet'} onClose={closeSheet} label="Wallet">
+        {wallet && <WalletSheet address={wallet} balance={balance} canTopUp={canTopUp} onTopUp={openTopUp}
+          onCopy={() => navigator.clipboard?.writeText(wallet).then(() => setToast('Address copied')).catch(() => {})}
+          onDisconnect={() => { closeSheet(); tonConnectUI.disconnect(); }} />}
       </Sheet>
 
       <Sheet open={sheet === 'topup'} onClose={closeSheet} label="Top up GRAM">

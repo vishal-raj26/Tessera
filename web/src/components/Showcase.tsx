@@ -21,9 +21,13 @@ interface Props {
   notice?: ReactNode;
   /** replays the first-run intro */
   onHowItWorks?: () => void;
+  /** your codes (with how many wait to be redeemed), and help (the bot chat) */
+  codesCount?: number;
+  onCodes?: () => void;
+  onHelp?: () => void;
 }
 
-export function Showcase({ products, plans, payWith, onPick, notice, onHowItWorks }: Props) {
+export function Showcase({ products, plans, payWith, onPick, notice, onHowItWorks, codesCount = 0, onCodes, onHelp }: Props) {
   return (
     <div className="store">
       {notice}
@@ -63,11 +67,11 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
         })}
       </div>
 
-      {onHowItWorks && (
-        <motion.p className="store-how" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-          New here? <button className="link" onClick={onHowItWorks}>How it works</button>
-        </motion.p>
-      )}
+      <motion.nav className="store-links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} aria-label="More">
+        {onCodes && <button className="link" onClick={onCodes}>Your codes{codesCount > 0 && <i>{codesCount}</i>}</button>}
+        {onHowItWorks && <button className="link" onClick={onHowItWorks}>How it works</button>}
+        {onHelp && <button className="link" onClick={onHelp}>Help</button>}
+      </motion.nav>
 
     </div>
   );

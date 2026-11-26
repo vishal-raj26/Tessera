@@ -316,20 +316,6 @@ html, body, #root { background: var(--void); }
 .bar-addr { font-family: var(--mono); font-size: 13px; color: var(--mute); }
 .bar-plus { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--void); }
 
-/* --- the menu behind the logo --------------------------------------------------------------------------- */
-.menu h2 { margin-bottom: 10px; }
-.menu-list { list-style: none; margin: 0 0 16px; padding: 0; }
-.menu-list button { display: flex; align-items: center; gap: 14px; width: 100%; height: 58px; color: var(--ink); font-size: 16px; text-align: left; border-bottom: 1px solid var(--line); }
-.menu-list li:last-child button { border-bottom: 0; }
-.menu-list span:not(.menu-ico) { flex: 1; }
-.menu-list em { font-style: normal; font-size: 13px; color: var(--mute); }
-.menu-ico { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.06); color: var(--ink); flex: none; }
-.menu-chev { color: var(--dim); flex: none; }
-.menu-wallet { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.04); }
-.menu-wallet > span { display: grid; gap: 2px; }
-.menu-wallet small { font-size: 12px; color: var(--mute); }
-.menu-wallet b { font-family: var(--mono); font-size: 14px; font-weight: 500; }
-.menu-wallet .btn { width: 100%; }
 
 /* --- home: your current plan, the tiles' little-logo print, how it works at the bottom ---------------------- */
 .plan-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 14px 16px 18px; border-radius: 20px; background: color-mix(in srgb, var(--clay) 9%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clay) 22%, transparent); text-align: left; color: var(--ink); }
@@ -347,5 +333,35 @@ html, body, #root { background: var(--void); }
 /* the app's own logo, printed small and many times across the tile */
 .tile::after { content: ''; position: absolute; inset: 0; background: var(--print) 0 0 / 72px; opacity: 0.09; pointer-events: none; }
 .tile > * { z-index: 1; }
-.store-how { margin: auto 0 0; padding-top: 18px; text-align: center; font-size: 13.5px; color: var(--mute); }
-.store-how .link { color: var(--ink); font-size: inherit; }
+
+/* --- the store country: the chip in the top bar, and the list (onboarding and its sheet) --------------------- */
+.bar-region { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px 0 12px; border-radius: 99px; color: var(--ink); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.bar-flag { font-size: 18px; line-height: 1; }
+.bar-region svg { color: var(--mute); }
+.bar-bal { height: 40px; }
+.region-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-height: min(46vh, 420px); overflow-y: auto; padding: 2px; }
+.region-list.loading { place-items: center; min-height: 160px; }
+.region-list button { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; height: 52px; padding: 0 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); text-align: left; }
+.region-list button.on { background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.rg-flag { font-size: 22px; line-height: 1; }
+.rg-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rg-cur { font-size: 11.5px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.ob-art .region-list { width: min(360px, 100%); }
+.region-sheet .region-list { max-height: 56vh; margin-bottom: 8px; }
+
+/* --- the wallet popup ------------------------------------------------------------------------------------ */
+.wallet-sheet { display: grid; gap: 14px; }
+.ws-head { display: flex; align-items: center; gap: 14px; }
+.ws-head h2 { margin: 0 0 4px; }
+.ws-icon { width: 52px; height: 52px; border-radius: 15px; flex: none; }
+.ws-icon-blank { display: grid; place-items: center; background: rgba(48, 161, 245, 0.12); }
+.ws-addr { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 13px; color: var(--mute); }
+.ws-bal { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.04); }
+.ws-bal small { font-size: 13px; color: var(--mute); }
+.ws-bal b { display: inline-flex; align-items: center; gap: 6px; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.ws-off { color: #f87171; }
+
+/* --- home: the links at the bottom ------------------------------------------------------------------------- */
+.store-links { margin: auto 0 0; padding-top: 18px; display: flex; justify-content: center; gap: 22px; }
+.store-links .link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.store-links .link i { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center; background: var(--clay); color: var(--void); font-size: 11px; font-weight: 700; font-style: normal; }
