@@ -32,13 +32,13 @@ export function RegionSheet({ regions, value, onPick }: { regions: Region[]; val
 }
 
 /** The popover under the country chip: a header, one row per country (flag, name, currency), a tick on
- *  the chosen one, and why it matters. */
+ *  the chosen one. */
 export function RegionPop({ regions, value, onPick }: { regions: Region[]; value: string | null; onPick: (code: string) => void }) {
   return (
     <div className="pop-region">
       <div className="pop-head">
         <b>Store country</b>
-        <small>Your App Store or Google Play country</small>
+        <small>Codes only work in this country</small>
       </div>
       <div className="pop-rows" role="radiogroup" aria-label="Store country">
         {regions.map((r) => (
@@ -50,10 +50,6 @@ export function RegionPop({ regions, value, onPick }: { regions: Region[]; value
           </button>
         ))}
       </div>
-      <p className="pop-note">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8v.01" /></svg>
-        Codes only work in this country.
-      </p>
     </div>
   );
 }
