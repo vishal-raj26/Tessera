@@ -47,7 +47,7 @@ export function Header({ wallet, onHome, onConnect, onWallet, onTopUp, region, o
               {balance != null ? <><b>{fmt(balance)}</b><GramIcon size={15} /></> : <span className="bar-addr">{short(wallet)}</span>}
             </button>
             {onTopUp && (
-              <button className="bar-plus" onClick={onTopUp} aria-label="Top up GRAM">
+              <button className="bar-plus" onClick={onTopUp} aria-label="Add GRAM">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             )}
