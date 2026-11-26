@@ -12,9 +12,9 @@ interface Page { img: string; alt: string; title: string; body: string; pull?: b
 
 const PAGES: Page[] = [
   {
-    img: 'ob-front', alt: 'A black Tessera card for Claude Pro',
+    img: 'ob-front', alt: 'A black Tessera card',
     title: 'Your apps, paid in GRAM.',
-    body: 'Pay for subscriptions like Claude with GRAM from your Telegram wallet, or with Stars.',
+    body: 'Pay for Claude, ChatGPT and Grok with GRAM from your Telegram wallet, or with Stars.',
   },
   {
     img: 'ob-flat', alt: 'The card being pulled down into a warm light', pull: true,

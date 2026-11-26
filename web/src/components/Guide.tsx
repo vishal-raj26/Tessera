@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 import type { Order } from '../api';
-import { fmtMoney, termLabel } from '../api';
+import { fmtMoney, planName, termLabel } from '../api';
 import { PLAN_LABEL } from './HoloCard';
 
 export function Guide({ order }: { order: Order }) {
   const multi = (order.codes?.length ?? 0) > 1;
   const plan = order.plan.label ?? PLAN_LABEL[order.plan.id] ?? order.plan.name;
   const product = order.product?.name ?? 'Claude';
+  // the plan as the app names it, so it's easy to find on the app's own paywall
+  const full = planName(product, { ...order.plan, label: plan });
   const app = order.product?.app ?? product;
   const play = order.store?.id === 'play';
   const owner = play ? 'Google' : 'Apple';
@@ -18,9 +20,9 @@ export function Guide({ order }: { order: Order }) {
       ? <>{fmtMoney(order.credit, order.currency)} shows in the Play Store under <b>Payments &amp; subscriptions</b>.</>
       : <>{fmtMoney(order.credit, order.currency)} shows under your name in the App Store.</>],
     [`Open the ${product} app`, <>Install “{app}” from the {play ? 'Play Store' : 'App Store'} if you need to, and sign in.</>],
-    [`Subscribe to ${plan}`, order.annual
-      ? <>Choose <b>{product} {plan}</b> and pick <b>yearly</b>. {owner} takes it from your balance.</>
-      : <>Choose <b>{product} {plan}</b>{(order.months ?? 1) > 1 ? <> and pick <b>monthly</b></> : null}. {owner} takes it from your balance first.</>],
+    [`Subscribe to ${full}`, order.annual
+      ? <>Choose <b>{full}</b> and pick <b>yearly</b>. {owner} takes it from your balance.</>
+      : <>Choose <b>{full}</b>{(order.months ?? 1) > 1 ? <> and pick <b>monthly</b></> : null}. {owner} takes it from your balance first.</>],
   ];
   return (
     <>

@@ -121,7 +121,7 @@ html, body, #root { background: var(--void); }
 
 /* --- done ---------------------------------------------------------------------------------------- */
 .success { gap: 8px; margin: 0 0 30px; }
-.success .check { width: 40px; height: 40px; stroke: var(--ink); filter: drop-shadow(0 0 12px rgba(232, 135, 95, 0.55)); }
+.success .check { width: 40px; height: 40px; stroke: var(--ink); filter: drop-shadow(0 0 12px color-mix(in srgb, var(--clay) 60%, transparent)); }
 .success-amount { font-size: 60px; letter-spacing: -0.06em; }
 .success-sub { font-size: 14px; color: var(--mute); margin: 0; }
 .codes { gap: 8px; margin-bottom: 12px; }
@@ -211,3 +211,12 @@ html, body, #root { background: var(--void); }
 .base, .face.back { background: linear-gradient(165deg, #1d1d1d 0%, #101010 60%); }
 .cc-mark circle { display: none; }
 .cc-mark svg { stroke-width: 1.15; }
+
+/* --- each product's own accent (the card's holographic side and the light use the same colours) --- */
+.app { --clay: #e8875f; }
+.app[data-product='chatgpt'] { --clay: #10a37f; } /* ChatGPT green */
+.app[data-product='grok'] { --clay: #e5e7eb; }    /* Grok: monochrome */
+/* the Tessera mark keeps its own colour on every product */
+.nav-brand svg { color: #e8875f; }
+.notice { background: color-mix(in srgb, var(--clay) 12%, transparent); border-color: color-mix(in srgb, var(--clay) 28%, transparent); }
+.price .save { color: var(--clay); }

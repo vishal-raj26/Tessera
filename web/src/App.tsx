@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
 import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -472,7 +472,8 @@ export default function App() {
       {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={90} stroke={1.4} /></div>}
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
-      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
+      {/* data-product: the accent colour follows the app being bought (ui.css) */}
+      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`} data-product={productId}>
         <Header
           wallet={wallet}
           balance={balance}
@@ -571,7 +572,7 @@ export default function App() {
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
                 <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
-                <span className="pay-sub">{failed ? backLine : `${order.product?.name ?? 'Claude'} ${order.plan.label ?? PLAN_LABEL[order.plan.id]} · ${termLabel(order.months ?? 1)}`}</span>
+                <span className="pay-sub">{failed ? backLine : `${planName(order.product?.name, { ...order.plan, label: order.plan.label ?? PLAN_LABEL[order.plan.id] })} · ${termLabel(order.months ?? 1)}`}</span>
               </motion.div>
               {failed ? (
                 <>
@@ -625,7 +626,7 @@ export default function App() {
                   <Tally value={order.credit} format={(n) => fmtMoney(Number.isInteger(order.credit) ? Math.round(n) : n, order.currency)} delay={0.3} duration={1.6} />
                 </motion.div>
                 <motion.p className="success-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  {order.store?.label ?? 'App Store'} credit · {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
+                  {order.store?.label ?? 'App Store'} credit · {planName(order.product?.name, { ...order.plan, label: order.plan.label ?? PLAN_LABEL[order.plan.id] })}
                 </motion.p>
               </div>
               {settled && (
@@ -678,7 +679,7 @@ export default function App() {
           <div className="st">
             {/* what you're buying, then what it costs: the one number that matters, large */}
             <div className="sheet-head">
-              <p className="eyebrow">{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name} · {termLabel(shown.months)}</p>
+              <p className="eyebrow">{planName(plan.product?.name, plan)} · {termLabel(shown.months)}</p>
               <div className="total amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={28} /></div>
             </div>
             {shown.months > 1 && (
@@ -728,7 +729,7 @@ export default function App() {
 
       <Sheet open={sheet === 'guide'} onClose={closeSheet} label="How to activate">
         <div className="st">
-          <h2>Activate {guideFor?.product?.name ?? 'Claude'} {guideFor && (guideFor.plan.label ?? PLAN_LABEL[guideFor.plan.id])}</h2>
+          <h2>Activate {guideFor ? planName(guideFor.product?.name, { ...guideFor.plan, label: guideFor.plan.label ?? PLAN_LABEL[guideFor.plan.id] }) : ''}</h2>
           <p className="sub">Four steps, about two minutes.</p>
           {guideFor && <Guide order={guideFor} />}
           <button className="btn btn-quiet" onClick={view === 'wallet' ? closeSheet : home}>Done</button>

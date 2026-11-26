@@ -32,6 +32,24 @@ PALETTES = {
         [240, 196, 178],  # blush
         [248, 240, 230],  # ivory
     ],
+    # ChatGPT: OpenAI's own green (#10A37F) with its deeper and softer tints, on white
+    'chatgpt': [
+        [214, 243, 232],  # soft green #D6F3E8
+        [250, 250, 250],  # off white #FAFAFA
+        [116, 170, 156],  # sage #74AA9C
+        [16, 163, 127],   # ChatGPT green #10A37F
+        [26, 127, 100],   # deep green #1A7F64
+        [255, 255, 255],  # white
+    ],
+    # Grok: no colour, by design: black, greys and white, like polished chrome
+    'grok': [
+        [229, 231, 235],  # light grey #E5E7EB
+        [255, 255, 255],  # white
+        [156, 163, 175],  # grey #9CA3AF
+        [26, 26, 26],     # near black #1A1A1A
+        [213, 217, 226],  # border grey #D5D9E2
+        [249, 248, 246],  # warm white #F9F8F6
+    ],
 }
 import sys
 PRODUCT = sys.argv[1] if len(sys.argv) > 1 else 'claude'

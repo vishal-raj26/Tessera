@@ -196,7 +196,7 @@ app.get('/api/catalog', async (req, res) => {
     const terms = quotes.filter((q) => q && (q.gram || q.stars)).map(pick);
     const one = terms.find((t) => t.months === 1);
     return {
-      id: plan.id, name: plan.name, label: plan.label, blurb: plan.blurb, term: 'month',
+      id: plan.id, name: plan.name, label: plan.label, inApp: plan.inApp, blurb: plan.blurb, term: 'month',
       product: { id: product.id, name: product.name, app: product.app },
       available: terms.length > 0, terms,
       // top-level fields keep describing one month, for older clients
@@ -212,7 +212,7 @@ const publicOrder = (o) => o && {
   region: o.region,
   regionName: REGIONS[o.region]?.name,
   flag: REGIONS[o.region]?.flag,
-  plan: (({ id, name, label }) => ({ id, name, label, term: 'month' }))(findPlan(o.plan_id)?.plan ?? { id: o.plan_id, name: o.plan_id, label: o.plan_id }),
+  plan: (({ id, name, label, inApp }) => ({ id, name, label, inApp, term: 'month' }))(findPlan(o.plan_id)?.plan ?? { id: o.plan_id, name: o.plan_id, label: o.plan_id }),
   product: (({ id, name, app }) => ({ id, name, app }))(findPlan(o.plan_id)?.product ?? { id: 'unknown', name: '', app: '' }),
   store: STORES[o.store ?? 'appstore'],
   months: o.months ?? 1,

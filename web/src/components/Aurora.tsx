@@ -27,6 +27,8 @@ export interface AuroraInputs {
 /** Product colours: deep, middle, light (the light core is near white). */
 const AURORA_COLORS: Record<string, [string, string, string]> = {
   claude: ['#FF6A2B', '#FF9C6B', '#FFE0CC'],
+  chatgpt: ['#10A37F', '#3CC29A', '#D6F3E8'], // OpenAI's ChatGPT green and its soft tint
+  grok: ['#9CA3AF', '#D5D9E2', '#FFFFFF'], // Grok has no brand colour: greys to white
 };
 
 const VERT = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
