@@ -12,6 +12,10 @@
 // Stars orders are paid through a Telegram invoice. Telegram asks us to approve the checkout
 // (checkStars) and then reports the payment (applyStars) with a charge id that we record once.
 // Payments that can't be applied (unknown memo, order already done, too late) are recorded and flagged.
+//
+// Relay orders (method 'relay') are paid in another coin on another chain, to a one-time Relay deposit
+// address; Relay delivers the GRAM. We learn the outcome from Relay (applyRelay): success pays the order,
+// a refund (Relay sent the coin back to the sender) closes it, a failure goes to a person.
 
 export const LATE_MS = 2 * 3600e3;
 
@@ -130,6 +134,50 @@ export function createEngine({ orders, payments, supplier, fetchIncoming, notify
     return 'paid';
   }
 
+  /**
+   * Relay reported on a deposit. Safe to call repeatedly: each request id is recorded once.
+   * state: 'seen' | 'success' | 'refunded' | 'failed' (from relay.status)
+   */
+  async function applyRelay({ orderId, state, requestId, outTx }) {
+    const o = orders.get(orderId);
+    if (!o || o.method !== 'relay') return 'unmatched';
+    const open = o.status === 'awaiting_payment' || o.status === 'underpaid' || (o.status === 'expired' && now() - o.expires_at < LATE_MS);
+    if (state === 'seen') {
+      if (open && !o.seen_at) orders.update(o.id, { seen_at: now() });
+      return 'seen';
+    }
+    if (state === 'refunded') {
+      if (!payments.record({ hash: `relay-refund:${requestId}`, orderId: o.id, memo: o.comment, valueNano: '0', source: 'relay' })) return 'seen';
+      if (open) {
+        orders.transition(o.id, ['awaiting_payment', 'underpaid', 'expired'], 'expired');
+        orders.update(o.id, { error: 'Relay couldn’t complete the swap and sent your payment back to the wallet it came from. Nothing was charged.', admin_note: `Relay refunded request ${requestId}` });
+      }
+      notify({ type: 'relay_refunded', order: orders.get(o.id), requestId, hash: outTx });
+      return 'refunded';
+    }
+    if (state === 'failed') {
+      if (!payments.record({ hash: `relay-failed:${requestId}`, orderId: o.id, memo: o.comment, valueNano: '0', source: 'relay' })) return 'seen';
+      orders.update(o.id, { admin_note: `Relay request ${requestId} failed` });
+      notify({ type: 'relay_failed', order: orders.get(o.id), requestId });
+      return 'failed';
+    }
+    if (state !== 'success') return 'noop';
+    // the exact GRAM amount reached our wallet (Relay quoted it as the output)
+    if (!payments.record({ hash: `relay:${requestId}`, orderId: o.id, memo: o.comment, valueNano: o.amount_nano, source: 'relay' })) return 'seen';
+    orders.update(o.id, { received_nano: o.amount_nano, seen_at: o.seen_at ?? now() });
+    if (!open) {
+      orders.update(o.id, { admin_note: `Relay payment (request ${requestId}) after status "${o.status}"` });
+      notify({ type: 'extra', order: orders.get(o.id), valueNano: o.amount_nano, hash: outTx || `relay:${requestId}` });
+      return 'extra';
+    }
+    orders.update(o.id, { tx_hash: outTx || `relay:${requestId}`, error: null });
+    if (orders.transition(o.id, ['awaiting_payment', 'expired', 'underpaid'], 'paid')) {
+      await fulfil(o.id);
+      return 'paid';
+    }
+    return 'noop';
+  }
+
   /** Admin: try fulfilment again for a failed order. */
   async function retry(id) {
     const o = orders.get(id);
@@ -186,5 +234,5 @@ export function createEngine({ orders, payments, supplier, fetchIncoming, notify
     return due.length;
   }
 
-  return { tick, applyTransfer, seePending, fulfil, retry, markRefunded, resume, remindRenewals, checkStars, applyStars };
+  return { tick, applyTransfer, seePending, fulfil, retry, markRefunded, resume, remindRenewals, checkStars, applyStars, applyRelay };
 }

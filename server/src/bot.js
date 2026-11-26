@@ -40,6 +40,7 @@ function describe(o) {
     isStars(o)
       ? `Paid with Stars: ${o.stars} ⭐${o.charge_id ? '' : ' (not paid yet)'}`
       : `Owed ${fromNano(o.amount_nano)} GRAM · received ${fromNano(o.received_nano)} GRAM`,
+    o.relay ? `Via Relay: ${esc(o.relay.amountFormatted ?? '?')} ${esc(o.relay.coin)} on ${esc(o.relay.network)}${o.relay.address ? ` → <code>${esc(o.relay.address)}</code>` : ''}` : null,
     `Memo <code>${esc(o.comment)}</code>`,
     o.charge_id ? `Charge <code>${esc(o.charge_id)}</code>` : o.tx_hash ? `Tx <code>${esc(o.tx_hash)}</code>` : null,
     o.wallet ? `Wallet <code>${esc(o.wallet)}</code>` : null,
@@ -96,6 +97,12 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
         if (o.months === 12) return toBuyer(o, `Your ${planName(o)} year renews in about 3 days. If your ${storeOwner(o)} balance won't cover it, ${storeOwner(o)} charges your card. You can top up in Tessera.`);
         if ((o.months ?? 1) > 1) return toBuyer(o, `The credit you bought for ${term(o)} of ${planName(o)} runs out in about 3 days. After that ${storeOwner(o)} charges your card for each month. You can top up in Tessera.`);
         return toBuyer(o, `Your ${planName(o)} month renews in about 3 days. If your ${storeOwner(o)} balance won't cover it, ${storeOwner(o)} charges your card. You can top up in Tessera.`);
+      case 'relay_refunded':
+        await toAdmins(`↩️ <b>Relay refunded a payment</b>\nRequest <code>${esc(e.requestId)}</code>${e.hash ? `\nTx <code>${esc(e.hash)}</code>` : ''}\n\n${describe(o)}`, buttons(o));
+        return toBuyer(o, 'Your payment couldn’t be swapped, so Relay sent it back to the wallet it came from. Nothing was charged. You can try again in Tessera.');
+      case 'relay_failed':
+        await toAdmins(`⚠️ <b>Relay payment failed</b>\nRequest <code>${esc(e.requestId)}</code>\nCheck it at relay.link and refund or fulfil by hand.\n\n${describe(o)}`, buttons(o));
+        return toBuyer(o, 'Your payment is taking longer than usual to swap. We are on it and will message you here.');
       case 'rate_stale':
         return toAdmins(`⏸ <b>GRAM price feed is stale</b> (${e.minutes} min). New orders are paused until it recovers.`);
       case 'rate_ok':

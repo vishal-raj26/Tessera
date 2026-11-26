@@ -20,17 +20,22 @@ export interface Plan {
 }
 export interface Code { code: string; value: number; redeemedAt?: number | null }
 export type PayMethod = 'gram' | 'stars';
+/** how an order is paid: GRAM, Stars, or another coin through Relay */
+export type OrderMethod = PayMethod | 'relay';
+/** a coin on a network that Relay swaps to GRAM, e.g. USDC on Base */
+export interface CoinRoute { key: string; coin: string; network: string }
+export interface RelayDeposit { coin: string; network: string; address: string | null; amount: string | null; usd: number | null; test: boolean }
 export type OrderStatus = 'awaiting_payment' | 'paid' | 'fulfilling' | 'delivered' | 'expired' | 'failed' | 'underpaid' | 'refunded';
 export interface Order {
   id: string; region: string; regionName: string; flag: string;
   plan: { id: PlanId; name: string; label: string; inApp?: string; term: string };
   product: Product; store: Store;
   months: number; annual: boolean;
-  credit: number; currency: string; method: PayMethod; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
+  credit: number; currency: string; method: OrderMethod; relay?: RelayDeposit | null; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
   merchant: string | null; network: 'mainnet' | 'testnet'; receivedNano: string; paymentSeen: boolean; payload: string; status: OrderStatus; error: string | null;
   txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number; deliveredAt?: number | null;
 }
-export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; testScale?: number; products: Product[]; stores: Store[] }
+export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; relay?: 'live' | 'test' | 'off'; testScale?: number; products: Product[]; stores: Store[] }
 
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -51,8 +56,10 @@ export const api = {
     req<{ plans: Plan[]; store?: StoreId; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),
   quote: (region: string, store: StoreId, planId: PlanId, months: number) =>
     req<Quote>('/api/quotes', { method: 'POST', body: JSON.stringify({ region, store, planId, months }) }),
-  createOrder: (region: string, store: StoreId, planId: PlanId, months: number, method: PayMethod, wallet?: string, quoteId?: string) =>
-    req<Order>('/api/orders', { method: 'POST', body: JSON.stringify({ region, store, planId, months, method, wallet, quoteId }) }),
+  createOrder: (region: string, store: StoreId, planId: PlanId, months: number, method: OrderMethod, wallet?: string, quoteId?: string, route?: string) =>
+    req<Order>('/api/orders', { method: 'POST', body: JSON.stringify({ region, store, planId, months, method, wallet, quoteId, route }) }),
+  relayOptions: () => req<{ mode: 'live' | 'test' | 'off'; options: CoinRoute[] }>('/api/relay/options'),
+  relaySim: (id: string) => req<Order>(`/api/orders/${id}/relay-sim`, { method: 'POST' }),
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
   balance: (address: string) => req<{ gram: number | null; network: string }>(`/api/balance?address=${encodeURIComponent(address)}`),

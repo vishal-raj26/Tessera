@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type CoinRoute, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
 import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -27,6 +27,7 @@ import { Segmented } from './components/Segmented';
 import { Aurora, type AuroraInputs } from './components/Aurora';
 import { Tally } from './components/Tally';
 import { PULL } from './components/PlanCarousel';
+import { CoinPicker, RelayPay, trimAmt } from './components/RelayPay';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
 type SheetName = null | 'review' | 'guide';
@@ -276,11 +277,23 @@ export default function App() {
   const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
   const bothMethods = !!config?.stars && term?.gram != null && term?.stars != null;
   function chooseMethod(m: PayMethod) {
+    setOther(false);
     if (m === method) return;
     tg.select(); setMethod(m); setErr(null);
     try { localStorage.setItem('pay', m); } catch { /* ignore */ }
   }
-  const needsWallet = config?.paymentMode === 'chain' && !wallet && payWith === 'gram';
+  // another coin through Relay: the coins on offer, whether it's chosen, and which coin and network
+  const [coins, setCoins] = useState<CoinRoute[]>([]);
+  useEffect(() => {
+    if (!config || config.relay === 'off' || !config.relay) return;
+    api.relayOptions().then((r) => setCoins(r.options)).catch(() => {});
+  }, [config]);
+  const [other, setOther] = useState(false);
+  const [route, setRoute] = useState<string | null>(() => { try { return localStorage.getItem('coin'); } catch { return null; } });
+  const payOther = other && coins.length > 0 && term?.gram != null;
+  const pickRoute = (k: string) => { tg.select(); setRoute(k); setErr(null); try { localStorage.setItem('coin', k); } catch { /* ignore */ } };
+  const routeOk = !!route && coins.some((c) => c.key === route);
+  const needsWallet = config?.paymentMode === 'chain' && !wallet && payWith === 'gram' && !payOther;
   // closing any sheet also abandons a quote still on its way, and drops the one shown
   const quoteSeq = useRef(0);
   const closeSheet = useCallback(() => { quoteSeq.current++; setHeld(null); setSheet(null); }, []);
@@ -389,6 +402,16 @@ export default function App() {
     setBusy(true);
     setErr(null);
     try {
+      if (payOther) {
+        // another coin: the order comes back with the coin amount and (live) Relay's deposit address
+        const o = await api.createOrder(config.region, store, plan.id, term.months, 'relay', undefined, heldOk?.id, route ?? undefined);
+        setOrder(o);
+        setWalletSent(false);
+        setSheet(null);
+        setView('paying');
+        tg.notify('success');
+        return;
+      }
       const o = await api.createOrder(config.region, store, plan.id, term.months, payWith, wallet || undefined, heldOk?.id);
       setOrder(o);
       setWalletSent(false);
@@ -479,14 +502,22 @@ export default function App() {
   const steps = useMemo(() => {
     const paid = status === 'paid' || status === 'fulfilling' || status === 'delivered';
     const stars = order?.method === 'stars';
+    if (order?.method === 'relay') {
+      const seen = !!order.paymentSeen;
+      return [
+        { label: seen ? 'Payment received' : `Send ${order.relay?.amount ? `${trimAmt(order.relay.amount, order.relay.coin)} ` : ''}${order.relay?.coin ?? ''}`, done: seen || paid, on: !seen && !paid },
+        { label: paid ? 'Swapped to GRAM' : 'Swapping to GRAM', done: paid, on: seen && !paid },
+        { label: 'Issuing your credit', done: status === 'delivered', on: paid && status !== 'delivered' },
+      ];
+    }
     return [
       { label: stars ? (walletSent ? 'Paid with Stars' : 'Confirm in Telegram') : walletSent ? 'Approved in wallet' : 'Approve in your wallet', done: walletSent || status === 'underpaid', on: !walletSent && status !== 'underpaid' },
       { label: status === 'underpaid' ? 'Waiting for the rest of the payment' : paid ? 'Payment confirmed' : stars ? 'Confirming with Telegram' : order?.paymentSeen ? 'Payment seen, confirming' : 'Waiting for payment', done: paid, on: (walletSent || status === 'underpaid') && !paid },
       { label: 'Issuing your credit', done: status === 'delivered', on: paid && status !== 'delivered' },
     ];
-  }, [status, walletSent, order?.paymentSeen, order?.method]);
+  }, [status, walletSent, order?.paymentSeen, order?.method, order?.relay]);
 
-  const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? (order?.method === 'stars' ? 'Waiting for Telegram' : 'Waiting for wallet') : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
+  const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : order?.method === 'relay' ? (order.paymentSeen ? 'Swapping to GRAM' : 'Waiting for your payment') : !walletSent ? (order?.method === 'stars' ? 'Waiting for Telegram' : 'Waiting for wallet') : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
 
   // the plan you have, only once it needs you: two weeks before it runs out, or after
   const renewNotice = cover && cover.daysLeft <= 14 ? (
@@ -624,7 +655,9 @@ export default function App() {
           {view === 'paying' && order && (
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
-                <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
+                <span className="pay-amount">{order.method === 'relay' && order.relay?.amount
+                  ? <>{trimAmt(order.relay.amount, order.relay.coin)}<small className="pay-coin">{order.relay.coin}</small></>
+                  : <Amount method={order.method} gram={order.gram} stars={order.stars} size={30} />}</span>
                 <span className="pay-sub">{failed ? backLine : `${planName(order.product?.name, { ...order.plan, label: order.plan.label ?? PLAN_LABEL[order.plan.id] })} · ${termLabel(order.months ?? 1)}`}</span>
               </motion.div>
               {failed ? (
@@ -654,14 +687,19 @@ export default function App() {
                       </motion.li>
                     ))}
                   </ul>
-                  {order.method !== 'stars' && <motion.div className="memo" {...rise(0.65)}>
+                  {order.method === 'relay' && order.relay && !order.paymentSeen && status === 'awaiting_payment' && (
+                    <RelayPay order={order} onCopy={(t, what) => {
+                      navigator.clipboard?.writeText(t).then(() => { setToast(`${what} copied`); tg.notify('success'); }).catch(() => setToast('Press and hold to copy'));
+                    }} onSimulate={() => { tg.tap('medium'); api.relaySim(order.id).then(setOrder).catch((e) => setErr(e.message)); }} />
+                  )}
+                  {order.method === 'gram' && <motion.div className="memo" {...rise(0.65)}>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.span key={lost >= 3 ? 'r' : 'm'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         {lost >= 3 ? 'Reconnecting… your payment is safe' : `memo ${order.comment}`}
                       </motion.span>
                     </AnimatePresence>
                   </motion.div>}
-                  {order.method === 'stars' && lost >= 3 && <motion.div className="memo" {...rise(0)}>Reconnecting… your payment is safe</motion.div>}
+                  {order.method !== 'gram' && lost >= 3 && <motion.div className="memo" {...rise(0)}>Reconnecting… your payment is safe</motion.div>}
                   {status === 'underpaid' && order.error && <p className="memo" style={{ color: 'var(--danger)', fontFamily: 'var(--font)', maxWidth: 300, textAlign: 'center' }}>{order.error}</p>}
                 </>
               )}
@@ -742,16 +780,26 @@ export default function App() {
                   : `${plan.product?.name ?? 'The plan'} renews monthly. ${storeOwner} takes each month from this credit, so it covers ${shown.months} months.`}
               </p>
             )}
-            {bothMethods && (
-              <div className="paywith" role="radiogroup" aria-label="Pay with">
-                {(['gram', 'stars'] as const).map((m) => (
-                  <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
-                    {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
-                    <span className="pw-amt">{m === 'gram' ? <GramIcon size={15} /> : <StarIcon size={15} />}{m === 'gram' ? 'GRAM' : 'Stars'}</span>
+            {(bothMethods || coins.length > 0) && (
+              <div className="paywith" role="radiogroup" aria-label="Pay with" style={{ gridTemplateColumns: `repeat(${(bothMethods ? 2 : 1) + (coins.length ? 1 : 0)}, 1fr)` }}>
+                {(bothMethods ? (['gram', 'stars'] as const) : (['gram'] as const)).map((m) => {
+                  const on = payWith === m && !payOther;
+                  return (
+                    <button key={m} type="button" role="radio" aria-checked={on} className={on ? 'on' : ''} onClick={() => chooseMethod(m)}>
+                      {on && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
+                      <span className="pw-amt">{m === 'gram' ? <GramIcon size={15} /> : <StarIcon size={15} />}{m === 'gram' ? 'GRAM' : 'Stars'}</span>
+                    </button>
+                  );
+                })}
+                {coins.length > 0 && (
+                  <button type="button" role="radio" aria-checked={payOther} className={payOther ? 'on' : ''} onClick={() => { tg.select(); setOther(true); setErr(null); }}>
+                    {payOther && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
+                    <span className="pw-amt">Other coin</span>
                   </button>
-                ))}
+                )}
               </div>
             )}
+            {payOther && <CoinPicker coins={coins} value={route} onChange={pickRoute} />}
             <dl className="rows">
               <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` in ${shown.codes} codes` : ''}</dd></div>
               <div className="row">
@@ -767,13 +815,13 @@ export default function App() {
             {needsWallet ? (
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
-              <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk} onClick={pay} whileTap={!agree || busy || !heldOk ? undefined : { scale: 0.97 }}>
-                {busy ? <span className="spin" /> : 'Pay'}
+              <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk || (payOther && !routeOk)} onClick={pay} whileTap={!agree || busy || !heldOk || (payOther && !routeOk) ? undefined : { scale: 0.97 }}>
+                {busy ? <span className="spin" /> : payOther ? 'Get payment address' : 'Pay'}
               </motion.button>
             )}
             <p className="fine">
               {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Holding your price…'}
-              {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
+              {payOther ? ' · Relay swaps your coin to GRAM' : config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
               {testScale < 1 ? ` · Testnet: you pay ${Math.round(testScale * 100)}% of the real price` : ''}
             </p>
           </div>
