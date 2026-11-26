@@ -1,7 +1,7 @@
-// The first screen: every app on sale, and the one gesture Tessera is about. Each app is a tile in its
-// own colours (the same holographic picture as its card) showing only what matters: its name and its
-// lowest price. Pull a tile down (or tap it) to open that app's plans.
-import { motion, type PanInfo } from 'framer-motion';
+// The first screen: every app on sale as a tile in its own colours (the same holographic picture as its
+// card) showing only its name and lowest price; tapping one opens its plans. Below, the three things
+// every purchase gives you, and a way back to the intro.
+import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { fmtGram, fmtStars, type PayMethod, type Plan } from '../api';
 import { GramIcon } from './GramIcon';
@@ -9,7 +9,6 @@ import { StarIcon } from './StarIcon';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
-const PULL = 56; // how far a tile is pulled before it opens
 
 interface Props {
   products: { id: string; name: string }[];
@@ -19,9 +18,11 @@ interface Props {
   onPick: (productId: string) => void;
   /** shown above the apps (e.g. a plan that's running out) */
   notice?: ReactNode;
+  /** replays the first-run intro */
+  onHowItWorks?: () => void;
 }
 
-export function Showcase({ products, plans, payWith, onPick, notice }: Props) {
+export function Showcase({ products, plans, payWith, onPick, notice, onHowItWorks }: Props) {
   return (
     <div className="store">
       {notice}
@@ -38,28 +39,18 @@ export function Showcase({ products, plans, payWith, onPick, notice }: Props) {
             .map((t) => (payWith === 'stars' ? t?.stars : t?.gram))
             .filter((v): v is number => typeof v === 'number' && v > 0);
           const from = prices.length ? Math.min(...prices) : null;
-          const open = () => { tg.tap('medium'); onPick(p.id); };
+          const open = () => { tg.tap('light'); onPick(p.id); };
           return (
-            <motion.div
+            <motion.button
               key={p.id}
               className={`tile tile-${p.id}`}
               style={{ backgroundImage: `url(${BASE}models/holo-${p.id}.jpg)` }}
-              role="button"
-              tabIndex={0}
-              aria-label={`${p.name}${from != null ? `, from ${payWith === 'stars' ? `${fmtStars(from)} Stars` : `${fmtGram(from)} GRAM`}` : ''}. Pull down or tap to open.`}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') open(); }}
+              aria-label={`${p.name}${from != null ? `, from ${payWith === 'stars' ? `${fmtStars(from)} Stars` : `${fmtGram(from)} GRAM`}` : ''}`}
+              onClick={open}
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08 + i * 0.07, duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
-              // pulled like the cards: down only, springs back, opens past the pull point
-              drag="y"
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0, bottom: 0.35 }}
-              dragSnapToOrigin
-              onDragEnd={(_: PointerEvent, info: PanInfo) => { if (info.offset.y > PULL || info.velocity.y > 600) open(); }}
-              onTap={open}
-              whileTap={{ scale: 0.985 }}
-              whileDrag={{ zIndex: 3, scale: 1.015 }}
+              whileTap={{ scale: 0.98 }}
             >
               <span className="tile-name">{p.name}</span>
               <span className="tile-foot">
@@ -67,18 +58,30 @@ export function Showcase({ products, plans, payWith, onPick, notice }: Props) {
                   <span className="tile-from">from <b>{payWith === 'stars' ? fmtStars(from) : fmtGram(from)}</b>{payWith === 'stars' ? <StarIcon size={14} /> : <GramIcon size={14} />}</span>
                 ) : <span className="tile-from">&nbsp;</span>}
                 <span className="tile-go" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                 </span>
               </span>
-            </motion.div>
+            </motion.button>
           );
         })}
       </div>
 
-      <motion.p className="store-hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
-        Pull down to get the sub
-      </motion.p>
+      <motion.ul className="perks" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M9 12h6M12 9v6" /></svg>
+          <span>Pay in GRAM or Stars</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6z" /></svg>
+          <span>Code in seconds</span>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2.5" /><path d="M11 18h2" /></svg>
+          <span>iPhone and Android</span>
+        </li>
+      </motion.ul>
+
+      {onHowItWorks && <button className="link store-how" onClick={onHowItWorks}>How it works</button>}
     </div>
   );
 }
