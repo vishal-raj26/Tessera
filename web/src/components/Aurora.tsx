@@ -1,8 +1,9 @@
 // The aurora: soft light resting along the bottom edge of the screen, in the product's colours, its
 // streaks always flowing down into the edge, as if the bottom were calling the card towards it.
 // Pulling the card down raises a path of light up to meet it; letting go past the pull point draws the
-// light back down into the bottom behind the card. While paying, the light gathers into a glow around the screen's edge and an orb at the
-// bottom; when the credit is ready the edge lights up once more.
+// light back down into the bottom behind the card. While paying, the light at the bottom warms up a step
+// at a time; the screen's edge only wakes once the credit is being issued, and when it's ready a beam
+// of light runs around the edge.
 //
 // One full-screen WebGL canvas behind everything (a single fragment shader, no three.js), drawn only
 // while something is lit and the app is in front. Falls back to a CSS glow when WebGL isn't there.
@@ -22,6 +23,10 @@ export interface AuroraInputs {
   rim: MotionValue<number>;
   /** the orb at the bottom 0 … 1 */
   orb: MotionValue<number>;
+  /** the beam running around the edge: where its head is (0 … 1 is one lap, from the bottom middle) */
+  beam?: MotionValue<number>;
+  /** and how bright it is 0 … 1 */
+  beamGlow?: MotionValue<number>;
 }
 
 /** Product colours: deep, middle, light (the light core is near white). */
@@ -34,7 +39,7 @@ const AURORA_COLORS: Record<string, [string, string, string]> = {
 const VERT = `attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
 const FRAG = `
 precision highp float;
-uniform vec2 uRes; uniform float uTime, uReach, uGlow, uSweep, uSweepGlow, uRim, uOrb, uRadius;
+uniform vec2 uRes; uniform float uTime, uReach, uGlow, uSweep, uSweepGlow, uRim, uOrb, uRadius, uBeam, uBeamGlow;
 uniform vec3 uDeep, uMid, uLight;
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n(vec2 p) {
@@ -79,16 +84,28 @@ void main() {
   col += c * aur; a = max(a, aur);
 
   // the edge of the screen glowing, and the orb at the bottom
-  if (uRim > 0.001 || uOrb > 0.001) {
+  if (uRim > 0.001 || uOrb > 0.001 || uBeamGlow > 0.001) {
     vec2 q = px - uRes * 0.5;
     float d = box(q, uRes * 0.5 - 1.0, uRadius);
     float pulse = 0.85 + 0.15 * sin(t * 2.4);
     float rimL = exp(d / 5.0) * 0.9 + exp(d / 38.0) * 0.45;
+    float beamEdge = exp(d / 2.5) * 1.3 + exp(d / 9.0) * 0.35; // a thin line on the edge, with a soft halo
     vec2 o0 = vec2(px.x - uRes.x * 0.5, px.y - uRes.y * 0.035);
     float orb0 = exp(-length(o0 / vec2(1.0, 1.25)) / (uRes.x * 0.055)) * uOrb;
-    // skip the rest only where neither the edge nor the orb adds anything you could see (a fixed
-    // cut-off in screen space left a darker stripe down the middle, where the glow hadn't quite faded)
-    if (rimL * uRim < 0.0015 && orb0 < 0.0015) { gl_FragColor = vec4(col, a); return; }
+    // skip the rest only where neither the edge, the beam nor the orb adds anything you could see (a
+    // fixed cut-off in screen space left a darker stripe down the middle, where the glow hadn't faded)
+    if (rimL * uRim < 0.0015 && orb0 < 0.0015 && beamEdge * uBeamGlow < 0.0015) { gl_FragColor = vec4(col, a); return; }
+    if (uBeamGlow > 0.001) {
+      // where this point sits along the edge, 0 … 1 for one lap: from the bottom middle, rightwards, up
+      // the right side, along the top, down the left side and back
+      vec2 hb = uRes * 0.5; float per = 4.0 * (hb.x + hb.y), sAt;
+      if (abs(q.x) / hb.x > abs(q.y) / hb.y) sAt = q.x > 0.0 ? hb.x + (q.y + hb.y) : 3.0 * hb.x + 2.0 * hb.y + (hb.y - q.y);
+      else sAt = q.y > 0.0 ? hb.x + 2.0 * hb.y + (hb.x - q.x) : (q.x >= 0.0 ? q.x : per + q.x);
+      float behind = fract(uBeam - sAt / per); // 0 at the head, growing along its tail
+      float head = exp(-behind * 14.0) + exp(-(1.0 - behind) * 220.0) * 0.5;
+      float bl = clamp(head * beamEdge * uBeamGlow, 0.0, 1.0);
+      col += mix(uLight, vec3(1.0), 0.45 + 0.4 * exp(-behind * 60.0)) * bl; a = max(a, bl);
+    }
     float travel = 0.6 + 0.4 * sin(atan(q.y, q.x) * 2.0 - t * 1.6);
     vec3 rc = mix(uMid, uLight, travel * 0.6);
     float r = clamp(rimL * uRim * pulse * travel, 0.0, 1.0);
@@ -125,7 +142,7 @@ export function Aurora({ inputs, product = 'claude' }: { inputs: AuroraInputs; p
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const u = (k: string) => gl.getUniformLocation(prog, k);
-    const U = { res: u('uRes'), time: u('uTime'), reach: u('uReach'), glow: u('uGlow'), sweep: u('uSweep'), sweepGlow: u('uSweepGlow'), rim: u('uRim'), orb: u('uOrb'), radius: u('uRadius'), deep: u('uDeep'), mid: u('uMid'), light: u('uLight') };
+    const U = { beam: u('uBeam'), beamGlow: u('uBeamGlow'), res: u('uRes'), time: u('uTime'), reach: u('uReach'), glow: u('uGlow'), sweep: u('uSweep'), sweepGlow: u('uSweepGlow'), rim: u('uRim'), orb: u('uOrb'), radius: u('uRadius'), deep: u('uDeep'), mid: u('uMid'), light: u('uLight') };
     gl.uniform3fv(U.deep, hex(colors[0])); gl.uniform3fv(U.mid, hex(colors[1])); gl.uniform3fv(U.light, hex(colors[2]));
 
     // soft light needs few pixels: drawn at ~40% of the screen's size and scaled up (much cheaper on
@@ -147,15 +164,16 @@ export function Aurora({ inputs, product = 'claude' }: { inputs: AuroraInputs; p
       raf = requestAnimationFrame(frame);
       if (document.hidden) return;
       const glow = inputs.glow.get(), rim = inputs.rim.get(), orb = inputs.orb.get(), sweepGlow = inputs.sweepGlow.get();
+      const beamGlow = inputs.beamGlow?.get() ?? 0, beam = inputs.beam?.get() ?? 0;
       // nothing lit: clear once and idle
-      if (glow < 0.002 && rim < 0.002 && orb < 0.002 && sweepGlow < 0.002) {
+      if (glow < 0.002 && rim < 0.002 && orb < 0.002 && sweepGlow < 0.002 && beamGlow < 0.002) {
         if (!cleared) { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); cleared = true; }
         return;
       }
       cleared = false;
       // while something moves it (a pull, a release, a screen change): every frame. At rest it only
       // drifts slowly, so every other frame is enough, which halves its cost.
-      const key = `${glow.toFixed(3)}${inputs.reach.get().toFixed(3)}${rim.toFixed(3)}${orb.toFixed(3)}`;
+      const key = `${glow.toFixed(3)}${inputs.reach.get().toFixed(3)}${rim.toFixed(3)}${orb.toFixed(3)}${beam.toFixed(4)}${beamGlow.toFixed(3)}`;
       const moving = key !== last;
       last = key;
       odd = !odd;
@@ -167,6 +185,8 @@ export function Aurora({ inputs, product = 'claude' }: { inputs: AuroraInputs; p
       gl.uniform1f(U.sweepGlow, sweepGlow);
       gl.uniform1f(U.rim, rim);
       gl.uniform1f(U.orb, orb);
+      gl.uniform1f(U.beam, beam);
+      gl.uniform1f(U.beamGlow, beamGlow);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
     raf = requestAnimationFrame(frame);
