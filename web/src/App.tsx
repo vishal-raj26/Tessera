@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type CoinRoute, type Plan, type Quote, type StoreId } from './api';
@@ -89,6 +89,7 @@ export default function App() {
   // the card raises a path of light up to it (reach, glow); letting go draws it back down into the
   // bottom (flood); then a glowing edge and an orb while paying (rim, orb)
   const scene = useMotionValue(0);      // how lit the current screen is at rest
+  const [flash, setFlash] = useState(0); // counts issued codes: each one floods the whole screen once
   const flood = useMotionValue(0);      // after letting go: rises to meet the card (→1), then sinks (→0)
   const auroraRim = useMotionValue(0);
   const auroraOrb = useMotionValue(0);
@@ -368,15 +369,22 @@ export default function App() {
       auroraBeamGlow.set(0);
     }
     else if (view === 'done') {
-      // issued: a beam of light runs around the edge twice, then fades and the screen settles
+      // issued: a beam of light runs once around the edge, then the whole screen floods and settles
       to(scene, 0.18); to(auroraOrb, 0, 1.2); to(auroraRim, 0.12, 1.2);
       if (matchMedia('(prefers-reduced-motion: reduce)').matches || beamFor.current === (order?.id ?? '')) return;
       beamFor.current = order?.id ?? '';
+      // one lap of the beam around the edge; as it closes the loop, the light floods the whole screen once
       auroraBeam.set(0);
-      animate(auroraBeamGlow, [0, 1, 1, 0], { duration: 3.2, times: [0, 0.08, 0.75, 1] });
-      animate(auroraBeam, 2, { duration: 3.2, ease: [0.45, 0.05, 0.25, 1] });
+      animate(auroraBeamGlow, [0, 1, 1, 0], { duration: 1.75, times: [0, 0.08, 0.8, 1] });
+      animate(auroraBeam, 1, { duration: 1.6, ease: [0.4, 0.05, 0.3, 1] });
+      // not cancelled by later updates to this screen: the beam is already running, so the flood must follow
+      setTimeout(() => {
+        animate(auroraRim, [auroraRim.get(), 1, 1, 0.2], { duration: 2.6, times: [0, 0.12, 0.5, 1] });
+        animate(flood, [0, 1, 0], { duration: 1.8, times: [0, 0.3, 1], ease: 'easeInOut' });
+        setFlash((n) => n + 1);
+      }, 1500);
     } else { to(scene, 0.25); to(auroraRim, 0); to(auroraOrb, 0); }
-  }, [view, sheet, order?.status, order?.paymentSeen, walletSent, scene, auroraRim, auroraOrb, auroraBeam, auroraBeamGlow]);
+  }, [view, sheet, order?.status, order?.paymentSeen, walletSent, scene, auroraRim, auroraOrb, auroraBeam, auroraBeamGlow, flood]);
 
   useEffect(() => {
     if (!toast) return;
@@ -533,6 +541,8 @@ export default function App() {
     <>
       <div className="atmos" aria-hidden="true">
         <Aurora inputs={aurora} product={product?.id ?? 'claude'} />
+        {/* the code is issued and the beam has closed its loop: one flood of the app's colour across the screen */}
+        {flash > 0 && <motion.div key={flash} className="flash" aria-hidden="true" style={{ '--flash': ({ chatgpt: '#7a9dff', grok: '#e5e7eb' } as Record<string, string>)[product?.id ?? ''] ?? '#e8875f' } as CSSProperties} initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.7, times: [0, 0.22, 1], ease: 'easeOut' }} />}
       </div>
 
       {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
