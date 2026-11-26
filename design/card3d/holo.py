@@ -32,6 +32,24 @@ PALETTES = {
         [240, 196, 178],  # blush
         [248, 240, 230],  # ivory
     ],
+    # ChatGPT: the Codex palette (lavender, soft blue, electric indigo) on white
+    'chatgpt': [
+        [177, 167, 255],  # lavender #B1A7FF
+        [244, 243, 255],  # white with a lilac cast
+        [122, 157, 255],  # soft blue #7A9DFF
+        [57, 65, 255],    # electric indigo #3941FF
+        [205, 214, 255],  # pale blue
+        [255, 255, 255],  # white
+    ],
+    # Grok: no colour, by design: black, greys and white, like polished chrome
+    'grok': [
+        [229, 231, 235],  # light grey #E5E7EB
+        [255, 255, 255],  # white
+        [156, 163, 175],  # grey #9CA3AF
+        [26, 26, 26],     # near black #1A1A1A
+        [213, 217, 226],  # border grey #D5D9E2
+        [249, 248, 246],  # warm white #F9F8F6
+    ],
 }
 import sys
 PRODUCT = sys.argv[1] if len(sys.argv) > 1 else 'claude'

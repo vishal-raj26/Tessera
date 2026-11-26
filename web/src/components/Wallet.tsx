@@ -2,7 +2,7 @@
 // open it in place: its codes to redeem one at a time and how to activate, or what's happening with it.
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { fmtMoney, termLabel, type Order } from '../api';
+import { fmtMoney, planName, termLabel, type Order } from '../api';
 import { RedeemCodes } from './RedeemCodes';
 import { tg } from '../tg';
 import { PLAN_LABEL } from './HoloCard';
@@ -83,7 +83,7 @@ export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop,
       {orders.map((o, i) => {
         const st = statusOf(o);
         const isOpen = open === o.id;
-        const name = `${o.product?.name ?? 'Claude'} ${o.plan.label ?? PLAN_LABEL[o.plan.id]}`;
+        const name = planName(o.product?.name, { ...o.plan, label: o.plan.label ?? PLAN_LABEL[o.plan.id] });
         return (
           <motion.li key={o.id} className={`item ${isOpen ? 'is-open' : ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.04 }}>
             <button className="item-row" onClick={() => { tg.select(); setOpen(isOpen ? null : o.id); }} aria-expanded={isOpen}>

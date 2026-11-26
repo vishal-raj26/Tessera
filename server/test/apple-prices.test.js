@@ -137,3 +137,17 @@ test('a price never swallows the next item, even a whole number followed by "100
   assert.deepEqual(extractPrices('<li>Claude Pro - Monthly <span>1&nbsp;299,00&nbsp;₽</span></li>', name), { pro_m: 1299 });
   assert.equal(parsePrice('29.99 100'), 29.99);
 });
+
+test('ChatGPT and Grok: each plan read from their real App Store listings (Nov 2026)', async () => {
+  const { PRODUCTS } = await import('../src/catalog.js');
+  const iap = (id) => PRODUCTS.find((p) => p.id === id).appstore.iap;
+  // the US listings as the App Store shows them, other items included
+  const gpt = ['ChatGPT Plus', '$19.99', 'ChatGPT Go', '$8.00', 'ChatGPT Pro 20x', '$200.00', 'ChatGPT Pro 5x', '$100.00', 'ChatGPT Plus', '$200.00', '100 Credits', '$4.00'];
+  const grok = ['SuperGrok', '$30.00', 'Extra Usage Credits 5 USD', '$5.00', 'SuperGrok Lite', '$10.00', 'Extra Usage Credits 20 USD', '$20.00', 'SuperGrok Heavy', '$300.00', 'SuperGrok Plus', '$100.00', 'SuperGrok', '$30.00', 'SuperGrok', '$300.00'];
+  const page = (items) => items.map((t) => `<li>${t}</li>`).join('');
+  assert.deepEqual(extractPrices(page(gpt), iap('chatgpt')), { gpt_go_m: 8, gpt_plus_m: 19.99, gpt_plus_y: 200 });
+  assert.deepEqual(extractPrices(page(grok), iap('grok')), { grok_lite_m: 10, grok_m: 30, grok_y: 300, grok_plus_m: 100, grok_heavy_m: 300 });
+  // a euro storefront writes prices after the number
+  const de = ['ChatGPT Plus', '22,99 €', 'ChatGPT Go', '7,99 €', 'ChatGPT Pro 20x', '229,00 €', 'ChatGPT Plus', '229,00 €'];
+  assert.deepEqual(extractPrices(page(de), iap('chatgpt')), { gpt_go_m: 7.99, gpt_plus_m: 22.99, gpt_plus_y: 229 });
+});

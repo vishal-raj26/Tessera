@@ -82,6 +82,12 @@ function paintDecal(face: Face, back: boolean, printName: boolean) {
   };
   if (back) {
     text('Tessera', W / 2, 9.4 * u, 4.4 * u, 500, 'center', 'rgba(40, 36, 44, 0.85)');
+    if (printName) {
+      // a plan without a modelled name: print it in dark ink, like the modelled ones on the back
+      const size = (face.name.length > 6 ? 15 : 22) * u;
+      g.font = `600 ${size}px ${FONT}`; g.textAlign = 'left'; g.fillStyle = 'rgba(40, 36, 44, 0.82)';
+      g.fillText(face.name, 4 * u, Hp - 11 * u, W - 8 * u);
+    }
   } else {
     const ink = 'rgba(205, 200, 192, 0.82)';
     text(face.top ?? 'Store credit', W / 2, 8.6 * u, 3.1 * u, 500, 'center', ink);

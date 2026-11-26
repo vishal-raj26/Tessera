@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
 import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -9,6 +9,7 @@ import { Sheet } from './components/Sheet';
 import { Guide } from './components/Guide';
 import { GramIcon } from './components/GramIcon';
 import { Header } from './components/Header';
+import { Showcase } from './components/Showcase';
 import { Emblem } from './components/Emblem';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
@@ -58,6 +59,8 @@ export default function App() {
   const [pricesUpdating, setPricesUpdating] = useState(false);
   const [index, setIndex] = useState(0);
   const [view, setView] = useState<View>('home');
+  // on the home view: the showcase of every app (true) or one app's plans and purchase (false)
+  const [browsing, setBrowsing] = useState(true);
   const [sheet, setSheet] = useState<SheetName>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [history, setHistory] = useState<Order[] | null>(null);
@@ -166,8 +169,9 @@ export default function App() {
   const storeLabel = config?.stores?.find((s) => s.id === prices.store)?.label ?? 'App Store';
   const storeOwner = prices.store === 'play' ? 'Google' : 'Apple';
   function pickProduct(id: string) {
-    if (id === productId) return;
-    tg.select(); setProductPick(id); setIndex(0); setErr(null);
+    tg.select();
+    if (id !== productId) { setProductPick(id); setIndex(0); }
+    setErr(null); setBrowsing(false);
   }
   function pickStore(s: StoreId) {
     if (s === store || !config) return;
@@ -228,6 +232,7 @@ export default function App() {
   };
   function renew() {
     if (!cover || !config) return;
+    setBrowsing(false);
     const o = cover.order;
     const target: RenewTarget = { product: o.product?.id || productId, store: o.store?.id ?? 'appstore', planId: o.plan.id, months: o.months ?? 1 };
     tg.tap('light');
@@ -282,6 +287,8 @@ export default function App() {
   }, []);
   const toHome = useCallback(() => { setView('home'); setSheet(null); }, []);
   useEffect(() => (view === 'done' && !sheet ? tg.back(home) : undefined), [view, sheet, home]);
+  // in one app's plans, Back returns to the showcase of every app
+  useEffect(() => (view === 'home' && !browsing && !sheet ? tg.back(() => setBrowsing(true)) : undefined), [view, browsing, sheet]);
 
 
   // don't let a stray swipe close the app while money is moving
@@ -462,6 +469,20 @@ export default function App() {
 
   const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? (order?.method === 'stars' ? 'Waiting for Telegram' : 'Waiting for wallet') : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
 
+  // the plan you have, only once it needs you: two weeks before it runs out, or after
+  const renewNotice = cover && cover.daysLeft <= 14 ? (
+    <button className="notice" onClick={renew}>
+      <span>
+        {cover.order.plan.label ?? cover.order.plan.name}
+        {cover.daysLeft > 1 ? ` runs out in ${cover.daysLeft} days`
+          : cover.daysLeft === 1 ? ' runs out tomorrow'
+          : cover.daysLeft === 0 ? ' runs out today'
+          : ` ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
+      </span>
+      <b>Renew</b>
+    </button>
+  ) : null;
+
   return (
     <>
       <div className="atmos" aria-hidden="true">
@@ -472,37 +493,33 @@ export default function App() {
       {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={90} stroke={1.4} /></div>}
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
-      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
+      {/* data-product: the accent colour follows the app being bought (ui.css) */}
+      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`} data-product={productId}>
         <Header
           wallet={wallet}
           balance={balance}
           codesCount={codesLeft}
           onCodes={openOrders}
-          onHome={view === 'done' ? home : view === 'wallet' ? toHome : undefined}
+          onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : undefined}
           active={view === 'wallet'}
           onWallet={() => (wallet ? confirm('Disconnect wallet?') && tonConnectUI.disconnect() : tonConnectUI.openModal())}
         />
 
         <AnimatePresence mode="wait">
-          {view === 'home' && (
+          {view === 'home' && browsing && (
+            <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={renewNotice} onHowItWorks={() => setIntro(true)} />
+            </motion.main>
+          )}
+          {view === 'home' && !browsing && (
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
-                {/* the plan you have, only once it needs you: two weeks before it runs out, or after */}
-                {cover && cover.daysLeft <= 14 ? (
-                  <button className="notice" onClick={renew}>
-                    <span>
-                      {cover.order.plan.label ?? cover.order.plan.name}
-                      {cover.daysLeft > 1 ? ` runs out in ${cover.daysLeft} days`
-                        : cover.daysLeft === 1 ? ' runs out tomorrow'
-                        : cover.daysLeft === 0 ? ' runs out today'
-                        : ` ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
-                    </span>
-                    <b>Renew</b>
-                  </button>
-                ) : null}
-                {products.length > 1
-                  ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
-                  : null}
+                {/* which app this is; tap to see every app again */}
+                <button className="app-title" onClick={() => { tg.select(); setBrowsing(true); }} aria-label={`${product?.name ?? 'Claude'}: back to all apps`}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+                  <span>{product?.name ?? 'Claude'}</span>
+                </button>
+                {renewNotice}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
                     options={[{ value: 'appstore', label: 'iPhone' }, { value: 'play', label: 'Android' }]} />
@@ -571,7 +588,7 @@ export default function App() {
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
                 <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
-                <span className="pay-sub">{failed ? backLine : `${order.product?.name ?? 'Claude'} ${order.plan.label ?? PLAN_LABEL[order.plan.id]} · ${termLabel(order.months ?? 1)}`}</span>
+                <span className="pay-sub">{failed ? backLine : `${planName(order.product?.name, { ...order.plan, label: order.plan.label ?? PLAN_LABEL[order.plan.id] })} · ${termLabel(order.months ?? 1)}`}</span>
               </motion.div>
               {failed ? (
                 <>
@@ -625,7 +642,7 @@ export default function App() {
                   <Tally value={order.credit} format={(n) => fmtMoney(Number.isInteger(order.credit) ? Math.round(n) : n, order.currency)} delay={0.3} duration={1.6} />
                 </motion.div>
                 <motion.p className="success-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-                  {order.store?.label ?? 'App Store'} credit · {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
+                  {order.store?.label ?? 'App Store'} credit · {planName(order.product?.name, { ...order.plan, label: order.plan.label ?? PLAN_LABEL[order.plan.id] })}
                 </motion.p>
               </div>
               {settled && (
@@ -678,7 +695,7 @@ export default function App() {
           <div className="st">
             {/* what you're buying, then what it costs: the one number that matters, large */}
             <div className="sheet-head">
-              <p className="eyebrow">{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name} · {termLabel(shown.months)}</p>
+              <p className="eyebrow">{planName(plan.product?.name, plan)} · {termLabel(shown.months)}</p>
               <div className="total amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={28} /></div>
             </div>
             {shown.months > 1 && (
@@ -728,7 +745,7 @@ export default function App() {
 
       <Sheet open={sheet === 'guide'} onClose={closeSheet} label="How to activate">
         <div className="st">
-          <h2>Activate {guideFor?.product?.name ?? 'Claude'} {guideFor && (guideFor.plan.label ?? PLAN_LABEL[guideFor.plan.id])}</h2>
+          <h2>Activate {guideFor ? planName(guideFor.product?.name, { ...guideFor.plan, label: guideFor.plan.label ?? PLAN_LABEL[guideFor.plan.id] }) : ''}</h2>
           <p className="sub">Four steps, about two minutes.</p>
           {guideFor && <Guide order={guideFor} />}
           <button className="btn btn-quiet" onClick={view === 'wallet' ? closeSheet : home}>Done</button>

@@ -14,7 +14,7 @@ export interface Term {
 /** A price held for 20 minutes while the buyer reviews it. */
 export interface Quote extends Term { id: string; expiresAt: number; planId: PlanId; store: StoreId; region: string }
 export interface Plan {
-  id: PlanId; name: string; label: string; product: Product; term: string; blurb: string; available: boolean;
+  id: PlanId; name: string; label: string; inApp?: string; product: Product; term: string; blurb: string; available: boolean;
   terms?: Term[];
   appPrice?: number; currency?: string; credit?: number; codes?: number; gram?: number | null; stars?: number | null; usd?: number;
 }
@@ -23,7 +23,7 @@ export type PayMethod = 'gram' | 'stars';
 export type OrderStatus = 'awaiting_payment' | 'paid' | 'fulfilling' | 'delivered' | 'expired' | 'failed' | 'underpaid' | 'refunded';
 export interface Order {
   id: string; region: string; regionName: string; flag: string;
-  plan: { id: PlanId; name: string; label: string; term: string };
+  plan: { id: PlanId; name: string; label: string; inApp?: string; term: string };
   product: Product; store: Store;
   months: number; annual: boolean;
   credit: number; currency: string; method: PayMethod; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
@@ -76,3 +76,7 @@ export const redeemUrl = (store: StoreId | undefined, code: string) =>
 
 export const groupCode = (c: string) => c.replace(/(.{4})(?=.)/g, '$1 ');
 
+
+/** A plan's full name as the app itself shows it ("ChatGPT Plus", "SuperGrok Lite"), so buyers find it. */
+export const planName = (product: string | undefined, plan: { label?: string; name?: string; inApp?: string }) =>
+  plan.inApp ?? `${product ?? 'Claude'} ${plan.label ?? plan.name ?? ''}`.trim();
