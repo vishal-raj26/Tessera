@@ -9,7 +9,6 @@ import { trimAmt } from '../amount';
 import { GramIcon } from './GramIcon';
 import { tg } from '../tg';
 
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 interface Props {
   coins: CoinRoute[];
@@ -64,35 +63,50 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
 
   return (
     <div className="st topup">
-      <h2>Add GRAM</h2>
-      <p className="sub">
-        {wallet
-          ? <>Send a coin from any wallet or exchange. It arrives as GRAM in your wallet <b>{short(wallet)}</b>.</>
-          : 'Connect your TON wallet first: that’s where your GRAM arrives.'}
-      </p>
-      {needGram > 0 && wallet && (
-        <p className="topup-need">You need <b>{fmtGram(needGram)}</b><GramIcon size={13} /> more for this plan.</p>
-      )}
+      <div className="tu-head">
+        <h2>Add GRAM</h2>
+        <p className="sub">
+          {wallet
+            ? 'Send any of these coins. It arrives as GRAM in your wallet.'
+            : 'Connect your TON wallet first: that’s where your GRAM arrives.'}
+        </p>
+        {needGram > 0 && wallet && (
+          <p className="topup-need">You need <b>{fmtGram(needGram)}</b><GramIcon size={13} /> more for this plan</p>
+        )}
+      </div>
 
       {!wallet ? (
         <motion.button className="btn btn-pearl" onClick={onConnect} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
       ) : (
         <>
-          <div className="coin-pick">
-            <div className="chips" role="radiogroup" aria-label="Coin">
+          <section className="tu-step">
+            <p className="tu-label">Coin</p>
+            <div className={`tu-grid coins ${picked ? 'has-pick' : ''}`} role="radiogroup" aria-label="Coin">
               {list.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={picked?.coin === c} className={picked?.coin === c ? 'on' : ''}
-                  onClick={() => pick(coins.find((x) => x.coin === c)!.key)}><Logo src={icons[c]} label={c} />{c}</button>
+                  onClick={() => pick(coins.find((x) => x.coin === c)!.key)}>
+                  <Logo src={icons[c]} label={c} big />
+                  <span>{c}</span>
+                </button>
               ))}
             </div>
+          </section>
+
+          <AnimatePresence initial={false}>
             {nets.length > 1 && (
-              <div className="chips nets" role="radiogroup" aria-label="Network">
-                {nets.map((n) => (
-                  <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pick(n.key)}><Logo src={n.chainId != null ? chainIcons[n.chainId] : undefined} label={n.network} />{n.network}</button>
-                ))}
-              </div>
+              <motion.section key={picked?.coin} className="tu-step" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
+                <p className="tu-label">Network</p>
+                <div className={`tu-grid nets ${route && nets.some((n) => n.key === route) ? 'has-pick' : ''}`} role="radiogroup" aria-label="Network">
+                  {nets.map((n) => (
+                    <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pick(n.key)}>
+                      <Logo src={n.chainId != null ? chainIcons[n.chainId] : undefined} label={n.network} />
+                      <span>{n.network}</span>
+                    </button>
+                  ))}
+                </div>
+              </motion.section>
             )}
-          </div>
+          </AnimatePresence>
 
           {err && <p className="error" role="alert">{err}</p>}
           {picked && !addr && !err && <div className="topup-card loading"><span className="spin" /></div>}
@@ -139,8 +153,8 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
 }
 
 /** a coin's or network's logo in a chip (its first letter when there's no logo) */
-function Logo({ src, label }: { src?: string; label: string }) {
-  return <span className="chip-logo" aria-hidden="true">{src ? <img src={src} alt="" loading="lazy" /> : label.slice(0, 1)}</span>;
+function Logo({ src, label, big }: { src?: string; label: string; big?: boolean }) {
+  return <span className={`chip-logo ${big ? 'big' : ''}`} aria-hidden="true">{src ? <img src={src} alt="" loading="lazy" /> : label.slice(0, 1)}</span>;
 }
 
 function CopyIcon() {
