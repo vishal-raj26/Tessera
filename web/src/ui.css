@@ -298,3 +298,9 @@ html, body, #root { background: var(--void); }
 .topup-dot.success { background: #4ade80; }
 .topup-dot.refunded, .topup-dot.failed { background: var(--danger, #f87171); }
 @keyframes pulse { 50% { opacity: 0.35; } }
+
+/* the code is issued: the light floods the whole screen once in the app's colour, then fades */
+.flash { position: absolute; inset: 0; pointer-events: none; background:
+  radial-gradient(90% 70% at 50% 100%, color-mix(in srgb, var(--flash) 75%, white) 0%, color-mix(in srgb, var(--flash) 45%, transparent) 40%, transparent 80%),
+  radial-gradient(140% 100% at 50% 50%, transparent 55%, color-mix(in srgb, var(--flash) 35%, transparent) 100%); }
+@media (prefers-reduced-motion: reduce) { .flash { display: none; } }
