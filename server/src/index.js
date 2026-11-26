@@ -258,8 +258,8 @@ const publicOrder = (o) => o && {
 app.get('/api/relay/options', telegramAuth, async (req, res) => {
   if (RELAY_MODE === 'off') return res.json({ mode: 'off', options: [] });
   try {
-    const [options, icons] = await Promise.all([relay.options(), relay.coinIcons().catch(() => ({}))]);
-    res.json({ mode: RELAY_MODE, options, icons });
+    const [options, icons, chainIcons] = await Promise.all([relay.options(), relay.coinIcons().catch(() => ({})), relay.chainIcons()]);
+    res.json({ mode: RELAY_MODE, options, icons, chainIcons });
   } catch { res.json({ mode: RELAY_MODE, options: [], icons: {} }); }
 });
 

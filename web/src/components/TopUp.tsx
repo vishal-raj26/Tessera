@@ -13,6 +13,9 @@ const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 interface Props {
   coins: CoinRoute[];
+  /** logos: each coin's (by symbol) and each network's (by chain id) */
+  icons?: Record<string, string>;
+  chainIcons?: Record<string, string>;
   /** the buyer's connected TON wallet ('' when none) */
   wallet: string;
   /** GRAM still missing for the purchase they came from (0: just topping up) */
@@ -23,7 +26,7 @@ interface Props {
   onToast: (s: string) => void;
 }
 
-export function TopUp({ coins, wallet, needGram, onConnect, onBack, onToast }: Props) {
+export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, onConnect, onBack, onToast }: Props) {
   const [route, setRoute] = useState<string | null>(() => { try { return localStorage.getItem('coin'); } catch { return null; } });
   const picked = coins.find((c) => c.key === route) ?? null;
   const [addr, setAddr] = useState<TopUpAddr | null>(null);
@@ -79,13 +82,13 @@ export function TopUp({ coins, wallet, needGram, onConnect, onBack, onToast }: P
             <div className="chips" role="radiogroup" aria-label="Coin">
               {list.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={picked?.coin === c} className={picked?.coin === c ? 'on' : ''}
-                  onClick={() => pick(coins.find((x) => x.coin === c)!.key)}>{c}</button>
+                  onClick={() => pick(coins.find((x) => x.coin === c)!.key)}><Logo src={icons[c]} label={c} />{c}</button>
               ))}
             </div>
             {nets.length > 1 && (
               <div className="chips nets" role="radiogroup" aria-label="Network">
                 {nets.map((n) => (
-                  <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pick(n.key)}>{n.network}</button>
+                  <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pick(n.key)}><Logo src={n.chainId != null ? chainIcons[n.chainId] : undefined} label={n.network} />{n.network}</button>
                 ))}
               </div>
             )}
@@ -133,6 +136,11 @@ export function TopUp({ coins, wallet, needGram, onConnect, onBack, onToast }: P
       )}
     </div>
   );
+}
+
+/** a coin's or network's logo in a chip (its first letter when there's no logo) */
+function Logo({ src, label }: { src?: string; label: string }) {
+  return <span className="chip-logo" aria-hidden="true">{src ? <img src={src} alt="" loading="lazy" /> : label.slice(0, 1)}</span>;
 }
 
 function CopyIcon() {

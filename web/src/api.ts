@@ -21,7 +21,7 @@ export interface Plan {
 export interface Code { code: string; value: number; redeemedAt?: number | null }
 export type PayMethod = 'gram' | 'stars';
 /** a coin on a network that Relay turns into GRAM, e.g. USDC on Base */
-export interface CoinRoute { key: string; coin: string; network: string }
+export interface CoinRoute { key: string; coin: string; network: string; chainId?: number }
 /** the buyer's own top-up address for one coin (none in test mode), and what a purchase still needs in it */
 export interface TopUp { route: string; coin: string; network: string; address: string | null; test: boolean; need: { amount: string; usd: number | null } | null }
 export type TopUpState = 'waiting' | 'seen' | 'success' | 'refunded' | 'failed' | 'unknown'
@@ -61,7 +61,7 @@ export const api = {
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
   balance: (address: string) => req<{ gram: number | null; network: string }>(`/api/balance?address=${encodeURIComponent(address)}`),
-  relayOptions: () => req<{ mode: 'live' | 'test' | 'off'; options: CoinRoute[]; icons?: Record<string, string> }>('/api/relay/options'),
+  relayOptions: () => req<{ mode: 'live' | 'test' | 'off'; options: CoinRoute[]; icons?: Record<string, string>; chainIcons?: Record<string, string> }>('/api/relay/options'),
   topUp: (route: string, wallet: string, needNano?: string) =>
     req<TopUp>('/api/relay/topup', { method: 'POST', body: JSON.stringify({ route, wallet, needNano }) }),
   topUpStatus: (address: string | null, route: string, since: number) =>
