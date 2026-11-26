@@ -1,7 +1,7 @@
 // Your dashboard: who you are (your Telegram photo, name and @username, when you joined), your invite
 // link with what it has earned you, and what you've done here (purchases, spent, credit received, apps).
 // Store country, wallet, codes and your plan live in the top bar, the bottom bar and the home screen, so
-// they aren't repeated here. The small chat icon in the corner opens support (@vixxance).
+// they aren't repeated here. The small headset in the corner opens support (@vixxance).
 import { motion } from 'framer-motion';
 import { fmtGram, fmtMoney, type Order, type Referral } from '../api';
 import { GramIcon } from './GramIcon';
@@ -38,7 +38,7 @@ export function Profile({ history, joinedAt, referral, onCopied }: Props) {
   return (
     <div className="me">
       <button className="me-help" aria-label="Help and support" onClick={() => { tg.tap('light'); tg.openTelegramLink(SUPPORT); }}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 7A2.5 2.5 0 0 1 7 4.5h10A2.5 2.5 0 0 1 19.5 7v7a2.5 2.5 0 0 1-2.5 2.5h-6l-4.5 3.5v-3.5H7A2.5 2.5 0 0 1 4.5 14Z" /><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01" strokeWidth="2.4" /></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4.5 13.5v-1.5a7.5 7.5 0 0 1 15 0v1.5" /><rect x="3.5" y="13" width="4" height="6" rx="1.6" /><rect x="16.5" y="13" width="4" height="6" rx="1.6" /><path d="M18.5 19v.5a2.5 2.5 0 0 1-2.5 2.5h-3" /></svg>
       </button>
       <motion.header className="me-head" {...rise(0)}>
         <span className="me-photo">

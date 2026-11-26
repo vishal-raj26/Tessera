@@ -1,4 +1,4 @@
-// The bottom bar: Home, Codes, Guide and You, on every main screen, with the current one lit.
+// The bottom bar: Home, Codes and You, on every main screen, in an oval with the current one lit.
 import { motion } from 'framer-motion';
 import { tg } from '../tg';
 
@@ -9,13 +9,12 @@ interface Props {
   codesCount: number;
   onHome: () => void;
   onCodes: () => void;
-  onGuide: () => void;
   onMe: () => void;
 }
 
 const I = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const;
 
-export function Dock({ active, codesCount, onHome, onCodes, onGuide, onMe }: Props) {
+export function Dock({ active, codesCount, onHome, onCodes, onMe }: Props) {
   const photo = tg.user?.photo_url;
   const tabs = [
     { id: 'home', label: 'Home', on: onHome, icon: <svg {...I}><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-4v-6h-5v6h-4A1.5 1.5 0 0 1 4 19Z" /></svg> },
@@ -25,7 +24,6 @@ export function Dock({ active, codesCount, onHome, onCodes, onGuide, onMe }: Pro
         <path d="M9.5 7v10" strokeDasharray="1.5 2.2" /><path d="M13 10.5h4M13 13.5h2.5" />
       </svg>
     ), badge: codesCount },
-    { id: 'guide', label: 'Guide', on: onGuide, icon: <svg {...I}><circle cx="12" cy="12" r="8.5" /><path d="M9.7 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1.1.9-1.1 1.6v.4" /><path d="M12 16.6v.01" strokeWidth="2.2" /></svg> },
     { id: 'me', label: 'You', on: onMe, icon: photo ? <img className="dock-me" src={photo} alt="" /> : <svg {...I}><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 19.5a7.5 7.5 0 0 1 15 0" /></svg> },
   ] as const;
 

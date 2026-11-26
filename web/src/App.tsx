@@ -633,7 +633,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard} onGuide={() => setIntro(true)} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
@@ -835,7 +835,7 @@ export default function App() {
         // the bottom bar, on the main screens only (not inside one app's plans, or while paying)
         const tab = view === 'home' && browsing ? 'home' : view === 'wallet' ? 'codes' : view === 'me' ? 'me' : null;
         return tab && <Dock active={tab} codesCount={codesLeft}
-          onHome={() => { setBrowsing(true); toHome(); }} onCodes={openOrders} onGuide={() => setIntro(true)} onMe={openMe} />;
+          onHome={() => { setBrowsing(true); toHome(); }} onCodes={openOrders} onMe={openMe} />;
       })()}
 
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
