@@ -317,16 +317,6 @@ html, body, #root { background: var(--void); }
 
 
 /* --- home: your current plan, the tiles' little-logo print, how it works at the bottom ---------------------- */
-.plan-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 14px 16px 18px; border-radius: 20px; background: color-mix(in srgb, var(--clay) 9%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clay) 22%, transparent); text-align: left; color: var(--ink); }
-.pc-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
-.pc-main small { font-size: 12px; color: var(--mute); }
-.pc-main b { font-size: 18px; font-weight: 600; letter-spacing: -0.03em; }
-.pc-days { font-size: 13px; color: var(--ink-2); }
-.pc-bar { display: block; height: 4px; margin-top: 7px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-.pc-bar i { display: block; height: 100%; border-radius: 2px; background: var(--clay); }
-.plan-card.is-soon .pc-days { color: var(--clay); }
-.pc-renew { height: 38px; padding: 0 16px; border-radius: 99px; display: grid; place-items: center; background: var(--ink); color: var(--void); font-size: 14px; font-weight: 600; flex: none; }
-.store { gap: 14px; padding-top: 6px; }
 .tiles { gap: 12px; }
 .tile { min-height: 132px; }
 /* the app's own logo, printed small and many times across the tile */
@@ -422,3 +412,13 @@ html, body, #root { background: var(--void); }
 .cs-coin { width: var(--cs); height: var(--cs); margin-left: calc(var(--cs) * -0.3); border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #2a2a2c; box-shadow: 0 0 0 2px #1c1c1e; font-size: calc(var(--cs) * 0.5); font-weight: 700; color: var(--ink); }
 .cs-coin img { width: 100%; height: 100%; object-fit: cover; }
 .topup-link b { color: var(--ink); font-weight: 600; }
+
+/* returning buyers: their plan as one quiet line above the apps */
+.plan-line { display: flex; align-items: center; gap: 9px; width: 100%; height: 44px; padding: 0 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: 14px; text-align: left; }
+.pl-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; flex: none; }
+.plan-line.soon .pl-dot { background: #f5b14a; }
+.plan-line.over .pl-dot { background: #f87171; }
+.pl-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-days { flex: 1; color: var(--mute); white-space: nowrap; }
+.pl-renew { color: var(--ink-2); font-weight: 500; display: inline-flex; align-items: center; }
+.pl-renew::after { content: ''; width: 6px; height: 6px; margin-left: 6px; border-right: 1.6px solid currentColor; border-top: 1.6px solid currentColor; transform: rotate(45deg); }
