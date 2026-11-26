@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type Region, type PayMethod, type CoinRoute, type Plan, type Quote, type Referral, type StoreId } from './api';
+import { api, fmtGram, fmtMoney, termLabel, planName, type AppConfig, type Order, type Region, type PayMethod, type CoinRoute, type Plan, type Quote, type Referral, type StoreId } from './api';
 import { tg } from './tg';
 import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -20,7 +20,6 @@ import { pricesShown, renewStep, type RenewTarget } from './renew';
 import { shownBalance } from './balance';
 import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
-import { StarIcon } from './components/StarIcon';
 import { TermPicker } from './components/TermPicker';
 import { Segmented } from './components/Segmented';
 import { Aurora, type AuroraInputs } from './components/Aurora';
@@ -327,19 +326,12 @@ export default function App() {
     api.catalog(R, store).then(applyCatalog).catch(() => {});
   }, [config, renewing, prices.ready, store, applyCatalog]);
 
-  // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
-  const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
-  const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
+  // Tessera takes GRAM only (Stars are off until Telegram lets users turn Stars into GRAM)
+  const payWith: PayMethod = 'gram';
   // referral credit comes off GRAM prices: what's left to send from the wallet
-  const refOff = payWith === 'gram' && heldOk?.refCredit ? heldOk.refCredit : 0;
+  const refOff = heldOk?.refCredit ? heldOk.refCredit : 0;
   const payGram = refOff && heldOk?.payGram != null ? heldOk.payGram : shown?.gram ?? null;
-  const bothMethods = !!config?.stars && term?.gram != null && term?.stars != null;
-  function chooseMethod(m: PayMethod) {
-    if (m === method) return;
-    tg.select(); setMethod(m); setErr(null);
-    try { localStorage.setItem('pay', m); } catch { /* ignore */ }
-  }
-  const needsWallet = config?.paymentMode === 'chain' && !wallet && payWith === 'gram';
+  const needsWallet = config?.paymentMode === 'chain' && !wallet;
   // topping up GRAM from another chain (through Relay, into the buyer's own wallet): the coins on offer
   const [coins, setCoins] = useState<CoinRoute[]>([]);
   const [coinIcons, setCoinIcons] = useState<Record<string, string>>({});
@@ -463,7 +455,7 @@ export default function App() {
   }, [flood]);
   function openReview() {
     if (!plan?.available || !term || !prices.ready) return;
-    if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
+    if (needsWallet) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
     setHeld(null);
@@ -486,23 +478,7 @@ export default function App() {
       const o = await api.createOrder(R, store, plan.id, term.months, payWith, wallet || undefined, heldOk?.id);
       setOrder(o);
       setWalletSent(false);
-      if (payWith === 'stars' && o.invoiceLink) {
-        // Telegram's own checkout sheet; the code is issued once Telegram confirms the charge
-        const st = await tg.openInvoice(o.invoiceLink);
-        if (st !== 'paid' && st !== 'pending') throw new Error(st === 'cancelled' ? 'cancelled' : 'Telegram could not complete the payment. Nothing was charged.');
-        tg.notify('success');
-        setWalletSent(true);
-        setSheet(null);
-        setView('paying');
-      } else if (payWith === 'stars') {
-        // Demo mode: no bot, so pretend Telegram approved it
-        setSheet(null);
-        setView('paying');
-        await new Promise((r) => setTimeout(r, 1100));
-        setWalletSent(true);
-        tg.tap('medium');
-        await api.mockPay(o.id);
-      } else if (o.amountNano === '0') {
+      if (o.amountNano === '0') {
         // invite credit covered the whole price: nothing to send, the order is already paid
         tg.notify('success');
         setWalletSent(true);
@@ -528,7 +504,7 @@ export default function App() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setErr(/reject|cancel|declin/i.test(msg) ? (payWith === 'stars' ? 'Payment cancelled. Nothing was charged.' : 'Payment cancelled in your wallet. Nothing was charged.') : msg);
+      setErr(/reject|cancel|declin/i.test(msg) ? 'Payment cancelled in your wallet. Nothing was charged.' : msg);
       tg.notify('error');
     } finally {
       setBusy(false);
@@ -586,15 +562,14 @@ export default function App() {
   const failed = status === 'failed' || status === 'expired' || status === 'refunded';
   const steps = useMemo(() => {
     const paid = status === 'paid' || status === 'fulfilling' || status === 'delivered';
-    const stars = order?.method === 'stars';
     return [
-      { label: stars ? (walletSent ? 'Paid with Stars' : 'Confirm in Telegram') : walletSent ? 'Approved in wallet' : 'Approve in your wallet', done: walletSent || status === 'underpaid', on: !walletSent && status !== 'underpaid' },
-      { label: status === 'underpaid' ? 'Waiting for the rest of the payment' : paid ? 'Payment confirmed' : stars ? 'Confirming with Telegram' : order?.paymentSeen ? 'Payment seen, confirming' : 'Waiting for payment', done: paid, on: (walletSent || status === 'underpaid') && !paid },
+      { label: walletSent ? 'Approved in wallet' : 'Approve in your wallet', done: walletSent || status === 'underpaid', on: !walletSent && status !== 'underpaid' },
+      { label: status === 'underpaid' ? 'Waiting for the rest of the payment' : paid ? 'Payment confirmed' : order?.paymentSeen ? 'Payment seen, confirming' : 'Waiting for payment', done: paid, on: (walletSent || status === 'underpaid') && !paid },
       { label: 'Issuing your credit', done: status === 'delivered', on: paid && status !== 'delivered' },
     ];
-  }, [status, walletSent, order?.paymentSeen, order?.method]);
+  }, [status, walletSent, order?.paymentSeen]);
 
-  const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? (order?.method === 'stars' ? 'Waiting for Telegram' : 'Waiting for wallet') : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
+  const backLine = failed ? (status === 'expired' ? 'Price expired' : status === 'refunded' ? 'Refunded' : 'Needs attention') : status === 'underpaid' ? 'Partly paid' : !walletSent ? 'Waiting for wallet' : status === 'paid' || status === 'fulfilling' ? 'Issuing credit' : 'Confirming payment';
 
   // the plan you have, only once it needs you: two weeks before it runs out, or after
   const renewNotice = cover && cover.daysLeft <= 14 ? (
@@ -657,7 +632,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} codesCount={codesLeft} onCodes={openOrders} onMe={openMe} onHelp={config?.bot ? () => tg.openTelegramLink(`https://t.me/${config.bot}`) : undefined} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} codesCount={codesLeft} onCodes={openOrders} onMe={openMe} onHelp={config?.bot ? () => tg.openTelegramLink(`https://t.me/${config.bot}`) : undefined} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
@@ -716,22 +691,15 @@ export default function App() {
                 {plan?.available && term ? (
                   <>
                     <div className="gram">
-                      {payWith === 'stars'
-                        ? <CountUp value={term.stars!} format={fmtStars} />
-                        : <CountUp value={term.gram!} format={fmtGram} />}
-                      {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
+                      <CountUp value={term.gram!} format={fmtGram} />
+                      <GramIcon size={28} />
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
-                      <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
+                      <motion.div key={plan.id + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
                         {testScale < 1
                           ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)}</>
                           : <>≈ ${term.usd.toFixed(2)}</>}
                         {term.annual && term.monthly > 0 && <span className="save"> · {Math.round((1 - term.appPrice / (term.monthly * 12)) * 100)}% less than monthly</span>}
-                        {bothMethods && (
-                          <button className="alt-price" onClick={() => chooseMethod(payWith === 'stars' ? 'gram' : 'stars')} aria-label="Switch currency">
-                            or <span className="amt"><Amount method={payWith === 'stars' ? 'gram' : 'stars'} gram={term.gram} stars={term.stars} size={13} /></span>
-                          </button>
-                        )}
                       </motion.div>
                     </AnimatePresence>
                   </>
@@ -754,7 +722,7 @@ export default function App() {
           {view === 'paying' && order && (
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
-                <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
+                <span className="pay-amount"><Amount gram={order.gram} size={30} /></span>
                 <span className="pay-sub">{failed ? backLine : `${planName(order.product?.name, { ...order.plan, label: order.plan.label ?? PLAN_LABEL[order.plan.id] })} · ${termLabel(order.months ?? 1)}`}</span>
               </motion.div>
               {failed ? (
@@ -784,14 +752,13 @@ export default function App() {
                       </motion.li>
                     ))}
                   </ul>
-                  {order.method !== 'stars' && <motion.div className="memo" {...rise(0.65)}>
+                  {order.amountNano !== '0' && <motion.div className="memo" {...rise(0.65)}>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.span key={lost >= 3 ? 'r' : 'm'} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         {lost >= 3 ? 'Reconnecting… your payment is safe' : `memo ${order.comment}`}
                       </motion.span>
                     </AnimatePresence>
                   </motion.div>}
-                  {order.method === 'stars' && lost >= 3 && <motion.div className="memo" {...rise(0)}>Reconnecting… your payment is safe</motion.div>}
                   {status === 'underpaid' && order.error && <p className="memo" style={{ color: 'var(--danger)', fontFamily: 'var(--font)', maxWidth: 300, textAlign: 'center' }}>{order.error}</p>}
                 </>
               )}
@@ -869,7 +836,7 @@ export default function App() {
             {/* what you're buying, then what it costs: the one number that matters, large */}
             <div className="sheet-head">
               <p className="eyebrow">{planName(plan.product?.name, plan)} · {termLabel(shown.months)}</p>
-              <div className="total amt"><Amount method={payWith} gram={payGram} stars={shown.stars} size={28} /></div>
+              <div className="total amt"><Amount gram={payGram} size={28} /></div>
             </div>
             {shown.months > 1 && (
               <p className="term-note">
@@ -877,27 +844,6 @@ export default function App() {
                   ? `${storeOwner}'s yearly ${plan.product?.name ?? ''} ${plan.label ?? plan.name} plan. It renews once a year.`
                   : `${plan.product?.name ?? 'The plan'} renews monthly. ${storeOwner} takes each month from this credit, so it covers ${shown.months} months.`}
               </p>
-            )}
-            {bothMethods && (
-              <div className="paywith" role="radiogroup" aria-label="Pay with">
-                {(['gram', 'stars'] as const).map((m) => (
-                  <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
-                    {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
-                    <span className="pw-amt">{m === 'gram' ? <GramIcon size={15} /> : <StarIcon size={15} />}{m === 'gram' ? 'GRAM' : 'Stars'}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {payWith === 'gram' && coins.length > 0 && config?.relay !== 'off' && (
-              <button className="topup-link" onClick={() => {
-                tg.select();
-                setTopUpNeed(payGram ? Math.max(0, payGram - (balance ?? 0)) : 0);
-                quoteSeq.current++; setTopUpFrom('checkout'); setSheet('topup');
-              }}>
-                <span>{balance != null && payGram != null && balance < payGram ? 'Not enough GRAM?' : 'No GRAM?'} <b>Add GRAM</b></span>
-                <CoinStack coins={coinList} icons={coinIcons} size={18} />
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
-              </button>
             )}
             <dl className="rows">
               <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` in ${shown.codes} codes` : ''}</dd></div>
@@ -923,9 +869,20 @@ export default function App() {
             )}
             <p className="fine">
               {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Holding your price…'}
-              {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
+              {config?.paymentMode === 'mock' ? ' · Demo mode, nothing leaves your wallet' : ''}
               {testScale < 1 ? ` · Testnet: you pay ${Math.round(testScale * 100)}% of the real price` : ''}
             </p>
+            {coins.length > 0 && config?.relay !== 'off' && (
+              <button className="topup-link" onClick={() => {
+                tg.select();
+                setTopUpNeed(payGram ? Math.max(0, payGram - (balance ?? 0)) : 0);
+                quoteSeq.current++; setTopUpFrom('checkout'); setSheet('topup');
+              }}>
+                <span>{balance != null && payGram != null && balance < payGram ? 'Not enough GRAM?' : 'No GRAM?'} <b>Add GRAM</b></span>
+                <CoinStack coins={coinList} icons={coinIcons} size={18} />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+              </button>
+            )}
           </div>
         )}
       </Sheet>

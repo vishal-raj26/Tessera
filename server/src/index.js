@@ -40,7 +40,8 @@ const STORE_REGION = String(process.env.STORE_REGION || 'US').toUpperCase();
 const QUOTE_TTL_MS = 20 * 60 * 1000;
 // Telegram Stars: Telegram requires Stars for digital goods inside Mini Apps. STAR_USD is what one Star
 // is worth to you when you withdraw (not what buyers pay for it), so the Stars price covers your cost.
-const STARS = process.env.STARS !== 'off';
+// Off unless STARS=on: Tessera takes GRAM only until Telegram lets users turn Stars into GRAM.
+const STARS = process.env.STARS === 'on';
 const STAR_USD = Number(process.env.STAR_USD || 0.013);
 // Stars are priced to cost the buyer about the same as GRAM (STAR_BUYER_USD is roughly what a buyer
 // pays Telegram per Star), but never below our cost plus STARS_MIN_MARGIN at the payout rate.

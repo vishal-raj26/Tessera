@@ -1,4 +1,4 @@
-// Add GRAM from another chain. Telegram lets bots take only Stars or GRAM, so Tessera never accepts other
+// Add GRAM from another chain. Telegram lets bots take only GRAM for this, so Tessera never accepts other
 // coins: the buyer gets their own Relay address for a coin they hold, whatever they send there arrives as
 // GRAM in *their* TON wallet, and they pay for the plan in GRAM as usual.
 import { AnimatePresence, motion } from 'framer-motion';

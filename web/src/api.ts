@@ -9,7 +9,7 @@ export interface Product { id: string; name: string; app: string }
 export interface Region { code: string; name: string; flag: string; currency: string }
 export interface Term {
   months: number; label: string; annual: boolean; monthly: number; appPrice: number; currency: string;
-  credit: number; codes: number; gram: number | null; stars: number | null; usd: number;
+  credit: number; codes: number; gram: number | null; usd: number;
 }
 /** A price held for 20 minutes while the buyer reviews it. */
 export interface Quote extends Term {
@@ -22,9 +22,10 @@ export interface Referral { link: string | null; code: string; invited: number; 
 export interface Plan {
   id: PlanId; name: string; label: string; inApp?: string; product: Product; term: string; blurb: string; available: boolean;
   terms?: Term[];
-  appPrice?: number; currency?: string; credit?: number; codes?: number; gram?: number | null; stars?: number | null; usd?: number;
+  appPrice?: number; currency?: string; credit?: number; codes?: number; gram?: number | null; usd?: number;
 }
 export interface Code { code: string; value: number; redeemedAt?: number | null }
+/** how an order was paid: GRAM now (orders from before may say 'stars') */
 export type PayMethod = 'gram' | 'stars';
 /** a coin on a network that Relay turns into GRAM, e.g. USDC on Base */
 export interface CoinRoute { key: string; coin: string; network: string; chainId?: number }
@@ -37,12 +38,12 @@ export interface Order {
   plan: { id: PlanId; name: string; label: string; inApp?: string; term: string };
   product: Product; store: Store;
   months: number; annual: boolean;
-  credit: number; currency: string; method: PayMethod; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
+  credit: number; currency: string; method: PayMethod; gram: number; amountNano: string; comment: string;
   refCredit?: number; fullGram?: number;
   merchant: string | null; network: 'mainnet' | 'testnet'; receivedNano: string; paymentSeen: boolean; payload: string; status: OrderStatus; error: string | null;
   txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number; deliveredAt?: number | null;
 }
-export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; bot?: string | null; relay?: 'live' | 'test' | 'off'; testScale?: number; products: Product[]; stores: Store[] }
+export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; bot?: string | null; relay?: 'live' | 'test' | 'off'; testScale?: number; products: Product[]; stores: Store[] }
 
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -85,8 +86,6 @@ export const fmtMoney = (v: number, currency: string) =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: v % 1 ? 2 : 0 }).format(v);
 
 export const fmtGram = (g: number) => g.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export const fmtStars = (n: number) => Math.round(n).toLocaleString();
 
 export const termLabel = (m: number) => (m === 12 ? '1 year' : m === 1 ? '1 month' : `${m} months`);
 
