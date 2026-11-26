@@ -1,14 +1,27 @@
-// The first screen: every app on sale as a tile in its own colours (the same holographic picture as its
-// card) showing only its name and lowest price; tapping one opens its plans. Below, the three things
+// The first screen: every app on sale as a clean row (its icon on the brand colour, its name and its
+// lowest price); tapping one opens its plans. Below, the three things
 // every purchase gives you, and a way back to the intro.
 import { motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { fmtGram, fmtStars, type PayMethod, type Plan } from '../api';
 import { GramIcon } from './GramIcon';
 import { StarIcon } from './StarIcon';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
+
+// The app's icon: its official logo from public/logos/<id>.svg (or .png) on the brand colour, or the
+// first letter of its name until a logo file is added.
+function AppIcon({ id, name }: { id: string; name: string }) {
+  const [src, setSrc] = useState<string | null>(`${BASE}logos/${id}.svg`);
+  return (
+    <span className="app-icon" aria-hidden="true">
+      {src ? (
+        <img src={src} alt="" draggable={false} onError={() => setSrc(src.endsWith('.svg') ? `${BASE}logos/${id}.png` : null)} />
+      ) : <span className="app-mono">{name.slice(0, 1)}</span>}
+    </span>
+  );
+}
 
 interface Props {
   products: { id: string; name: string }[];
@@ -30,7 +43,7 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
         Your AI apps,<br />paid in GRAM.
       </motion.h1>
 
-      <div className="tiles">
+      <div className="apps">
         {products.map((p, i) => {
           // the lowest one-month price among the app's plans, in the way the buyer pays
           const prices = (plans ?? [])
@@ -39,28 +52,25 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
             .map((t) => (payWith === 'stars' ? t?.stars : t?.gram))
             .filter((v): v is number => typeof v === 'number' && v > 0);
           const from = prices.length ? Math.min(...prices) : null;
-          const open = () => { tg.tap('light'); onPick(p.id); };
           return (
             <motion.button
               key={p.id}
-              className={`tile tile-${p.id}`}
-              style={{ backgroundImage: `url(${BASE}models/holo-${p.id}.jpg)` }}
+              className={`app-row app-${p.id}`}
               aria-label={`${p.name}${from != null ? `, from ${payWith === 'stars' ? `${fmtStars(from)} Stars` : `${fmtGram(from)} GRAM`}` : ''}`}
-              onClick={open}
-              initial={{ opacity: 0, y: 18 }}
+              onClick={() => { tg.tap('light'); onPick(p.id); }}
+              initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08 + i * 0.07, duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
+              transition={{ delay: 0.06 + i * 0.06, duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
               whileTap={{ scale: 0.98 }}
             >
-              <span className="tile-name">{p.name}</span>
-              <span className="tile-foot">
-                {from != null ? (
-                  <span className="tile-from">from <b>{payWith === 'stars' ? fmtStars(from) : fmtGram(from)}</b>{payWith === 'stars' ? <StarIcon size={14} /> : <GramIcon size={14} />}</span>
-                ) : <span className="tile-from">&nbsp;</span>}
-                <span className="tile-go" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              <AppIcon id={p.id} name={p.name} />
+              <span className="app-text">
+                <span className="app-name">{p.name}</span>
+                <span className="app-from">
+                  {from != null ? <>from <b>{payWith === 'stars' ? fmtStars(from) : fmtGram(from)}</b>{payWith === 'stars' ? <StarIcon size={13} /> : <GramIcon size={13} />}</> : '\u00a0'}
                 </span>
               </span>
+              <svg className="app-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
             </motion.button>
           );
         })}
