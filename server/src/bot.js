@@ -8,6 +8,14 @@
 // Support inbox: anything a buyer writes is forwarded to the admins; an admin replies to that
 // forwarded message and the bot sends the answer back to the buyer.
 
+/** The buyer's welcome: who we are, in two short lines, then the button to open the app. */
+export const welcome = (name) => [
+  `Hi${name ? ` ${esc(String(name).trim())}` : ''}`,
+  '',
+  '<b>Claude, ChatGPT and Grok</b>, paid with GRAM.',
+  'Pick a plan and your code arrives in seconds.',
+].join('\n');
+
 export const TERMS = [
   '<b>Tessera terms of sale</b>',
   '',
@@ -176,7 +184,7 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
     if (cmd.startsWith('/start')) {
       return send(chat, isAdmin
         ? 'Admin mode.\n/issues — orders that need you\n/order &lt;id or memo&gt; — one order\n/prices [play] — in-app prices we sell against (App Store, or Google Play)\n/price [play] &lt;plan&gt; &lt;amount&gt; — set one\n\nBuyer messages land here. Reply to one to answer that buyer.'
-        : 'Subscriptions to the apps you use, paid with GRAM or Stars.\nPick a plan, pay, and your code arrives in seconds.', openApp);
+        : welcome(m.from?.first_name), openApp);
     }
     if (cmd.startsWith('/terms')) return send(chat, TERMS);
     if (cmd.startsWith('/paysupport') || cmd.startsWith('/help')) {

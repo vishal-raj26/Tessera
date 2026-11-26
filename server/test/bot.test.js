@@ -75,3 +75,14 @@ test('/issues lists orders that need attention', async () => {
   assert.ok(msg.body.text.includes('TS-X'));
   assert.ok(msg.body.text.includes('underpaid'));
 });
+
+test('/start greets a buyer by name, GRAM only, with the Open Tessera button', async () => {
+  const t = setup();
+  await t.bot.handleUpdate({ message: { text: '/start', from: { id: 555, first_name: 'Ana <b>' }, chat: { id: 555, type: 'private' } } });
+  const sent = t.calls.find((c) => c.method === 'sendMessage' && String(c.body.chat_id) === '555');
+  assert.ok(sent, 'welcome sent');
+  assert.match(sent.body.text, /^Hi Ana &lt;b&gt;/, 'name first, escaped');
+  assert.match(sent.body.text, /paid with GRAM/);
+  assert.doesNotMatch(sent.body.text, /Stars/);
+  assert.equal(sent.body.reply_markup.inline_keyboard[0][0].text, 'Open Tessera');
+});
