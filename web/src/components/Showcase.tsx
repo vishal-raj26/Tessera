@@ -67,10 +67,41 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
         })}
       </div>
 
-      <motion.nav className="store-links" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} aria-label="More">
-        {onCodes && <button className="link" onClick={onCodes}>Your codes{codesCount > 0 && <i>{codesCount}</i>}</button>}
-        {onHowItWorks && <button className="link" onClick={onHowItWorks}>How it works</button>}
-        {onHelp && <button className="link" onClick={onHelp}>Help</button>}
+      {/* a small dock: your codes, how it works, help */}
+      <motion.nav className="dock" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35, duration: 0.4 }} aria-label="More">
+        {onCodes && (
+          <button onClick={onCodes} aria-label={`Your codes${codesCount ? `, ${codesCount} to redeem` : ''}`}>
+            <span className="dock-ico">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3.5 8A1.5 1.5 0 0 1 5 6.5h14A1.5 1.5 0 0 1 20.5 8v2a2 2 0 0 0 0 4v2a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 16v-2a2 2 0 0 0 0-4Z" />
+                <path d="M9.5 7v10" strokeDasharray="1.5 2.2" /><path d="M13 10.5h4M13 13.5h2.5" />
+              </svg>
+              {codesCount > 0 && <i className="dock-badge">{codesCount > 99 ? '99+' : codesCount}</i>}
+            </span>
+            <span>Codes</span>
+          </button>
+        )}
+        {onHowItWorks && (
+          <button onClick={onHowItWorks}>
+            <span className="dock-ico">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5" /><path d="M9.7 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.3-1.1.9-1.1 1.6v.4" /><path d="M12 16.6v.01" strokeWidth="2.2" />
+              </svg>
+            </span>
+            <span>How it works</span>
+          </button>
+        )}
+        {onHelp && (
+          <button onClick={onHelp}>
+            <span className="dock-ico">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4.5 7A2.5 2.5 0 0 1 7 4.5h10A2.5 2.5 0 0 1 19.5 7v7a2.5 2.5 0 0 1-2.5 2.5h-6l-4.5 3.5v-3.5H7A2.5 2.5 0 0 1 4.5 14Z" />
+                <path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01" strokeWidth="2.4" />
+              </svg>
+            </span>
+            <span>Help</span>
+          </button>
+        )}
       </motion.nav>
 
     </div>

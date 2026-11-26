@@ -339,10 +339,6 @@ html, body, #root { background: var(--void); }
 .region-sheet .region-list { max-height: 56vh; margin-bottom: 8px; }
 
 
-/* --- home: the links at the bottom ------------------------------------------------------------------------- */
-.store-links { margin: auto 0 0; padding-top: 18px; display: flex; justify-content: center; gap: 22px; }
-.store-links .link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
-.store-links .link i { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center; background: var(--clay); color: var(--void); font-size: 11px; font-weight: 700; font-style: normal; }
 
 /* --- small popovers dropping from the top bar (store country, wallet) ---------------------------------------- */
 .bar { position: relative; z-index: 30; }
@@ -430,3 +426,13 @@ html, body, #root { background: var(--void); }
 .chips.nets .chip-logo { width: 19px; height: 19px; border-radius: 6px; }
 .chip-logo img { width: 100%; height: 100%; object-fit: cover; }
 .chips button.on .chip-logo { box-shadow: 0 0 0 1.5px var(--void); }
+
+/* --- home: the dock at the bottom (codes, how it works, help) ------------------------------------------------ */
+.store { padding-bottom: 110px; }
+.dock { position: fixed; left: 0; right: 0; margin: 0 auto; width: fit-content; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 20; display: flex; gap: 4px; padding: 6px; border-radius: 24px;
+  background: rgba(24, 24, 26, 0.88); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.dock button { display: grid; justify-items: center; gap: 3px; min-width: 76px; padding: 8px 12px 7px; white-space: nowrap; border-radius: 18px; color: var(--ink); font-size: 11.5px; font-weight: 500; }
+.dock button:active { background: rgba(255, 255, 255, 0.07); }
+.dock-ico { position: relative; display: grid; place-items: center; height: 24px; }
+.dock-badge { position: absolute; top: -6px; left: 14px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center; background: var(--clay); color: var(--void); font-size: 10.5px; font-weight: 700; font-style: normal; box-shadow: 0 0 0 2px #18181a; }
