@@ -51,6 +51,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   config: () => req<AppConfig>('/api/config'),
+  me: () => req<{ joinedAt: number }>('/api/me'),
   regions: () => req<{ regions: Region[] }>('/api/regions').then((r) => r.regions),
   catalog: (region: string, store: StoreId = 'appstore') =>
     req<{ plans: Plan[]; store?: StoreId; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),
