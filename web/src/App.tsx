@@ -469,7 +469,7 @@ export default function App() {
       </div>
 
       {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
-      {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={36} stroke={1.8} /></div>}
+      {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={72} stroke={1.4} /></div>}
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
       {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
