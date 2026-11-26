@@ -61,6 +61,11 @@ html, body, #root { background: var(--void); }
 .terms button.on { color: var(--ink); font-weight: 500; }
 .terms .term-bg { border: 0; border-radius: 10px; background: var(--panel-2); }
 
+.plan-info { display: grid; justify-items: center; gap: 8px; margin-bottom: 14px; }
+.plan-dots { display: flex; gap: 1px; }
+.plan-dots button { padding: 5px 3px; }
+.plan-dots i { display: block; height: 5px; border-radius: 3px; background: var(--ink); }
+.plan-blurb { margin: 0; font-size: 14px; color: var(--ink-2); text-align: center; }
 .price { min-height: 0; }
 .price .gram { font-size: 46px; font-weight: 600; letter-spacing: -0.055em; gap: 8px; line-height: 1; }
 .price .meta { font-size: 13.5px; color: var(--mute); margin-top: 8px; }
@@ -134,9 +139,18 @@ html, body, #root { background: var(--void); }
 
 /* --- your codes: a plain list -------------------------------------------------------------------- */
 .wallet-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.wallet-view .intro { padding: 10px var(--pad) 6px; text-align: left; }
+.wallet-view .intro { padding: 10px var(--pad) 6px; text-align: center; }
 .wallet-view .intro h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.045em; margin: 0; }
 .list { list-style: none; margin: 0; padding: 0 var(--pad) max(20px, env(safe-area-inset-bottom)); overflow-y: auto; flex: 1; }
+.groups { flex: 1; min-height: 0; overflow-y: auto; padding: 6px var(--pad) max(20px, env(safe-area-inset-bottom)); display: grid; align-content: start; gap: 22px; }
+.groups .list { padding: 0; overflow: visible; flex: none; }
+.group-head { display: flex; align-items: center; gap: 7px; margin: 0 0 2px; font-size: 13px; font-weight: 500; color: var(--mute); letter-spacing: 0; }
+.group-head span { color: var(--dim); font-variant-numeric: tabular-nums; }
+.group-toggle { padding: 4px 0; }
+.group-chev { transition: transform 0.25s var(--ease); }
+.group-chev.up { transform: rotate(180deg); }
+.item-chev { flex: none; color: var(--dim); margin-left: -6px; transition: transform 0.25s var(--ease); }
+.item.is-open .item-chev { transform: rotate(180deg); }
 .item { border-bottom: 1px solid var(--line); }
 .item-row { width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px 0; text-align: left; }
 .item-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
@@ -181,7 +195,7 @@ html, body, #root { background: var(--void); }
 .ob-stage { flex: 1; min-height: 0; display: grid; place-items: center; perspective: 900px; }
 .ob-art { height: 100%; max-height: 420px; display: grid; place-items: center; }
 .ob-art { position: relative; }
-.ob-art img { position: relative; height: min(50vh, 370px); width: auto; user-select: none; -webkit-user-drag: none; will-change: transform; }
+.ob-art img { position: relative; width: auto; height: auto; max-height: min(50vh, 370px); max-width: calc(100vw - 2 * var(--pad)); user-select: none; -webkit-user-drag: none; will-change: transform; }
 /* a still shadow under the card (a filter on a moving image would be redrawn every frame) */
 .ob-art::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 4%; height: 26px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.75), transparent); filter: blur(6px); z-index: -1; }
 .ob-copy { padding: 0 var(--pad); min-height: 120px; text-align: center; }
@@ -208,6 +222,7 @@ html, body, #root { background: var(--void); }
 .base .cc, .card[class*='tier-'] .base .cc { color: rgba(205, 200, 192, 0.82); }
 .cc-top { font-size: 4.9cqw; opacity: 1; letter-spacing: 0; }
 .cc-mark { width: 30cqw; color: #d9d6d0; }
+.cc-logo { display: block; width: 100%; aspect-ratio: 1; background: linear-gradient(135deg, #fffaf2, #d9d2c5 50%, #9a9288); -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
 .base .cc-name, .card[class*='tier-'] .base .cc-name { background-image: linear-gradient(180deg, #f6f4f0 0%, #d4d0c9 50%, #8e8a84 100%); }
 .cc-name { font-size: 36cqw; letter-spacing: -0.06em; margin: 0 0 7cqw -1cqw; }
 .cc-name.long { font-size: 24cqw; }
@@ -230,21 +245,23 @@ html, body, #root { background: var(--void); }
 /* --- the showcase: the gesture as the headline, every app as a tile in its own colours ------------- */
 .store { flex: 1; min-height: 0; overflow-y: auto; padding: 10px var(--pad) max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 22px; }
 .store > .notice { align-self: center; }
-.store-head { margin: 8px 0 0; font-size: 40px; font-weight: 600; letter-spacing: -0.06em; line-height: 1.02; color: var(--ink); }
+.store-head { margin-top: 6px; display: grid; justify-items: center; gap: 10px; text-align: center; }
+.store-head h1 { margin: 0; font-size: 36px; font-weight: 600; letter-spacing: -0.055em; line-height: 1.04; color: var(--ink); }
+.store-how { font-size: 13.5px; color: var(--mute); }
+.tiles { display: grid; gap: 10px; }
+/* a quiet dark tile; the app's colours come in from the right and fade out behind the name */
+.tile { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 112px; padding: 18px 16px 16px 18px; border-radius: 22px; overflow: hidden; text-align: left; color: var(--ink); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
+.tile::before { content: ''; position: absolute; inset: 0; background: var(--holo) right center / 70% auto no-repeat; -webkit-mask-image: linear-gradient(90deg, transparent 38%, rgba(0, 0, 0, 0.4) 62%, #000 92%); mask-image: linear-gradient(90deg, transparent 38%, rgba(0, 0, 0, 0.4) 62%, #000 92%); pointer-events: none; }
+.tile > * { position: relative; }
+.tile-name { font-size: 28px; font-weight: 600; letter-spacing: -0.05em; line-height: 1; }
+.tile-foot { display: flex; align-items: flex-end; justify-content: space-between; }
+.tile-from { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px; color: var(--mute); }
+.tile-from b { font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tile-go { color: #0a0a0a; display: grid; place-items: center; }
+
 .perks { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .perks li { display: grid; justify-items: center; gap: 7px; padding: 14px 6px 12px; border-radius: 16px; border: 1px solid var(--line); text-align: center; font-size: 12.5px; color: var(--ink-2); line-height: 1.3; }
 .perks svg { width: 20px; height: 20px; color: var(--ink); }
-.store-how { align-self: center; font-size: 13px; color: var(--mute); }
-.tiles { display: grid; gap: 12px; }
-.tile { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 128px; padding: 18px 16px 16px 18px; border-radius: 22px; overflow: hidden; text-align: left; color: #0a0a0a; background-size: cover; background-position: center; cursor: pointer; box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
-/* a soft white veil on the left keeps the dark text readable on every picture */
-.tile::before { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1) 60%, transparent); pointer-events: none; }
-.tile > * { position: relative; }
-.tile-name { font-size: 34px; font-weight: 600; letter-spacing: -0.055em; line-height: 1; }
-.tile-foot { display: flex; align-items: flex-end; justify-content: space-between; }
-.tile-from { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px; color: rgba(10, 10, 10, 0.6); }
-.tile-from b { font-size: 18px; font-weight: 600; color: #0a0a0a; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
-.tile-go { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #0a0a0a; color: #f5f3ef; }
 
 /* one app's screen: its name, which goes back to every app */
 .app-title { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 12px 0 4px; margin: 0 auto 4px; border-radius: 12px; font-size: 17px; font-weight: 600; letter-spacing: -0.03em; color: var(--ink); }

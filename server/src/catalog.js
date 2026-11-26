@@ -32,8 +32,8 @@ export const PRODUCTS = [
     play: { package: 'com.anthropic.claude' },
     plans: [
       { id: 'pro_m', key: 'pro_m', yearlyKey: 'pro_y', name: 'Pro', inApp: 'Claude Pro', label: 'Pro', blurb: 'For everyday work and study' },
-      { id: 'max5_m', key: 'max5_m', name: 'Max 5x', inApp: 'Claude Max 5x', label: 'Max 5×', blurb: '5x the usage of Pro' },
-      { id: 'max20_m', key: 'max20_m', name: 'Max 20x', inApp: 'Claude Max 20x', label: 'Max 20×', blurb: '20x the usage of Pro' },
+      { id: 'max5_m', key: 'max5_m', name: 'Max 5x', inApp: 'Claude Max 5x', label: 'Max 5×', blurb: '5× the usage of Pro' },
+      { id: 'max20_m', key: 'max20_m', name: 'Max 20x', inApp: 'Claude Max 20x', label: 'Max 20×', blurb: '20× the usage of Pro' },
     ],
   },
   {
@@ -51,8 +51,8 @@ export const PRODUCTS = [
     },
     play: { package: 'com.openai.chatgpt' },
     plans: [
-      { id: 'gpt_go_m', key: 'gpt_go_m', name: 'Go', inApp: 'ChatGPT Go', label: 'Go', blurb: 'The lower-priced plan' },
-      { id: 'gpt_plus_m', key: 'gpt_plus_m', yearlyKey: 'gpt_plus_y', name: 'Plus', inApp: 'ChatGPT Plus', label: 'Plus', blurb: 'The standard plan' },
+      { id: 'gpt_go_m', key: 'gpt_go_m', name: 'Go', inApp: 'ChatGPT Go', label: 'Go', blurb: 'More messages, images and uploads' },
+      { id: 'gpt_plus_m', key: 'gpt_plus_m', yearlyKey: 'gpt_plus_y', name: 'Plus', inApp: 'ChatGPT Plus', label: 'Plus', blurb: 'Higher limits, deep research and agent mode' },
     ],
   },
   {
@@ -70,10 +70,10 @@ export const PRODUCTS = [
     },
     play: { package: 'ai.x.grok' },
     plans: [
-      { id: 'grok_lite_m', key: 'grok_lite_m', name: 'SuperGrok Lite', inApp: 'SuperGrok Lite', label: 'Lite', blurb: 'The entry plan' },
-      { id: 'grok_m', key: 'grok_m', yearlyKey: 'grok_y', name: 'SuperGrok', inApp: 'SuperGrok', label: 'Super', blurb: 'The main plan' },
-      { id: 'grok_plus_m', key: 'grok_plus_m', name: 'SuperGrok Plus', inApp: 'SuperGrok Plus', label: 'Plus', blurb: 'More than SuperGrok' },
-      { id: 'grok_heavy_m', key: 'grok_heavy_m', name: 'SuperGrok Heavy', inApp: 'SuperGrok Heavy', label: 'Heavy', blurb: 'The top plan' },
+      { id: 'grok_lite_m', key: 'grok_lite_m', name: 'SuperGrok Lite', inApp: 'SuperGrok Lite', label: 'Lite', blurb: 'Expert mode and longer chats' },
+      { id: 'grok_m', key: 'grok_m', yearlyKey: 'grok_y', name: 'SuperGrok', inApp: 'SuperGrok', label: 'Super', blurb: 'Higher limits, images and video' },
+      { id: 'grok_plus_m', key: 'grok_plus_m', name: 'SuperGrok Plus', inApp: 'SuperGrok Plus', label: 'Plus', blurb: 'Much higher limits than SuperGrok' },
+      { id: 'grok_heavy_m', key: 'grok_heavy_m', name: 'SuperGrok Heavy', inApp: 'SuperGrok Heavy', label: 'Heavy', blurb: 'The most usage, with Grok Heavy' },
     ],
   },
 ];

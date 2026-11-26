@@ -1,8 +1,8 @@
-// The first screen: every app on sale as a tile in its own colours (the same holographic picture as its
-// card) showing only its name and lowest price; tapping one opens its plans. Below, the three things
-// every purchase gives you, and a way back to the intro.
+// The first screen: every app on sale as a quiet dark tile with its own colours (the same holographic
+// picture as its card) rising from the right, showing only its name and lowest price; tapping one opens
+// its plans. Below, the three things every purchase gives you; under the title, a way back to the intro.
 import { motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { fmtGram, fmtStars, type PayMethod, type Plan } from '../api';
 import { GramIcon } from './GramIcon';
 import { StarIcon } from './StarIcon';
@@ -26,9 +26,10 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
   return (
     <div className="store">
       {notice}
-      <motion.h1 className="store-head" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-        Your AI apps,<br />paid in GRAM.
-      </motion.h1>
+      <motion.div className="store-head" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
+        <h1>Your AI apps,<br />paid in GRAM.</h1>
+        {onHowItWorks && <button className="link store-how" onClick={onHowItWorks}>How it works</button>}
+      </motion.div>
 
       <div className="tiles">
         {products.map((p, i) => {
@@ -44,7 +45,7 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
             <motion.button
               key={p.id}
               className={`tile tile-${p.id}`}
-              style={{ backgroundImage: `url(${BASE}models/holo-${p.id}.jpg)` }}
+              style={{ '--holo': `url(${BASE}models/holo-${p.id}.jpg)` } as CSSProperties}
               aria-label={`${p.name}${from != null ? `, from ${payWith === 'stars' ? `${fmtStars(from)} Stars` : `${fmtGram(from)} GRAM`}` : ''}`}
               onClick={open}
               initial={{ opacity: 0, y: 18 }}
@@ -55,10 +56,10 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
               <span className="tile-name">{p.name}</span>
               <span className="tile-foot">
                 {from != null ? (
-                  <span className="tile-from">from <b>{payWith === 'stars' ? fmtStars(from) : fmtGram(from)}</b>{payWith === 'stars' ? <StarIcon size={14} /> : <GramIcon size={14} />}</span>
+                  <span className="tile-from">from <b>{payWith === 'stars' ? fmtStars(from) : fmtGram(from)}</b>{payWith === 'stars' ? <StarIcon size={13} /> : <GramIcon size={13} />}</span>
                 ) : <span className="tile-from">&nbsp;</span>}
                 <span className="tile-go" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
                 </span>
               </span>
             </motion.button>
@@ -81,7 +82,6 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
         </li>
       </motion.ul>
 
-      {onHowItWorks && <button className="link store-how" onClick={onHowItWorks}>How it works</button>}
     </div>
   );
 }

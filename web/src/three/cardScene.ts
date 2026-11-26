@@ -68,8 +68,40 @@ const loadHolo = (product: string) => {
   return p;
 };
 
+// Each app's own mark (public/models/logo-<product>.png, white on transparent), printed where the
+// modelled Tessera emblem sits; a product without one keeps the emblem.
+const logos = new Map<string, Promise<HTMLImageElement | null>>();
+const logoReady = new Map<string, HTMLImageElement | null>();
+const LOGO_PRODUCTS = new Set(['claude', 'chatgpt', 'grok']);
+const loadLogo = (product: string) => {
+  let p = logos.get(product);
+  if (!p) {
+    p = !LOGO_PRODUCTS.has(product) ? Promise.resolve(null) : new Promise<HTMLImageElement | null>((res) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => res(null);
+      img.src = `${BASE}models/logo-${product}.png`;
+    });
+    p.then((img) => logoReady.set(product, img));
+    logos.set(product, p);
+  }
+  return p;
+};
+
+/** a logo filled with a colour or gradient, on its own canvas */
+function tintLogo(img: HTMLImageElement, size: number, fill: (g: CanvasRenderingContext2D) => string | CanvasGradient) {
+  const c = document.createElement('canvas');
+  c.width = c.height = Math.ceil(size);
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = fill(g);
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
 /** The small print for one side, on a transparent canvas the size of the card. */
-function paintDecal(face: Face, back: boolean, printName: boolean) {
+function paintDecal(face: Face, back: boolean, printName: boolean, logo: HTMLImageElement | null = null) {
   const W = 512, Hp = Math.round(W / ASPECT);
   const c = document.createElement('canvas');
   c.width = W; c.height = Hp;
@@ -80,6 +112,17 @@ function paintDecal(face: Face, back: boolean, printName: boolean) {
     g.textAlign = align; g.textBaseline = 'alphabetic'; g.fillStyle = color;
     g.fillText(s, x, y);
   };
+  if (logo) {
+    // the emblem's place on the model: 0.42 of the card's width, centred 6% above the middle
+    const size = W * 0.4, cx = W / 2, cy = Hp / 2 - 0.06 * Hp;
+    const mark = tintLogo(logo, size, (lg) => {
+      if (back) return 'rgba(40, 36, 44, 0.86)';
+      const sg = lg.createLinearGradient(0, 0, size, size);
+      sg.addColorStop(0, '#fffaf2'); sg.addColorStop(0.5, '#d9d2c5'); sg.addColorStop(1, '#9a9288');
+      return sg;
+    });
+    g.drawImage(mark, cx - size / 2, cy - size / 2, size, size);
+  }
   if (back) {
     text('Tessera', W / 2, 9.4 * u, 4.4 * u, 500, 'center', 'rgba(40, 36, 44, 0.85)');
     if (printName) {
@@ -165,7 +208,7 @@ export interface CardScene {
 
 export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Promise<CardScene> {
   await document.fonts?.ready; // the small print uses the app's font
-  const [gltf, holoSrc] = await Promise.all([loadModel(), loadHolo(face.product ?? 'claude')]);
+  const [gltf, holoSrc] = await Promise.all([loadModel(), loadHolo(face.product ?? 'claude'), loadLogo(face.product ?? 'claude')]);
 
   const gl = getShared();
   const { renderer, env } = gl;
@@ -191,14 +234,16 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   const mats = makeMats(holo);
   // the small print is printed, not lit: a plain material is enough
   const decal = (back: boolean, printName: boolean) => new MeshBasicMaterial({
-    map: paintDecal(current, back, printName), transparent: true, depthWrite: false,
+    map: paintDecal(current, back, printName, logoReady.get(current.product ?? 'claude') ?? null), transparent: true, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -2,
   });
   let current = face;
   const names: Object3D[] = [];
+  const emblems: Object3D[] = [];
   let decalFront: Mesh | null = null, decalBack: Mesh | null = null;
   card.traverse((o) => {
     if (/^(Back)?Name_/.test(o.name)) names.push(o);
+    if (/^(Back)?Emblem/.test(o.name)) emblems.push(o);
     if (!(o instanceof Mesh)) return;
     const m = o.material as Material;
     if (o.name.startsWith('DecalFront') || m.name === 'DecalFront') decalFront = o;
@@ -212,6 +257,9 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   };
   const paint = (f: Face) => {
     const printName = showName(f);
+    // the app's own mark replaces the modelled emblem when there is one
+    const logo = logoReady.get(f.product ?? 'claude') ?? null;
+    for (const e of emblems) e.visible = !logo;
     for (const [mesh, back] of [[decalFront, false], [decalBack, true]] as const) {
       if (!mesh) continue;
       const old = mesh.material as MeshBasicMaterial;
@@ -276,7 +324,7 @@ export async function createCardScene(canvas: HTMLCanvasElement, face: Face): Pr
   request();
 
   return {
-    setFace(f) { current = f; paint(f); request(); },
+    setFace(f) { current = f; paint(f); request(); loadLogo(f.product ?? 'claude').then(() => { if (current === f) { paint(f); request(); } }); },
     setTilt(x, y) { tiltX = x; tiltY = y; request(); },
     setTurned(back) { turnTo = back ? Math.PI : 0; request(); },
     resize(w, h) {

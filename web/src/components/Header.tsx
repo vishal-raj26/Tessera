@@ -17,8 +17,8 @@ interface Props {
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** The navigation bar: plain, no boxes. The wordmark on the left; your codes and your balance (or
- *  Connect) on the right, as text-weight buttons. */
+/** The navigation bar: plain, no boxes. The wordmark on the left; your codes (with how many are
+ *  waiting to be redeemed) and your balance (or Connect wallet) on the right, as text buttons. */
 export function Header({ wallet, onWallet, onCodes, onHome, active, codesCount = 0, balance }: Props) {
   return (
     <motion.header className="nav" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
@@ -34,10 +34,7 @@ export function Header({ wallet, onWallet, onCodes, onHome, active, codesCount =
           aria-label={active ? 'Back to plans' : `Your codes${codesCount ? `, ${codesCount} to redeem` : ''}`}
           aria-pressed={active}
         >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="7" width="13" height="14" rx="2.5" />
-            <path d="M7.5 4.5h9a3 3 0 0 1 3 3v10" />
-          </svg>
+          <span>Codes</span>
           {codesCount > 0 && <span className="nav-count" aria-hidden="true">{codesCount > 99 ? '99+' : codesCount}</span>}
         </button>
 
@@ -52,7 +49,7 @@ export function Header({ wallet, onWallet, onCodes, onHome, active, codesCount =
             balance != null
               ? <><b>{fmt(balance)}</b><GramIcon size={14} /></>
               : <span className="nav-addr">{short(wallet)}</span>
-          ) : 'Connect'}
+          ) : 'Connect wallet'}
         </button>
       </div>
     </motion.header>
