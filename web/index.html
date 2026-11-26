@@ -7,9 +7,31 @@
     <!-- dark from the first frame (no white flash before the stylesheet arrives) -->
     <style>
       html, body { background: #0a0a0a; color-scheme: dark; margin: 0; }
-      .splash { position: fixed; inset: 0; display: grid; place-items: center; }
-      .splash svg { width: 90px; height: 90px; color: #e8875f; animation: splash 1.6s ease-in-out infinite; }
-      @keyframes splash { 50% { opacity: 0.45; } }
+      /* The opening: the logo rests for a beat, its four tiles part, the mark turns a quarter, the tiles
+         lock back and the centre dot lights. Pure CSS, outside the app, so it starts with the first frame
+         and stays smooth while the app loads underneath; the app fades it out (main.tsx) when both are done. */
+      #splash { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: #0a0a0a; transition: opacity 0.45s ease-out, transform 0.45s ease-out; }
+      #splash.gone { opacity: 0; transform: scale(1.04); pointer-events: none; }
+      .mark { position: relative; width: 90px; height: 90px; color: #e8875f; animation: mark-turn 0.85s cubic-bezier(0.65, 0, 0.35, 1) 0.6s both; }
+      .mark i { position: absolute; left: 31.6px; top: 31.6px; width: 26.8px; height: 26.8px; animation: tile-part 1s ease-in-out 0.5s both; }
+      .mark i::before { content: ''; position: absolute; inset: 0; box-sizing: border-box; border: 4.9px solid currentColor; border-radius: 7.4px; transform: rotate(45deg); }
+      .mark i:nth-of-type(1) { --x: 0px; --y: -22.5px; --dx: 0px; --dy: -9px; }
+      .mark i:nth-of-type(2) { --x: 22.5px; --y: 0px; --dx: 9px; --dy: 0px; animation-delay: 0.53s; }
+      .mark i:nth-of-type(3) { --x: 0px; --y: 22.5px; --dx: 0px; --dy: 9px; animation-delay: 0.56s; }
+      .mark i:nth-of-type(4) { --x: -22.5px; --y: 0px; --dx: -9px; --dy: 0px; animation-delay: 0.59s; }
+      .mark i { transform: translate(var(--x), var(--y)); }
+      .mark b { position: absolute; left: 41px; top: 41px; width: 8px; height: 8px; border-radius: 50%; background: currentColor; transform: scale(0); animation: dot-pop 0.45s ease-out 1.35s both; }
+      .mark-glow { position: absolute; inset: -20px; border-radius: 50%; background: radial-gradient(closest-side, rgba(232, 135, 95, 0.45), transparent); opacity: 0; animation: mark-glow 1.3s ease-out 0.5s both; }
+      @keyframes mark-turn { to { transform: rotate(90deg); } }
+      @keyframes tile-part {
+        0% { transform: translate(var(--x), var(--y)); }
+        38% { transform: translate(calc(var(--x) + var(--dx)), calc(var(--y) + var(--dy))); }
+        80% { transform: translate(calc(var(--x) - var(--dx) * 0.12), calc(var(--y) - var(--dy) * 0.12)); }
+        100% { transform: translate(var(--x), var(--y)); }
+      }
+      @keyframes dot-pop { 55% { transform: scale(1.7); } 100% { transform: scale(1); } }
+      @keyframes mark-glow { 45% { opacity: 0; } 72% { opacity: 1; } 100% { opacity: 0.35; } }
+      @media (prefers-reduced-motion: reduce) { .mark, .mark i, .mark b, .mark-glow { animation: none; } .mark b { transform: none; } }
     </style>
     <!-- the 3D card's model and picture start downloading with the page -->
     <link rel="preload" href="/models/card.glb" as="fetch" type="model/gltf-binary" crossorigin />
@@ -20,10 +42,9 @@
     <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
   </head>
   <body>
-    <div id="root">
-      <!-- shown from the first frame until the app takes over -->
-      <div class="splash" aria-label="Tessera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="9" y="2" width="6" height="6" rx="1.6" transform="rotate(45 12 5)"/><rect x="16" y="9" width="6" height="6" rx="1.6" transform="rotate(45 19 12)"/><rect x="9" y="16" width="6" height="6" rx="1.6" transform="rotate(45 12 19)"/><rect x="2" y="9" width="6" height="6" rx="1.6" transform="rotate(45 5 12)"/></svg></div>
-    </div>
+    <!-- the opening logo (styles above); main.tsx fades it out once it has played and the app is ready -->
+    <div id="splash" aria-label="Tessera"><div class="mark"><span class="mark-glow"></span><i></i><i></i><i></i><i></i><b></b></div></div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

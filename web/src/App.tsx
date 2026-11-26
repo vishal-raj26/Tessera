@@ -10,7 +10,6 @@ import { Guide } from './components/Guide';
 import { GramIcon } from './components/GramIcon';
 import { Header } from './components/Header';
 import { Showcase } from './components/Showcase';
-import { Emblem } from './components/Emblem';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
@@ -104,6 +103,16 @@ export default function App() {
     Math.min(1, b + h * 0.15 + q * 0.4 + Math.sin(Math.min(1, f) * Math.PI) * 0.5));
   const aurora = useMemo<AuroraInputs>(() => ({ reach: auroraReach, glow: auroraGlow, sweep: auroraSweep, sweepGlow: auroraSweepGlow, rim: auroraRim, orb: auroraOrb, beam: auroraBeam, beamGlow: auroraBeamGlow }), [auroraReach, auroraGlow, auroraSweep, auroraSweepGlow, auroraRim, auroraOrb, auroraBeam, auroraBeamGlow]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
+  // the opening logo (index.html) has played its ~2 s and the app knows its first screen: fade it out
+  useEffect(() => {
+    if (intro === null) return;
+    const el = document.getElementById('splash');
+    if (!el) return;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const wait = Math.max(0, (reduce ? 300 : 2000) - performance.now());
+    const t = setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 500); }, wait);
+    return () => clearTimeout(t);
+  }, [intro]);
   const [canHome, setCanHome] = useState(false);
   useEffect(() => {
     if (new URLSearchParams(location.search).has('intro')) { setIntro(true); return; }
@@ -546,7 +555,6 @@ export default function App() {
       </div>
 
       {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
-      {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={90} stroke={1.4} /></div>}
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
       {/* data-product: the accent colour follows the app being bought (ui.css) */}
