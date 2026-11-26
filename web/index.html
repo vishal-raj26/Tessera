@@ -3,13 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    
+    <meta name="theme-color" content="#0a0a0a" />
+    <!-- dark from the first frame (no white flash before the stylesheet arrives) -->
+    <style>
+      html, body { background: #0a0a0a; color-scheme: dark; margin: 0; }
+      .splash { position: fixed; inset: 0; display: grid; place-items: center; }
+      .splash svg { width: 72px; height: 72px; color: #e8875f; animation: splash 1.6s ease-in-out infinite; }
+      @keyframes splash { 50% { opacity: 0.45; } }
+    </style>
+    <!-- the 3D card's model and picture start downloading with the page -->
+    <link rel="preload" href="/models/card.glb" as="fetch" type="model/gltf-binary" crossorigin />
+    <link rel="preload" href="/models/holo-claude.jpg" as="image" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Tessera</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- deferred: still runs before the app (scripts keep their order), but no longer blocks the first paint -->
+    <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- shown from the first frame until the app takes over -->
+      <div class="splash" aria-label="Tessera"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="9" y="2" width="6" height="6" rx="1.6" transform="rotate(45 12 5)"/><rect x="16" y="9" width="6" height="6" rx="1.6" transform="rotate(45 19 12)"/><rect x="9" y="16" width="6" height="6" rx="1.6" transform="rotate(45 12 19)"/><rect x="2" y="9" width="6" height="6" rx="1.6" transform="rotate(45 5 12)"/></svg></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

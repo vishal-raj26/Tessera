@@ -1,12 +1,9 @@
 // Swipe sideways to pick a plan; pull the front card down to buy it.
 import { animate, motion, useMotionValue, useTransform, type MotionValue, type PanInfo } from 'framer-motion';
-import { memo, useEffect, useRef, useState } from 'react';
-import { Rays } from './Rays';
+import { memo, useEffect, useRef } from 'react';
 import { Card3D } from './Card3D';
 import { fmtMoney, termLabel, type Plan } from '../api';
 import { tg } from '../tg';
-import { tierOf } from '../tiers';
-import { MosaicIntro, MOSAIC_FORMED, shouldPlayMosaic } from './MosaicIntro';
 
 interface Props {
   plans: Plan[];
@@ -21,13 +18,9 @@ interface Props {
   storeLabel?: string;
   /** optional shared hold amount (0…1 while the front card is pressed) */
   hold?: MotionValue<number>;
-  /** this is the first carousel of the page: it may play the mosaic opening (once per session) */
-  mosaic?: boolean;
-  /** called once the carousel is on screen (the app then stops offering the opening) */
-  onShown?: () => void;
 }
 
-const PULL = 110;
+export const PULL = 110;
 
 function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel, introAt, formed }: {
   i: number; pos: MotionValue<number>; pull: MotionValue<number>; hold: MotionValue<number>; plan: Plan; active: boolean; onTap: () => void; months: number; storeLabel?: string;
@@ -77,16 +70,7 @@ function Slot({ i, pos, pull, hold, plan, active, onTap, months, storeLabel, int
   );
 }
 
-export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel, mosaic = false, onShown }: Props) {
-  // decided once, when the carousel first appears: only here is the session's opening used up
-  const [intro] = useState(() => (mosaic && shouldPlayMosaic() ? { at: MOSAIC_FORMED, front: index } : null));
-  useEffect(() => { onShown?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [showMosaic, setShowMosaic] = useState(!!intro);
-  useEffect(() => {
-    if (!showMosaic) return;
-    const id = setTimeout(() => setShowMosaic(false), (MOSAIC_FORMED + 0.6) * 1000);
-    return () => clearTimeout(id);
-  }, [showMosaic]);
+export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, onPull, disabled, months, pull: sharedPull, hold: sharedHold, storeLabel }: Props) {
   const pos = useMotionValue(index);
   const ownPull = useMotionValue(0);
   const pull = sharedPull ?? ownPull;
@@ -94,7 +78,6 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
   // holding the front card: speed lines appear and the card presses in
   const ownHold = useMotionValue(0);
   const hold = sharedHold ?? ownHold;
-  const [holding, setHolding] = useState(false);
   const off = useRef<ReturnType<typeof setTimeout>>(undefined);
   // A touch could be the start of a sideways swipe, so the rays wait: they start once the finger has
   // stayed put for a moment, or as soon as it moves downward. A sideways move cancels them.
@@ -103,7 +86,6 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
     clearTimeout(pressTimer.current);
     if (disabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     clearTimeout(off.current);
-    setHolding(true);
     animate(hold, 1, { duration: 0.18, ease: 'easeOut' });
   };
   const press = () => { clearTimeout(pressTimer.current); pressTimer.current = setTimeout(startRays, 220); };
@@ -111,9 +93,6 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
     clearTimeout(pressTimer.current);
     animate(hold, 0, { duration: 0.28, ease: 'easeOut' });
     clearTimeout(off.current);
-    // pause the rays once they've faded and the card is back
-    const settle = () => { off.current = setTimeout(() => (pull.get() < 1 ? setHolding(false) : settle()), 300); };
-    settle();
   };
   const width = useRef(260);
   const stage = useRef<HTMLDivElement>(null);
@@ -157,7 +136,6 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
           clearTimeout(off.current);
           pull.set(0);
           hold.set(0);
-          setHolding(false);
         });
       } else {
         animate(pull, 0, { type: 'spring', stiffness: 300, damping: 22 });
@@ -184,11 +162,9 @@ export const PlanCarousel = memo(function PlanCarousel({ plans, index, onIndex, 
         if (e.key === 'Enter' && !disabled) onPull();
       }}
     >
-      <Rays hold={hold} pull={pull} max={PULL} on={holding} />
-      {showMosaic && plans[intro!.front] && <MosaicIntro tier={tierOf(plans[intro!.front].id)} />}
       {plans.map((p, i) => (
         <Slot key={p.id} i={i} pos={pos} pull={pull} hold={hold} plan={p} active={i === index} onTap={() => { tg.select(); onIndex(i); }} months={months} storeLabel={storeLabel}
-          introAt={intro?.at ?? 0} formed={!!intro && i === intro.front} />
+          introAt={0} formed={false} />
       ))}
     </motion.div>
   );
