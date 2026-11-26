@@ -6,6 +6,10 @@ import { Emblem } from './Emblem';
 import type { PlanId } from '../api';
 import { tierOf } from '../tiers';
 
+const BASE = import.meta.env.BASE_URL ?? '/';
+// apps whose own mark is on the card (public/models/logo-<product>.png); others keep the Tessera emblem
+const LOGOS = new Set(['claude', 'chatgpt', 'grok']);
+
 /** Fallback labels for Claude's plans; the catalog's `label` is used whenever a caller has it. */
 export const PLAN_LABEL: Record<PlanId, string> = { pro_m: 'Pro', max5_m: 'Max 5×', max20_m: 'Max 20×' };
 
@@ -29,7 +33,9 @@ function FaceContent({ planId, credit, region, term, top, label, product, store 
   return (
     <div className="cc">
       <div className={`cc-top ${top ? 'split' : ''}`}>{top ?? `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`}</div>
-      <div className="cc-mark"><Emblem /></div>
+      <div className="cc-mark">{LOGOS.has((product ?? 'Claude').toLowerCase())
+        ? <i className="cc-logo" style={{ WebkitMaskImage: `url(${BASE}models/logo-${(product ?? 'Claude').toLowerCase()}.png)`, maskImage: `url(${BASE}models/logo-${(product ?? 'Claude').toLowerCase()}.png)` }} />
+        : <Emblem />}</div>
       <div className={`cc-name ${name.length > 4 ? 'long' : ''}`}>{name}</div>
       <div className="cc-foot">
         <span>{credit ? `Credit ${credit}` : 'Credit'}</span>
