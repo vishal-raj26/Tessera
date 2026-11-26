@@ -349,19 +349,32 @@ html, body, #root { background: var(--void); }
 .ob-art .region-list { width: min(360px, 100%); }
 .region-sheet .region-list { max-height: 56vh; margin-bottom: 8px; }
 
-/* --- the wallet popup ------------------------------------------------------------------------------------ */
-.wallet-sheet { display: grid; gap: 14px; }
-.ws-head { display: flex; align-items: center; gap: 14px; }
-.ws-head h2 { margin: 0 0 4px; }
-.ws-icon { width: 52px; height: 52px; border-radius: 15px; flex: none; }
-.ws-icon-blank { display: grid; place-items: center; background: rgba(48, 161, 245, 0.12); }
-.ws-addr { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 13px; color: var(--mute); }
-.ws-bal { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-radius: 16px; background: rgba(255, 255, 255, 0.04); }
-.ws-bal small { font-size: 13px; color: var(--mute); }
-.ws-bal b { display: inline-flex; align-items: center; gap: 6px; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.ws-off { color: #f87171; }
 
 /* --- home: the links at the bottom ------------------------------------------------------------------------- */
 .store-links { margin: auto 0 0; padding-top: 18px; display: flex; justify-content: center; gap: 22px; }
 .store-links .link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
 .store-links .link i { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: grid; place-items: center; background: var(--clay); color: var(--void); font-size: 11px; font-weight: 700; font-style: normal; }
+
+/* --- small popovers dropping from the top bar (store country, wallet) ---------------------------------------- */
+.bar { position: relative; z-index: 30; }
+.pop-veil { position: fixed; inset: 0; z-index: 0; }
+.pop { position: absolute; top: 62px; right: 12px; z-index: 1; width: 264px; padding: 12px; border-radius: 20px; background: #1a1a1a; box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(255, 255, 255, 0.09); transform-origin: top right; }
+.pop-title { margin: 2px 4px 8px; font-size: 12.5px; color: var(--mute); }
+.pop-rows { display: grid; gap: 2px; max-height: 300px; overflow-y: auto; }
+.pop-rows button { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px; border-radius: 12px; color: var(--ink); font-size: 14.5px; text-align: left; }
+.pop-rows button .rg-name { flex: 1; }
+.pop-rows button.on { background: rgba(255, 255, 255, 0.07); }
+.pop-note { margin: 8px 4px 2px; font-size: 11.5px; line-height: 1.35; color: var(--mute); }
+.pop-wallet { display: grid; gap: 10px; }
+.ws-head { display: flex; align-items: center; gap: 11px; padding: 2px 2px 0; }
+.ws-head h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+.ws-icon { width: 38px; height: 38px; border-radius: 11px; flex: none; }
+.ws-icon-blank { display: grid; place-items: center; background: rgba(48, 161, 245, 0.12); }
+.ws-addr { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 12px; color: var(--mute); }
+.ws-bal { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.045); }
+.ws-bal small { font-size: 12.5px; color: var(--mute); }
+.ws-bal b { display: inline-flex; align-items: center; gap: 5px; font-size: 18px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.ws-actions { display: grid; gap: 2px; }
+.ws-btn { height: 42px; padding: 0 10px; border-radius: 12px; text-align: left; font-size: 14.5px; color: var(--ink); }
+.ws-btn:active { background: rgba(255, 255, 255, 0.06); }
+.ws-off { color: #f87171; }

@@ -1,4 +1,4 @@
-// The popup behind the wallet in the top bar: which wallet it is, its address and balance, top up and
+// The small popover under the wallet in the top bar: which wallet it is, its address and balance, top up and
 // disconnect.
 import { useTonWallet } from '@tonconnect/ui-react';
 import { GramIcon } from './GramIcon';
@@ -12,7 +12,7 @@ export function WalletSheet({ address, balance, canTopUp, onTopUp, onCopy, onDis
   const w = useTonWallet() as (ReturnType<typeof useTonWallet> & { name?: string; imageUrl?: string }) | null;
   const name = w?.name ?? w?.device?.appName ?? 'TON wallet';
   return (
-    <div className="st wallet-sheet">
+    <div className="pop-wallet">
       <div className="ws-head">
         {w?.imageUrl ? <img className="ws-icon" src={w.imageUrl} alt="" /> : <span className="ws-icon ws-icon-blank"><GramIcon size={22} /></span>}
         <div>
@@ -26,8 +26,10 @@ export function WalletSheet({ address, balance, canTopUp, onTopUp, onCopy, onDis
         <small>Balance</small>
         <b>{balance != null ? fmt(balance) : '…'}<GramIcon size={18} /></b>
       </div>
-      {canTopUp && <button className="btn btn-pearl" onClick={onTopUp}>Top up GRAM</button>}
-      <button className="btn btn-quiet ws-off" onClick={onDisconnect}>Disconnect</button>
+      <div className="ws-actions">
+        {canTopUp && <button className="ws-btn" onClick={onTopUp}>Top up GRAM</button>}
+        <button className="ws-btn ws-off" onClick={onDisconnect}>Disconnect</button>
+      </div>
     </div>
   );
 }
