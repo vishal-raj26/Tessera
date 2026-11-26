@@ -24,10 +24,12 @@ interface Props {
   /** your codes (with how many wait to be redeemed), and help (the bot chat) */
   codesCount?: number;
   onCodes?: () => void;
+  /** your dashboard */
+  onMe?: () => void;
   onHelp?: () => void;
 }
 
-export function Showcase({ products, plans, payWith, onPick, notice, onHowItWorks, codesCount = 0, onCodes, onHelp }: Props) {
+export function Showcase({ products, plans, payWith, onPick, notice, onHowItWorks, codesCount = 0, onCodes, onMe, onHelp }: Props) {
   return (
     <div className="store">
       {notice}
@@ -89,6 +91,16 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
               </svg>
             </span>
             <span>How it works</span>
+          </button>
+        )}
+        {onMe && (
+          <button onClick={onMe}>
+            <span className="dock-ico">
+              {tg.user?.photo_url ? <img className="dock-me" src={tg.user.photo_url} alt="" /> : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 19.5a7.5 7.5 0 0 1 15 0" /></svg>
+              )}
+            </span>
+            <span>You</span>
           </button>
         )}
         {onHelp && (

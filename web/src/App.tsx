@@ -30,8 +30,9 @@ import { TopUp } from './components/TopUp';
 import { CoinStack } from './components/CoinStack';
 import { RegionPop, RegionSheet } from './components/Region';
 import { WalletSheet } from './components/WalletSheet';
+import { Profile } from './components/Profile';
 
-type View = 'home' | 'paying' | 'done' | 'wallet';
+type View = 'home' | 'paying' | 'done' | 'wallet' | 'me';
 type SheetName = null | 'review' | 'guide' | 'topup' | 'region';
 
 const rise = (delay = 0) => ({
@@ -135,6 +136,7 @@ export default function App() {
   regionRef.current = region;
   useEffect(() => { tg.getValue('region').then((v) => { if (v && v !== regionRef.current) setRegionState(v); }); }, []);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [joinedAt, setJoinedAt] = useState<number | null>(null);
 
   const [bootErr, setBootErr] = useState(false);
   const store: StoreId = storesPriced[storePick] ? storePick : 'appstore';
@@ -150,6 +152,7 @@ export default function App() {
       .then(async (c) => {
         setConfig(c);
         api.regions().then(setRegions).catch(() => {});
+        api.me().then((m) => setJoinedAt(m.joinedAt)).catch(() => {});
         const rc = regionRef.current ?? c.region;
         let cat = await api.catalog(rc, storePick);
         // the preferred store has nothing priced (e.g. Google Play not set up yet): use the App Store
@@ -349,6 +352,7 @@ export default function App() {
   }, []);
   const toHome = useCallback(() => { setView('home'); setSheet(null); }, []);
   useEffect(() => (view === 'done' && !sheet ? tg.back(home) : undefined), [view, sheet, home]);
+  useEffect(() => (view === 'me' && !sheet ? tg.back(toHome) : undefined), [view, sheet, toHome]);
   // in one app's plans, Back returns to the showcase of every app
   useEffect(() => (view === 'home' && !browsing && !sheet ? tg.back(() => setBrowsing(true)) : undefined), [view, browsing, sheet]);
 
@@ -552,6 +556,14 @@ export default function App() {
     setView('wallet');
     loadHistory();
   }
+  function openMe() {
+    if (view === 'me') { toHome(); return; }
+    if (view === 'paying') return;
+    tg.tap('light');
+    setSheet(null); setPop(null);
+    setView('me');
+    loadHistory();
+  }
   function openGuide(o: Order) { setGuideFor(o); setSheet('guide'); }
 
   const status = order?.status;
@@ -607,11 +619,11 @@ export default function App() {
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} regions={regions} region={region} onRegion={pickRegion} />}</AnimatePresence>
 
       {/* data-product: the accent colour follows the app being bought (ui.css) */}
-      {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`} data-product={productId}>
+      {intro === false && <div className={`app ${view === 'wallet' || view === 'me' ? 'fit' : ''}`} data-product={productId}>
         <Header
           wallet={wallet}
           balance={balance}
-          onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : () => {}}
+          onHome={view === 'done' ? home : view === 'wallet' || view === 'me' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : () => {}}
           onConnect={() => tonConnectUI.openModal()}
           onWallet={() => { tg.select(); setPop((x) => (x === 'wallet' ? null : 'wallet')); }}
           region={region ? { code: region, flag: regions.find((r) => r.code === region)?.flag ?? '' } : null}
@@ -629,7 +641,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} codesCount={codesLeft} onCodes={openOrders} onHelp={config?.bot ? () => tg.openTelegramLink(`https://t.me/${config.bot}`) : undefined} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} codesCount={codesLeft} onCodes={openOrders} onMe={openMe} onHelp={config?.bot ? () => tg.openTelegramLink(`https://t.me/${config.bot}`) : undefined} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
@@ -799,6 +811,13 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </motion.main>
+          )}
+
+          {view === 'me' && (
+            <motion.main key="me" className="me-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <Profile history={history} joinedAt={joinedAt} codesLeft={codesLeft} region={regions.find((r) => r.code === region) ?? null} wallet={wallet} plan={planCard}
+                onCodes={openOrders} onRegion={() => { tg.select(); setPop('region'); }} onWallet={() => (wallet ? setPop('wallet') : tonConnectUI.openModal())} />
             </motion.main>
           )}
 

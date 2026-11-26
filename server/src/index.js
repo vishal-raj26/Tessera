@@ -379,6 +379,18 @@ app.get('/api/balance', telegramAuth, async (req, res) => {
   }
 });
 
+// The buyer's dashboard: when they joined Tessera (the first time the app saw them, or their first order
+// if that's earlier). Everything else on it comes from their orders.
+app.get('/api/me', telegramAuth, (req, res) => {
+  const uid = String(req.tgUser.id);
+  const key = `joined:${uid}`;
+  let joined = Number(settings.get(key)) || 0;
+  const first = orders.byUser(uid).reduce((m, o) => Math.min(m, o.created_at), Infinity);
+  const at = Math.min(joined || Date.now(), Number.isFinite(first) ? first : Date.now());
+  if (at !== joined) { joined = at; settings.set(key, String(joined)); }
+  res.json({ joinedAt: joined });
+});
+
 app.get('/api/orders', telegramAuth, (req, res) => {
   res.json({ orders: orders.byUser(String(req.tgUser.id)).map(publicOrder) });
 });

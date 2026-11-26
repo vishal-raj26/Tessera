@@ -38,7 +38,7 @@ interface TgWebApp {
     setItem(key: string, value: string, cb?: (err: unknown, ok?: boolean) => void): void;
   };
   BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
-  initDataUnsafe?: { user?: { first_name?: string } };
+  initDataUnsafe?: { user?: { id?: number; first_name?: string; last_name?: string; username?: string; photo_url?: string; is_premium?: boolean } };
   // Mini Apps 2.0 (Bot API 8.0+)
   platform?: string;
   isFullscreen?: boolean;
@@ -69,6 +69,8 @@ export const tg = {
   platform: inTelegram ? wa?.platform ?? '' : '',
   /** the buyer's first name, for a greeting (empty outside Telegram) */
   firstName: inTelegram ? (wa?.initDataUnsafe?.user?.first_name ?? '').trim() : '',
+  /** the person using the app, as Telegram shares it (name, @username, profile photo) */
+  user: inTelegram ? (wa?.initDataUnsafe?.user ?? null) : null,
   main: inTelegram ? wa?.MainButton : undefined,
   secondary: inTelegram && wa?.isVersionAtLeast?.('7.10') ? wa?.SecondaryButton : undefined,
   boot() {
