@@ -269,6 +269,14 @@ export function startAdminBot({ getEngine, orders, prices, publicUrl }) {
   const bot = createBot({ api, adminIds, getEngine, orders, prices, publicUrl });
   if (!adminIds.length) console.warn('ADMIN_CHAT_IDS is empty: nobody will get order alerts');
 
+  // Wherever the app is hosted (Railway, a tunnel), the bot's menu button opens it: set on every start,
+  // so a new address never leaves the button pointing at an old one.
+  if (/^https:\/\//.test(publicUrl || '') && !publicUrl.includes('example.com')) {
+    api('setChatMenuButton', { menu_button: { type: 'web_app', text: 'Open', web_app: { url: publicUrl } } })
+      .then(() => console.log(`[bot] menu button opens ${publicUrl}`))
+      .catch((e) => console.warn('[bot] could not set the menu button:', e.message));
+  }
+
   let offset = 0;
   (async function poll() {
     for (;;) {
