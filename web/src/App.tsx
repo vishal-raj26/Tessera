@@ -633,7 +633,8 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard} onGuide={() => setIntro(true)} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard}
+                onGuide={history && !history.some((o) => o.status === 'delivered') ? () => setIntro(true) : undefined} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
