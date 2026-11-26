@@ -1,5 +1,6 @@
-// Your codes: every purchase as a plain row (plan, term, date, credit, and where it stands). Tap one to
-// open it in place: its codes to redeem one at a time and how to activate, or what's happening with it.
+// Your codes: every purchase as a plain row (plan, term, date, credit, and where it stands), the ones that
+// still need you first and the redeemed ones folded below. Tap one to open it in place: its codes to
+// redeem one at a time and how to activate, or what's happening with it.
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { fmtMoney, planName, termLabel, type Order } from '../api';
@@ -54,6 +55,7 @@ function note(o: Order): string {
 
 export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop, onGuide, onBack }: Props) {
   const [open, setOpen] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
   useEffect(() => tg.back(open ? () => setOpen(null) : onBack), [open, onBack]);
 
   if (error && !orders) {
@@ -78,44 +80,73 @@ export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop,
     );
   }
 
+  // what still needs you (codes to redeem, payments in progress or stuck) first; settled ones below,
+  // folded away until asked for
+  const settled = (o: Order) => statusOf(o).tone === 'off';
+  const active = orders.filter((o) => !settled(o));
+  const done = orders.filter(settled);
+
+  const row = (o: Order, i: number) => {
+    const st = statusOf(o);
+    const isOpen = open === o.id;
+    const name = planName(o.product?.name, { ...o.plan, label: o.plan.label ?? PLAN_LABEL[o.plan.id] });
+    return (
+      <motion.li key={o.id} className={`item ${isOpen ? 'is-open' : ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.04 }}>
+        <button className="item-row" onClick={() => { tg.select(); setOpen(isOpen ? null : o.id); }} aria-expanded={isOpen}>
+          <span className="item-main">
+            <b>{name}</b>
+            <span>{termLabel(o.months ?? 1)} · {fmtMoney(o.credit, o.currency)} {o.store?.label ?? 'App Store'} credit · {day(o.createdAt)}</span>
+          </span>
+          <span className={`item-status ${st.tone}`}>{st.label}</span>
+          <svg className="item-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <AnimatePresence initial={false}>
+          {isOpen && (
+            <motion.div className="item-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}>
+              <div className="item-inner">
+                <p className="item-paid">Paid <span className="amt"><Amount method={o.method} gram={o.gram} stars={o.stars} size={12} /></span></p>
+                {o.codes?.length ? (
+                  <>
+                    <RedeemCodes order={o} copied={copied} onCopy={onCopy} onMark={onMark} />
+                    <button className="text-btn" onClick={() => onGuide(o)}>How to activate</button>
+                  </>
+                ) : (
+                  <>
+                    <p className="item-note">{note(o)}</p>
+                    {o.method !== 'stars' && (o.status === 'awaiting_payment' || o.status === 'underpaid') && <div className="memo">memo {o.comment}</div>}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.li>
+    );
+  };
+
   return (
-    <ul className="list">
-      {orders.map((o, i) => {
-        const st = statusOf(o);
-        const isOpen = open === o.id;
-        const name = planName(o.product?.name, { ...o.plan, label: o.plan.label ?? PLAN_LABEL[o.plan.id] });
-        return (
-          <motion.li key={o.id} className={`item ${isOpen ? 'is-open' : ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.04 }}>
-            <button className="item-row" onClick={() => { tg.select(); setOpen(isOpen ? null : o.id); }} aria-expanded={isOpen}>
-              <span className="item-main">
-                <b>{name}</b>
-                <span>{termLabel(o.months ?? 1)} · {fmtMoney(o.credit, o.currency)} {o.store?.label ?? 'App Store'} credit · {day(o.createdAt)}</span>
-              </span>
-              <span className={`item-status ${st.tone}`}>{st.label}</span>
-            </button>
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div className="item-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}>
-                  <div className="item-inner">
-                    <p className="item-paid">Paid <span className="amt"><Amount method={o.method} gram={o.gram} stars={o.stars} size={12} /></span></p>
-                    {o.codes?.length ? (
-                      <>
-                        <RedeemCodes order={o} copied={copied} onCopy={onCopy} onMark={onMark} />
-                        <button className="text-btn" onClick={() => onGuide(o)}>How to activate</button>
-                      </>
-                    ) : (
-                      <>
-                        <p className="item-note">{note(o)}</p>
-                        {o.method !== 'stars' && (o.status === 'awaiting_payment' || o.status === 'underpaid') && <div className="memo">memo {o.comment}</div>}
-                      </>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.li>
-        );
-      })}
-    </ul>
+    <div className="groups">
+      {active.length > 0 && (
+        <section className="group">
+          <h2 className="group-head">To redeem <span>{active.length}</span></h2>
+          <ul className="list">{active.map(row)}</ul>
+        </section>
+      )}
+      {done.length > 0 && (
+        <section className="group">
+          <button className="group-head group-toggle" onClick={() => { tg.select(); setShowDone(!showDone); }} aria-expanded={showDone}>
+            Redeemed <span>{done.length}</span>
+            <svg className={`group-chev ${showDone ? 'up' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <AnimatePresence initial={false}>
+            {(showDone || !active.length) && (
+              <motion.ul className="list" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28 }} style={{ overflow: 'hidden' }}>
+                {done.map(row)}
+              </motion.ul>
+            )}
+          </AnimatePresence>
+        </section>
+      )}
+    </div>
   );
 }

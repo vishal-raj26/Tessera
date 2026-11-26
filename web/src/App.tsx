@@ -78,6 +78,9 @@ export default function App() {
   const [settled, setSettled] = useState(false);
   // how far the front card is pulled down; the price, terms and hint below make way as it comes
   const pull = useMotionValue(0);
+  // the first time someone sees a plan, the card shows the gesture itself: it dips down twice and
+  // springs back (once per Telegram account)
+  const hinted = useRef(false);
   const hold = useMotionValue(0); // pressing the card already dims what's below, so the rays stand out
   const belowOpacity = useTransform([pull, hold] as MotionValue<number>[], ([p, h]: number[]) => Math.min(1 - Math.min(1, p / 60), 1 - h * 0.6));
   const belowY = useTransform(pull, [0, 140], [0, 48]);
@@ -292,6 +295,22 @@ export default function App() {
 
 
   // don't let a stray swipe close the app while money is moving
+  const plansReady = !!plans?.length;
+  useEffect(() => {
+    if (hinted.current || view !== 'home' || browsing || !plansReady || sheet) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let stop: (() => void) | undefined;
+    const t = setTimeout(() => {
+      tg.getFlag('pullhint').then((seen) => {
+        if (seen || hinted.current) return;
+        hinted.current = true;
+        tg.setFlag('pullhint');
+        const a = animate(pull, [0, 64, 0, 0, 64, 0], { duration: 2.6, times: [0, 0.22, 0.45, 0.55, 0.77, 1], ease: 'easeInOut' });
+        stop = () => { a.stop(); pull.set(0); };
+      });
+    }, 1700);
+    return () => { clearTimeout(t); stop?.(); };
+  }, [view, browsing, plansReady, sheet, pull]);
   useEffect(() => { tg.guardClose(view === 'paying'); return () => tg.guardClose(false); }, [view]);
   // after the first delivery, offer a home-screen shortcut (Mini Apps 2.0)
   useEffect(() => { if (view === 'done') tg.canAddToHome().then(setCanHome); }, [view]);
@@ -542,6 +561,24 @@ export default function App() {
               )}
 
               <motion.div className="below" style={{ opacity: belowOpacity, y: belowY }}>
+              {plans && plans.length > 0 && (
+                <motion.div className="plan-info" {...rise(0.6)}>
+                  {plans.length > 1 && (
+                    <div className="plan-dots" role="tablist" aria-label="Plans">
+                      {plans.map((x, n) => (
+                        <button key={x.id} role="tab" aria-selected={n === index} aria-label={x.label ?? x.name} onClick={() => { tg.select(); setIndex(n); }}>
+                          <motion.i animate={{ width: n === index ? 16 : 5, opacity: n === index ? 1 : 0.3 }} transition={{ type: 'spring', stiffness: 400, damping: 32 }} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.p key={plan?.id} className="plan-blurb" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+                      {plan?.blurb}
+                    </motion.p>
+                  </AnimatePresence>
+                </motion.div>
+              )}
               <motion.div className="price" aria-live="polite" {...rise(0.75)}>
                 {plan?.available && term && (plan.terms?.length ?? 0) > 1 && (
                   <TermPicker terms={plan.terms!} months={term.months} onChange={pickTerm} />

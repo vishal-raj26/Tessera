@@ -15,17 +15,17 @@ interface Page { img: string; alt: string; title: string; body: string; pull?: b
 
 const PAGES: Page[] = [
   {
-    img: 'ob-front', alt: 'A black Tessera card',
+    img: 'ob-front', alt: 'Tessera cards for Claude, ChatGPT and Grok',
     title: 'Your apps, paid in GRAM.',
     body: 'Pay for Claude, ChatGPT and Grok with GRAM from your Telegram wallet, or with Stars.',
   },
   {
-    img: 'ob-flat', alt: 'The card being pulled down into a warm light', pull: true,
+    img: 'ob-flat', alt: 'A ChatGPT card being pulled down', pull: true,
     title: 'Pull the card to buy.',
     body: 'Pick a plan, pull the card down, and approve the payment. That’s checkout.',
   },
   {
-    img: 'ob-back', alt: 'The holographic back of the card',
+    img: 'ob-back', alt: 'A Grok card',
     title: 'Your code, in seconds.',
     body: 'You get App Store or Google Play credit. Redeem it, then subscribe in the app.',
   },
