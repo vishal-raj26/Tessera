@@ -70,7 +70,6 @@ html, body, #root { background: var(--void); }
 .price .gram { font-size: 46px; font-weight: 600; letter-spacing: -0.055em; gap: 8px; line-height: 1; }
 .price .meta { font-size: 13.5px; color: var(--mute); margin-top: 8px; }
 .price .save { color: var(--clay); }
-.alt-price { color: var(--mute); text-decoration-color: var(--dim); }
 
 /* how to buy: one pill that is also the button (pulling the card does the same) */
 .pullhint { padding: 22px 0 max(26px, env(safe-area-inset-bottom)); }
@@ -88,26 +87,21 @@ html, body, #root { background: var(--void); }
 .grabber { width: 34px; height: 4px; background: rgba(255, 255, 255, 0.14); margin-bottom: 18px; }
 .sheet h2 { font-size: 22px; letter-spacing: -0.04em; }
 .sheet .sub { font-size: 14px; color: var(--mute); margin: 0 0 20px; }
-.sheet-head { margin-bottom: 20px; }
+.sheet-head { margin: 4px 0 24px; }
 .eyebrow { margin: 0 0 6px; font-size: 13.5px; color: var(--mute); }
 .total { font-size: 40px; font-weight: 600; letter-spacing: -0.055em; line-height: 1.05; font-variant-numeric: tabular-nums; }
-.total .gram-ic, .total .star-ic { margin-left: 2px; }
-.rows { border-top: 1px solid var(--line); margin: 0 0 18px; }
-.row { padding: 11px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+.total .gram-ic { margin-left: 2px; }
+.rows { margin: 0 0 22px; padding: 4px 16px; border: 0; border-radius: 18px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--line); }
+.row { padding: 14px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
 .row dt { color: var(--mute); }
 .row dd { color: var(--ink-2); }
 .row-ref dd { display: inline-flex; align-items: center; gap: 4px; color: var(--clay); font-weight: 500; }
 .term-note { font-size: 13px; color: var(--mute); margin: -6px 0 16px; }
 
 /* pay with: two compact choices; the chosen one outlined in ink */
-.paywith { gap: 8px; padding: 0; background: none; border: 0; margin-bottom: 16px; }
-.paywith button { height: 46px; padding: 0 8px; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 1px solid var(--line); color: var(--mute); }
-.paywith button.on { color: var(--ink); }
-.paywith .pw-bg { border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1.5px solid var(--ink); box-shadow: none; inset: -1px; }
-.paywith .pw-amt { gap: 7px; font-size: 15px; font-weight: 500; letter-spacing: -0.01em; }
-.paywith button:not(.on) .pw-amt svg { filter: grayscale(1); opacity: 0.5; }
 
-.agree { font-size: 13.5px; color: var(--mute); gap: 12px; margin: 0 0 18px; line-height: 1.4; }
+.agree { font-size: 13.5px; color: var(--mute); gap: 12px; margin: 0 4px 22px; line-height: 1.4; }
 .agree input { border-radius: 6px; border-color: var(--dim); }
 .agree input:checked { background: var(--ink); border-color: var(--ink); }
 .agree input:checked::after { border-color: var(--void); }
@@ -266,8 +260,8 @@ html, body, #root { background: var(--void); }
 .intro { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
 /* --- top up GRAM from another chain (Relay, into the buyer's own wallet) --------------------------------- */
-.topup-link { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin: -6px 0 14px; padding: 10px 12px; border-radius: 12px; background: rgba(48, 161, 245, 0.08); color: var(--ink-2); font-size: 13.5px; text-align: left; }
-.topup-link svg { color: var(--mute); flex: none; }
+.topup-link { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 14px 0 0; padding: 10px 0 2px; background: none; border: 0; font-size: 13.5px; color: var(--mute); }
+.topup-link svg { color: var(--dim); flex: none; }
 .topup .sub b { color: var(--ink); font-weight: 600; }
 .topup-need { display: flex; align-items: center; gap: 4px; margin: -4px 0 14px; font-size: 14px; color: var(--mute); }
 .topup-need b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }

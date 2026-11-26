@@ -104,7 +104,7 @@ export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop,
           {isOpen && (
             <motion.div className="item-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}>
               <div className="item-inner">
-                <p className="item-paid">Paid <span className="amt"><Amount method={o.method} gram={o.gram} stars={o.stars} size={12} /></span></p>
+                {o.method === 'gram' && <p className="item-paid">Paid <span className="amt"><Amount gram={o.gram} size={12} /></span></p>}
                 {o.codes?.length ? (
                   <>
                     <RedeemCodes order={o} copied={copied} onCopy={onCopy} onMark={onMark} />
@@ -113,7 +113,7 @@ export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop,
                 ) : (
                   <>
                     <p className="item-note">{note(o)}</p>
-                    {o.method !== 'stars' && (o.status === 'awaiting_payment' || o.status === 'underpaid') && <div className="memo">memo {o.comment}</div>}
+                    {o.method === 'gram' && (o.status === 'awaiting_payment' || o.status === 'underpaid') && <div className="memo">memo {o.comment}</div>}
                   </>
                 )}
               </div>

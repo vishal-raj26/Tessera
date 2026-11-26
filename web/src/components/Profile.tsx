@@ -3,9 +3,8 @@
 // Store country, wallet, codes and your plan live in the top bar, the dock and the home screen, so they
 // aren't repeated here.
 import { motion } from 'framer-motion';
-import { fmtGram, fmtMoney, fmtStars, type Order, type Referral } from '../api';
+import { fmtGram, fmtMoney, type Order, type Referral } from '../api';
 import { GramIcon } from './GramIcon';
-import { StarIcon } from './StarIcon';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
@@ -25,7 +24,6 @@ export function Profile({ history, joinedAt, referral, onCopied }: Props) {
   const done = (history ?? []).filter((o) => o.status === 'delivered');
   // what you actually sent (referral credit that came off an order isn't spending)
   const gram = done.filter((o) => o.method === 'gram').reduce((n, o) => n + (o.gram || 0), 0);
-  const stars = done.filter((o) => o.method === 'stars').reduce((n, o) => n + (o.stars || 0), 0);
   // credit received, per currency (a buyer may have bought in more than one store country)
   const credit = Object.entries(done.reduce<Record<string, number>>((m, o) => ({ ...m, [o.currency]: (m[o.currency] ?? 0) + o.credit }), {}));
   // the apps you've bought, with how many times
@@ -51,9 +49,7 @@ export function Profile({ history, joinedAt, referral, onCopied }: Props) {
       <motion.div className="me-stats" {...rise(0.12)}>
         <div><small>Purchases</small><b>{done.length}</b></div>
         <div><small>Spent</small><b className="me-spent">
-          {gram > 0 && <span>{fmtGram(gram)}<GramIcon size={14} /></span>}
-          {stars > 0 && <span>{fmtStars(stars)}<StarIcon size={14} /></span>}
-          {gram === 0 && stars === 0 && <span>0</span>}
+          <span>{fmtGram(gram)}<GramIcon size={14} /></span>
         </b></div>
         <div><small>Credit received</small><b className="me-spent">{credit.length ? credit.map(([c, v]) => <span key={c}>{fmtMoney(v, c)}</span>) : <span>0</span>}</b></div>
       </motion.div>

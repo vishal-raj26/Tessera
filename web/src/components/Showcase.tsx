@@ -4,9 +4,8 @@
 // way back to the intro.
 import { motion } from 'framer-motion';
 import type { CSSProperties, ReactNode } from 'react';
-import { fmtGram, fmtStars, type PayMethod, type Plan } from '../api';
+import { fmtGram, type Plan } from '../api';
 import { GramIcon } from './GramIcon';
-import { StarIcon } from './StarIcon';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
@@ -15,7 +14,6 @@ interface Props {
   products: { id: string; name: string }[];
   /** every plan in the catalog, all products (for each app's lowest price) */
   plans: Plan[] | null;
-  payWith: PayMethod;
   onPick: (productId: string) => void;
   /** shown above the apps: the buyer's current plan, with Renew */
   notice?: ReactNode;
@@ -29,17 +27,17 @@ interface Props {
   onHelp?: () => void;
 }
 
-export function Showcase({ products, plans, payWith, onPick, notice, onHowItWorks, codesCount = 0, onCodes, onMe, onHelp }: Props) {
+export function Showcase({ products, plans, onPick, notice, onHowItWorks, codesCount = 0, onCodes, onMe, onHelp }: Props) {
   return (
     <div className="store">
       {notice}
       <div className="tiles">
         {products.map((p, i) => {
-          // the lowest one-month price among the app's plans, in the way the buyer pays
+          // the lowest one-month GRAM price among the app's plans
           const prices = (plans ?? [])
             .filter((x) => (x.product?.id ?? 'claude') === p.id && x.available)
             .map((x) => x.terms?.find((t) => t.months === 1))
-            .map((t) => (payWith === 'stars' ? t?.stars : t?.gram))
+            .map((t) => t?.gram)
             .filter((v): v is number => typeof v === 'number' && v > 0);
           const from = prices.length ? Math.min(...prices) : null;
           const open = () => { tg.tap('light'); onPick(p.id); };
@@ -48,7 +46,7 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
               key={p.id}
               className={`tile tile-${p.id}`}
               style={{ '--holo': `url(${BASE}models/holo-${p.id}.jpg)`, '--print': `url(${BASE}models/print-${p.id}.png)` } as CSSProperties}
-              aria-label={`${p.name}${from != null ? `, from ${payWith === 'stars' ? `${fmtStars(from)} Stars` : `${fmtGram(from)} GRAM`}` : ''}`}
+              aria-label={`${p.name}${from != null ? `, from ${fmtGram(from)} GRAM` : ''}`}
               onClick={open}
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
@@ -58,7 +56,7 @@ export function Showcase({ products, plans, payWith, onPick, notice, onHowItWork
               <span className="tile-name">{p.name}</span>
               <span className="tile-foot">
                 {from != null ? (
-                  <span className="tile-from">from <b>{payWith === 'stars' ? fmtStars(from) : fmtGram(from)}</b>{payWith === 'stars' ? <StarIcon size={13} /> : <GramIcon size={13} />}</span>
+                  <span className="tile-from">from <b>{fmtGram(from)}</b><GramIcon size={13} /></span>
                 ) : <span className="tile-from">&nbsp;</span>}
                 <span className="tile-go" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>

@@ -1,6 +1,6 @@
 // First-run intro: three calm pages on black, each with a real render of the card (made in Blender,
 // design/card3d), a short headline and one button, then a last page that connects the TON wallet
-// (or leaves it for later; Stars need no wallet). Before it, the buyer picks their store country, which
+// (or leaves it for later). Before it, the buyer picks their store country, which
 // can't be skipped. Swipe or tap Continue; Skip jumps to the country (or leaves, once it's chosen).
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type PanInfo } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,7 +20,7 @@ const PAGES: Page[] = [
   {
     img: 'ob-front', alt: 'Tessera cards for Claude, ChatGPT and Grok',
     title: 'Your apps, paid in GRAM.',
-    body: 'Pay for Claude, ChatGPT and Grok with GRAM from your Telegram wallet, or with Stars.',
+    body: 'Pay for Claude, ChatGPT and Grok with GRAM from your Telegram wallet.',
   },
   {
     img: 'ob-flat', alt: 'A ChatGPT card being pulled down', pull: true,
@@ -40,7 +40,7 @@ const PAGES: Page[] = [
   {
     img: '', alt: '', wallet: true,
     title: 'Connect your wallet.',
-    body: 'Link your TON wallet to pay in GRAM. Paying with Stars needs no wallet.',
+    body: 'Link your TON wallet to pay in GRAM.',
   },
 ];
 
