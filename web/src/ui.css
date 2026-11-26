@@ -314,7 +314,6 @@ html, body, #root { background: var(--void); }
 .bar-bal { display: inline-flex; align-items: center; gap: 5px; font-size: 15px; color: var(--ink); padding: 0 4px; }
 .bar-bal b { font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .bar-addr { font-family: var(--mono); font-size: 13px; color: var(--mute); }
-.bar-plus { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--void); }
 
 
 /* --- home: your current plan, the tiles' little-logo print, how it works at the bottom ---------------------- */

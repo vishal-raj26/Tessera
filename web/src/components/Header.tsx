@@ -9,8 +9,6 @@ interface Props {
   onConnect: () => void;
   /** the wallet (balance or address): its popup (name, address, top up, disconnect) */
   onWallet: () => void;
-  /** the + next to the balance: top up GRAM from another chain */
-  onTopUp?: () => void;
   /** the buyer's store country, and changing it */
   region: { code: string; flag: string } | null;
   onRegion: () => void;
@@ -27,8 +25,8 @@ const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** The top bar. Left: the Tessera logo, home. Right, in one capsule: your store country (tap to change)
- *  and your wallet: its balance (tap for the wallet popup) with a + to top up, or Connect wallet. */
-export function Header({ wallet, onHome, onConnect, onWallet, onTopUp, region, onRegion, balance, pop, popFrom, onPopClose }: Props) {
+ *  and your wallet: its balance (tap for the wallet popover, which has Add GRAM), or Connect wallet. */
+export function Header({ wallet, onHome, onConnect, onWallet, region, onRegion, balance, pop, popFrom, onPopClose }: Props) {
   return (
     <motion.header className="bar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
       <button className="bar-logo" onClick={onHome} aria-label="Tessera, home">
@@ -46,11 +44,6 @@ export function Header({ wallet, onHome, onConnect, onWallet, onTopUp, region, o
             <button className="bar-bal" onClick={onWallet} aria-haspopup="dialog" aria-label={balance != null ? `Wallet, balance ${fmt(balance)} GRAM` : `Wallet ${short(wallet)}`}>
               {balance != null ? <><b>{fmt(balance)}</b><GramIcon size={15} /></> : <span className="bar-addr">{short(wallet)}</span>}
             </button>
-            {onTopUp && (
-              <button className="bar-plus" onClick={onTopUp} aria-label="Add GRAM">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-              </button>
-            )}
           </span>
         ) : (
           <button className="bar-connect" onClick={onConnect}>Connect wallet</button>

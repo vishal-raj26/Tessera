@@ -618,7 +618,6 @@ export default function App() {
           onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : () => {}}
           onConnect={() => tonConnectUI.openModal()}
           onWallet={() => { tg.select(); setPop((x) => (x === 'wallet' ? null : 'wallet')); }}
-          onTopUp={canTopUp ? openTopUp : undefined}
           region={region ? { code: region, flag: regions.find((r) => r.code === region)?.flag ?? '' } : null}
           onRegion={() => { tg.select(); setPop((x) => (x === 'region' ? null : 'region')); }}
           onPopClose={() => setPop(null)}
