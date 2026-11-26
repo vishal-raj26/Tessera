@@ -3,7 +3,7 @@
 // GRAM in *their* TON wallet, and they pay for the plan in GRAM as usual.
 import { AnimatePresence, motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, fmtGram, type CoinRoute, type TopUp as TopUpAddr } from '../api';
 import { trimAmt } from '../amount';
 import { GramIcon } from './GramIcon';
@@ -89,69 +89,74 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
         <motion.button className="btn btn-pearl" onClick={onConnect} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
       ) : (
         <>
-          <section className="tu-step">
-            <p className="tu-label">Coin</p>
-            <div className={`tu-grid coins ${coin ? 'has-pick' : ''}`} role="radiogroup" aria-label="Coin">
-              {list.map((c) => (
-                <button key={c} type="button" role="radio" aria-checked={coin === c} className={coin === c ? 'on' : ''}
-                  onClick={() => pickCoin(c)}>
-                  <Logo src={icons[c]} label={c} big />
-                  <span>{c}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+          {/* one panel, three connected steps: coin, then its network (if it has several), then where to send */}
+          <motion.div className="tu-flow" layout transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}>
+            <Step n={1} label="Coin" done={!!coin}>
+              <div className={`tu-grid coins ${coin ? 'has-pick' : ''}`} role="radiogroup" aria-label="Coin">
+                {list.map((c) => (
+                  <button key={c} type="button" role="radio" aria-checked={coin === c} className={coin === c ? 'on' : ''} onClick={() => pickCoin(c)}>
+                    <Logo src={icons[c]} label={c} big />
+                    <span>{c}</span>
+                  </button>
+                ))}
+              </div>
+            </Step>
 
-          <AnimatePresence initial={false}>
-            {nets.length > 1 && (
-              <motion.section key={coin} className="tu-step" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
-                <p className="tu-label">Network</p>
-                <div className={`tu-grid nets ${route && nets.some((n) => n.key === route) ? 'has-pick' : ''}`} role="radiogroup" aria-label="Network">
-                  {nets.map((n) => (
-                    <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pickNet(n.key)}>
-                      <Logo src={n.chainId != null ? chainIcons[n.chainId] : undefined} label={n.network} />
-                      <span>{n.network}</span>
-                    </button>
-                  ))}
-                </div>
-              </motion.section>
-            )}
-          </AnimatePresence>
-
-          {err && <p className="error" role="alert">{err}</p>}
-          {picked && !addr && !err && <div className="topup-card loading"><span className="spin" /></div>}
-          <AnimatePresence mode="wait">
-            {picked && addr && (
-              <motion.div key={addr.route} className="topup-card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                {state === 'waiting' ? (
-                  addr.address ? (
-                    <>
-                      <div className="relay-qr"><QRCodeSVG value={addr.address} size={124} bgColor="#f5f3ef" fgColor="#0a0a0a" marginSize={2} /></div>
-                      <button className="relay-addr" onClick={() => copy(addr.address!, 'Address')}><span>{addr.address}</span><CopyIcon /></button>
-                      {addr.need?.amount && (
-                        <button className="topup-est" onClick={() => copy(trimAmt(addr.need!.amount, addr.coin), 'Amount')}>
-                          For this plan, send at least <b>{trimAmt(addr.need.amount, addr.coin)} {addr.coin}</b><CopyIcon />
-                        </button>
-                      )}
-                      <p className="relay-warn">Only {addr.coin} on {addr.network}. Any amount; Relay’s fee is about 1%. This address is yours to reuse.</p>
-                    </>
-                  ) : (
-                    <>
-                      {addr.need?.amount && <p className="topup-est">For this plan: about <b>{trimAmt(addr.need.amount, addr.coin)} {addr.coin}</b></p>}
-                      <p className="relay-warn">Test mode: there’s no real address, so don’t send anything.</p>
-                      <button className="btn btn-quiet" onClick={() => { tg.tap('medium'); api.topUpSim(addr.route).catch(() => {}); }}>Simulate a deposit</button>
-                    </>
-                  )
-                ) : (
-                  <div className="topup-state">
-                    <span className={`topup-dot ${state}`} />
-                    <b>{state === 'seen' ? 'Deposit received, swapping to GRAM…' : state === 'success' ? 'GRAM sent to your wallet' : state === 'refunded' ? 'Relay sent your deposit back' : 'This deposit needs a look'}</b>
-                    <span>{state === 'seen' ? 'Usually under a minute.' : state === 'success' ? (addr.test ? 'Test mode: nothing really moved.' : 'Your balance updates in a moment.') : state === 'refunded' ? 'It couldn’t be swapped, so it went back to where it came from.' : 'Contact support from the bot and we’ll sort it out.'}</span>
+            <AnimatePresence initial={false}>
+              {nets.length > 1 && (
+                <Step key={`net-${coin}`} n={2} label="Network" done={!!picked} reveal>
+                  <div className="tu-grid nets" role="radiogroup" aria-label="Network">
+                    {nets.map((n) => (
+                      <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pickNet(n.key)}>
+                        <Logo src={n.chainId != null ? chainIcons[n.chainId] : undefined} label={n.network} />
+                        <span>{n.network}</span>
+                      </button>
+                    ))}
                   </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </Step>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence initial={false}>
+              {picked && (
+                <Step key={`send-${picked.key}`} n={nets.length > 1 ? 3 : 2} label={state === 'waiting' ? 'Send' : 'Status'} done={state === 'success'} reveal>
+                  {err ? <p className="error tu-err" role="alert">{err}</p>
+                    : !addr ? <div className="tu-loading"><span className="spin" /></div>
+                    : state === 'waiting' ? (
+                      addr.address ? (
+                        <div className="tu-send">
+                          <div className="tu-send-row">
+                            <div className="relay-qr"><QRCodeSVG value={addr.address} size={104} bgColor="#f5f3ef" fgColor="#0a0a0a" marginSize={2} /></div>
+                            <div className="tu-send-info">
+                              <small>Your {addr.coin} address on {addr.network}</small>
+                              <button className="tu-addr" onClick={() => copy(addr.address!, 'Address')}><span>{addr.address}</span><CopyIcon /></button>
+                            </div>
+                          </div>
+                          {addr.need?.amount && (
+                            <button className="tu-need" onClick={() => copy(trimAmt(addr.need!.amount, addr.coin), 'Amount')}>
+                              <span>Send at least</span><b>{trimAmt(addr.need.amount, addr.coin)} {addr.coin}</b><CopyIcon />
+                            </button>
+                          )}
+                          <p className="tu-fine">Only {addr.coin} on {addr.network}. About 1% fee. Reusable.</p>
+                        </div>
+                      ) : (
+                        <div className="tu-send">
+                          {addr.need?.amount && <div className="tu-need"><span>For this plan</span><b>{trimAmt(addr.need.amount, addr.coin)} {addr.coin}</b></div>}
+                          <p className="tu-fine">Test mode: there’s no real address, so don’t send anything.</p>
+                          <button className="btn btn-quiet" onClick={() => { tg.tap('medium'); api.topUpSim(addr.route).catch(() => {}); }}>Simulate a deposit</button>
+                        </div>
+                      )
+                    ) : (
+                      <div className="topup-state">
+                        <span className={`topup-dot ${state}`} />
+                        <b>{state === 'seen' ? 'Deposit received, swapping to GRAM…' : state === 'success' ? 'GRAM sent to your wallet' : state === 'refunded' ? 'Relay sent your deposit back' : 'This deposit needs a look'}</b>
+                        <span>{state === 'seen' ? 'Usually under a minute.' : state === 'success' ? (addr.test ? 'Test mode: nothing really moved.' : 'Your balance updates in a moment.') : state === 'refunded' ? 'It couldn’t be swapped, so it went back to where it came from.' : 'Contact support from the bot and we’ll sort it out.'}</span>
+                      </div>
+                    )}
+                </Step>
+              )}
+            </AnimatePresence>
+          </motion.div>
         </>
       )}
 
@@ -160,6 +165,22 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
       )}
     </div>
   );
+}
+
+/** one step of the flow: a numbered header (with what you chose) over its content; later steps slide open */
+function Step({ n, label, done, reveal, children }: { n: number; label: string; done: boolean; reveal?: boolean; children: ReactNode }) {
+  const body = (
+    <>
+      <header className="tu-sec-head">
+        <i className={done ? 'done' : ''}>{done ? <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg> : n}</i>
+        <span>{label}</span>
+      </header>
+      {children}
+    </>
+  );
+  return reveal
+    ? <motion.section className="tu-sec" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}><div className="tu-sec-in">{body}</div></motion.section>
+    : <section className="tu-sec"><div className="tu-sec-in">{body}</div></section>;
 }
 
 /** a coin's or network's logo in a chip (its first letter when there's no logo) */
