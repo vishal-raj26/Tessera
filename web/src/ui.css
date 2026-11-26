@@ -238,19 +238,20 @@ html, body, #root { background: var(--void); }
 .price .save { color: var(--clay); }
 
 /* --- the showcase: the gesture as the headline, every app as a tile in its own colours ------------- */
-.store { flex: 1; min-height: 0; overflow-y: auto; padding: 10px var(--pad) max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 22px; }
+.store { flex: 1; min-height: 0; overflow-y: auto; padding: 16px var(--pad) max(22px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 22px; }
+/* the apps sit in the middle of the space between the top bar and the bottom bar */
+.store > .tiles { margin: auto 0; }
 .store > .notice { align-self: center; }
 .tiles { display: grid; gap: 10px; }
 /* a quiet dark tile; the app's colours come in from the right on an eased fade (many stops, so there's
    no visible edge or grey band) and are gone well before the name */
-.tile { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 112px; padding: 18px 16px 16px 18px; border-radius: 22px; overflow: hidden; text-align: left; color: var(--ink); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
-.tile::before { content: ''; position: absolute; inset: 0; background: var(--holo) center / cover; filter: saturate(1.3); -webkit-mask-image: linear-gradient(90deg, transparent 30%, rgba(0, 0, 0, 0.03) 38%, rgba(0, 0, 0, 0.1) 46%, rgba(0, 0, 0, 0.24) 54%, rgba(0, 0, 0, 0.44) 63%, rgba(0, 0, 0, 0.68) 73%, rgba(0, 0, 0, 0.88) 85%, #000 100%); mask-image: linear-gradient(90deg, transparent 30%, rgba(0, 0, 0, 0.03) 38%, rgba(0, 0, 0, 0.1) 46%, rgba(0, 0, 0, 0.24) 54%, rgba(0, 0, 0, 0.44) 63%, rgba(0, 0, 0, 0.68) 73%, rgba(0, 0, 0, 0.88) 85%, #000 100%); pointer-events: none; }
+.tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 112px; padding: 18px 16px; border-radius: 22px; overflow: hidden; text-align: center; color: var(--ink); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; }
+.tile::before { content: ''; position: absolute; inset: 0; background: var(--holo) center / cover; filter: saturate(1.3); -webkit-mask-image: radial-gradient(120% 150% at 50% 135%, #000 0%, rgba(0, 0, 0, 0.82) 22%, rgba(0, 0, 0, 0.5) 40%, rgba(0, 0, 0, 0.22) 56%, rgba(0, 0, 0, 0.06) 68%, transparent 78%); mask-image: radial-gradient(120% 150% at 50% 135%, #000 0%, rgba(0, 0, 0, 0.82) 22%, rgba(0, 0, 0, 0.5) 40%, rgba(0, 0, 0, 0.22) 56%, rgba(0, 0, 0, 0.06) 68%, transparent 78%); pointer-events: none; }
 .tile > * { position: relative; }
 .tile-name { font-size: 28px; font-weight: 600; letter-spacing: -0.05em; line-height: 1; }
-.tile-foot { display: flex; align-items: flex-end; justify-content: space-between; }
-.tile-from { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px; color: var(--mute); }
+.tile-from { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; padding: 5px 11px; border-radius: 99px; font-size: 13px; color: var(--mute); background: rgba(0, 0, 0, 0.35); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .tile-from b { font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.tile-go { color: #0a0a0a; display: grid; place-items: center; }
+.tile-plans { font-size: 13px; color: var(--ink-2); letter-spacing: -0.005em; }
 
 
 /* one app's screen: its name, which goes back to every app */
@@ -313,9 +314,10 @@ html, body, #root { background: var(--void); }
 
 /* --- home: your current plan, the tiles' little-logo print, how it works at the bottom ---------------------- */
 .tiles { gap: 12px; }
-.tile { min-height: 132px; }
+.tile { min-height: 140px; }
 /* the app's own logo, printed small and many times across the tile */
-.tile::after { content: ''; position: absolute; inset: 0; background: var(--print) 0 0 / 72px; opacity: 0.09; pointer-events: none; }
+/* the little logos, tiled on a diagonal: a larger layer turned 30°, so rows run corner to corner */
+.tile::after { content: ''; position: absolute; inset: -60%; background: var(--print) 0 0 / 64px; opacity: 0.09; transform: rotate(-30deg); pointer-events: none; }
 .tile > * { z-index: 1; }
 
 /* --- the store country: the chip in the top bar, and the list (onboarding and its sheet) --------------------- */
@@ -423,7 +425,7 @@ html, body, #root { background: var(--void); }
 .chips button.on .chip-logo { box-shadow: 0 0 0 1.5px var(--void); }
 
 /* --- the bottom bar (Home, Codes, Guide, You), on every main screen; the current tab sits on a soft pill --- */
-.store { padding-bottom: 110px; }
+.store { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
 .dock { position: fixed; left: var(--pad); right: var(--pad); margin: 0 auto; max-width: 420px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 20;
   display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px; border-radius: 26px;
   background: rgba(22, 22, 24, 0.86); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
@@ -528,14 +530,9 @@ html, body, #root { background: var(--void); }
 .invite-copybtn { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--ink); background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
 .invite-share:disabled, .invite-copybtn:disabled { opacity: 0.45; }
 
-/* Settings rows on the dashboard */
-.me-rows { display: grid; border-radius: 18px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-.me-rows button { display: flex; align-items: center; gap: 12px; padding: 13px 14px; text-align: left; color: var(--ink); }
-.me-rows button + button { border-top: 1px solid var(--line); }
-.me-rows button:active { background: rgba(255, 255, 255, 0.04); }
-.me-row-ico { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; flex: none; color: var(--clay); background: rgba(232, 135, 95, 0.12); }
-.me-row-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.me-row-text b { font-size: 15px; font-weight: 500; }
-.me-row-text small { font-size: 12.5px; color: var(--mute); }
-.me-chev { color: var(--dim); flex: none; }
+/* support: just a small chat icon in the dashboard's top corner */
+.me { position: relative; }
+.me-help { position: absolute; top: 8px; right: var(--pad); z-index: 2; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--line); }
+.me-help:active { background: rgba(255, 255, 255, 0.1); }
 .wallet-view .list, .wallet-view .list-state { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }

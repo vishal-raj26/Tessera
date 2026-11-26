@@ -1,6 +1,6 @@
-// The first screen: your current plan first (returning buyers), then every app on sale as a quiet dark
-// tile printed with its own little logos, its colours (the same holographic picture as its card) rising
-// from the right, showing only its name and lowest price; tapping one opens its plans.
+// The first screen: your current plan first (returning buyers), then every app on sale as a dark tile
+// printed with its own little logos on a diagonal, its colours glowing up from the bottom, and in the
+// middle its name, its plans and its lowest price; tapping one opens its plans.
 import { motion } from 'framer-motion';
 import type { CSSProperties, ReactNode } from 'react';
 import { fmtGram, type Plan } from '../api';
@@ -24,9 +24,9 @@ export function Showcase({ products, plans, onPick, notice }: Props) {
       {notice}
       <div className="tiles">
         {products.map((p, i) => {
-          // the lowest one-month GRAM price among the app's plans
-          const prices = (plans ?? [])
-            .filter((x) => (x.product?.id ?? 'claude') === p.id && x.available)
+          // the app's plans on sale, and the lowest one-month GRAM price among them
+          const mine = (plans ?? []).filter((x) => (x.product?.id ?? 'claude') === p.id && x.available);
+          const prices = mine
             .map((x) => x.terms?.find((t) => t.months === 1))
             .map((t) => t?.gram)
             .filter((v): v is number => typeof v === 'number' && v > 0);
@@ -45,14 +45,8 @@ export function Showcase({ products, plans, onPick, notice }: Props) {
               whileTap={{ scale: 0.98 }}
             >
               <span className="tile-name">{p.name}</span>
-              <span className="tile-foot">
-                {from != null ? (
-                  <span className="tile-from">from <b>{fmtGram(from)}</b><GramIcon size={13} /></span>
-                ) : <span className="tile-from">&nbsp;</span>}
-                <span className="tile-go" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6" /></svg>
-                </span>
-              </span>
+              {mine.length > 0 && <span className="tile-plans">{mine.map((x) => x.label ?? x.name).join(' · ')}</span>}
+              <span className="tile-from">{from != null ? <>from <b>{fmtGram(from)}</b><GramIcon size={13} /></> : '\u00a0'}</span>
             </motion.button>
           );
         })}
