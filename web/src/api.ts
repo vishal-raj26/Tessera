@@ -28,7 +28,7 @@ export interface Order {
   months: number; annual: boolean;
   credit: number; currency: string; method: PayMethod; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
   merchant: string | null; network: 'mainnet' | 'testnet'; receivedNano: string; paymentSeen: boolean; payload: string; status: OrderStatus; error: string | null;
-  txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number;
+  txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number; deliveredAt?: number | null;
 }
 export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; testScale?: number; products: Product[]; stores: Store[] }
 
@@ -48,13 +48,14 @@ export const api = {
   config: () => req<AppConfig>('/api/config'),
   regions: () => req<{ regions: Region[] }>('/api/regions').then((r) => r.regions),
   catalog: (region: string, store: StoreId = 'appstore') =>
-    req<{ plans: Plan[]; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),
+    req<{ plans: Plan[]; store?: StoreId; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),
   quote: (region: string, store: StoreId, planId: PlanId, months: number) =>
     req<Quote>('/api/quotes', { method: 'POST', body: JSON.stringify({ region, store, planId, months }) }),
   createOrder: (region: string, store: StoreId, planId: PlanId, months: number, method: PayMethod, wallet?: string, quoteId?: string) =>
     req<Order>('/api/orders', { method: 'POST', body: JSON.stringify({ region, store, planId, months, method, wallet, quoteId }) }),
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
+  balance: (address: string) => req<{ gram: number | null; network: string }>(`/api/balance?address=${encodeURIComponent(address)}`),
   mockPay: (id: string) => req<Order>(`/api/orders/${id}/mock-pay`, { method: 'POST' }),
   markCode: (id: string, index: number, redeemed: boolean) =>
     req<Order>(`/api/orders/${id}/codes/${index}`, { method: 'POST', body: JSON.stringify({ redeemed }) }),

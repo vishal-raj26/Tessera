@@ -133,6 +133,29 @@ export function unrecognisedCredit(t, merchant) {
   };
 }
 
+/**
+ * A wallet's GRAM balance (TON Center v3 walletInformation; `balance` is in nanograms), cached briefly
+ * per address so the app's balance pill can't turn into a flood of requests.
+ */
+const balances = new Map(); // address -> { at, gram }
+export async function walletBalance(address, { fetchImpl = fetch, now = Date.now, maxAgeMs = 20_000 } = {}) {
+  const hit = balances.get(address);
+  if (hit && now() - hit.at < maxAgeMs) return hit.gram;
+  const url = `${TONCENTER}/walletInformation?address=${encodeURIComponent(address)}&use_v2=false`;
+  const res = await fetchImpl(url, {
+    headers: process.env.TONCENTER_API_KEY ? { 'X-API-Key': process.env.TONCENTER_API_KEY } : {},
+    signal: AbortSignal.timeout(8000),
+  });
+  if (res.status === 404) { balances.set(address, { at: now(), gram: 0 }); return 0; } // never used: empty
+  if (!res.ok) throw new Error(`toncenter ${res.status}`);
+  const j = await res.json();
+  const nano = BigInt(String(j?.balance ?? '0').replace(/[^0-9]/g, '') || '0');
+  const gram = Number(nano) / 1e9;
+  balances.set(address, { at: now(), gram });
+  if (balances.size > 5000) balances.delete(balances.keys().next().value);
+  return gram;
+}
+
 /** Recent incoming transfers to the merchant wallet: [{ hash, comment, valueNano, source }] */
 export async function recentIncoming(merchant, limit = 100, onRejected = null) {
   const url = `${TONCENTER}/transactions?account=${encodeURIComponent(merchant)}&limit=${limit}&sort=desc`;

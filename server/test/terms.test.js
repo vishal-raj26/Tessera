@@ -148,6 +148,7 @@ test('API: a code can be ticked as redeemed and unticked; only real codes of a d
   }
   assert.equal(d.status, 'delivered');
   assert.ok(d.codes.length > 1, 'six months of Max 20x takes several codes');
+  assert.ok(d.deliveredAt >= d.createdAt, 'delivered orders say when (for the home screen\'s days left)');
   const marked = (await call(`/api/orders/${o.id}/codes/1`, { redeemed: true })).body;
   assert.ok(marked.codes[1].redeemedAt > 0);
   assert.ok(!marked.codes[0].redeemedAt);

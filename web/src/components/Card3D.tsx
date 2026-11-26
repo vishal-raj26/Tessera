@@ -1,11 +1,13 @@
 // The plan card as a real 3D object (see three/cardScene.ts). Shows the CSS card until three.js has
-// loaded, and keeps it if WebGL isn't available. Tilts only under the finger (no gyro, no idle sway:
+// loaded, and keeps it if WebGL isn't available. Tapping the front card turns it over to its
+// holographic back, and tapping again turns it back. Tilts only under the finger (no gyro, no idle sway:
 // a card that moves by itself reads as shaking), through the same springs as the CSS card.
 import { useMotionValue, useSpring } from 'framer-motion';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PlanId } from '../api';
 import { HoloCard, PLAN_LABEL } from './HoloCard';
 import type { CardScene } from '../three/cardScene';
+import { tierOf } from '../tiers';
 
 interface Props { planId: PlanId; label?: string; product?: string; store?: string; credit?: string; term?: string; interactive?: boolean; idle?: boolean; className?: string }
 
@@ -18,31 +20,62 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<CardScene | null>(null);
   const [ready, setReady] = useState(false);
-  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}` };
-  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}`;
+  const face = { name: label ?? PLAN_LABEL[planId] ?? planId, credit: credit ? `Credit ${credit}` : 'Credit', term: term ?? '1 month', top: `${store ?? 'App Store'} credit for ${product ?? 'Claude'}`, tier: tierOf(planId), product: (product ?? 'Claude').toLowerCase() };
+  const faceKey = `${face.name}|${face.credit}|${face.term}|${face.top}|${face.tier}`;
 
   const px = useMotionValue(0);
   const py = useMotionValue(0);
   const sx = useSpring(px, { stiffness: 140, damping: 18 });
   const sy = useSpring(py, { stiffness: 140, damping: 18 });
 
-  // create the scene once (three.js loads on first use)
+  // create the scene once (three.js loads on first use). The front card first; the cards beside it
+  // once the browser is idle, so they never hold up the one being looked at.
   useEffect(() => {
     if (!webgl) return;
     let alive = true;
-    import('../three/cardScene')
-      .then(({ createCardScene }) => createCardScene(canvas.current!, face))
+    const idleFirst = interactive ? Promise.resolve() : new Promise<void>((r) => ('requestIdleCallback' in window ? requestIdleCallback(() => r(), { timeout: 1200 }) : setTimeout(r, 300)));
+    idleFirst
+      .then(() => import('../three/cardScene'))
+      .then(({ createCardScene }) => { if (!alive) throw new Error('gone'); return createCardScene(canvas.current!, face); })
       .then((s) => {
-        if (!alive) { s.dispose(); return; }
+        if (!alive) { s.dispose(); return; } // unmounted meanwhile
+        // Phones (iOS especially) can drop the WebGL context under memory pressure: then go back to
+        // the 2D card for good rather than leave an empty space.
+        s.onLost(() => { scene.current?.dispose(); scene.current = null; if (alive) setReady(false); });
         scene.current = s;
-        const r = wrap.current!.getBoundingClientRect();
-        s.resize(r.width * 1.25, r.height * 1.25);
+        // the card's own size, not its on-screen size (side cards are shrunk by a transform): every card
+        // then shares one size, and the shared renderer never has to be resized between them
+        const el = wrap.current!;
+        s.resize(el.offsetWidth * 1.25, el.offsetHeight * 1.25);
         s.setTilt(sx.get(), sy.get());
         setReady(true);
       })
       .catch(() => { /* keep the CSS card */ });
     return () => { alive = false; scene.current?.dispose(); scene.current = null; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the 2D card stays under the 3D one until the 3D one has faded in, so the card never blinks out
+  const [flat, setFlat] = useState(true);
+  useEffect(() => {
+    if (!ready) { setFlat(true); return; } // eslint-disable-line react-hooks/set-state-in-effect
+    const t = setTimeout(() => setFlat(false), 500);
+    return () => clearTimeout(t);
+  }, [ready]);
+
+  // tap (not a drag) turns the front card over; a card that leaves the front turns back
+  const [turned, setTurned] = useState(false);
+  useEffect(() => { if (!interactive) setTurned(false); }, [interactive]); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => { scene.current?.setTurned(turned); }, [turned, ready]);
+  const down = useRef<{ x: number; y: number } | null>(null);
+  const onDown = (e: React.PointerEvent) => { down.current = { x: e.clientX, y: e.clientY }; };
+  const onClick = (e: React.MouseEvent) => {
+    const d = down.current;
+    if (!interactive || !ready || !d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
+    setTurned((t) => !t);
+  };
+
+  // only the front card is drawn live; the others are still pictures (see three/cardScene.ts)
+  useEffect(() => { if (ready && wrap.current) scene.current?.setLive(!!interactive, wrap.current); }, [interactive, ready]);
 
   // new plan, credit or term: repaint the face
   useEffect(() => { scene.current?.setFace(face); }, [faceKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -68,15 +101,19 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   useEffect(() => {
     if (!interactive) { px.set(0); py.set(0); return; }
     const el = wrap.current;
+    // the card's box is measured when the finger arrives, not on every move (no forced layout)
+    let r = el!.getBoundingClientRect();
+    const enter = () => { r = el!.getBoundingClientRect(); };
     const move = (e: PointerEvent) => {
-      const r = el!.getBoundingClientRect();
       px.set(Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1)));
       py.set(Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1)));
     };
     const leave = () => { px.set(0); py.set(0); };
+    el?.addEventListener('pointerenter', enter);
+    el?.addEventListener('pointerdown', enter);
     el?.addEventListener('pointermove', move);
     el?.addEventListener('pointerleave', leave);
-    return () => { el?.removeEventListener('pointermove', move); el?.removeEventListener('pointerleave', leave); };
+    return () => { el?.removeEventListener('pointerenter', enter); el?.removeEventListener('pointerdown', enter); el?.removeEventListener('pointermove', move); el?.removeEventListener('pointerleave', leave); };
   }, [interactive, px, py]);
 
   // slow idle sway so the light moves across it even untouched (paused while the app is hidden)
@@ -94,8 +131,8 @@ export const Card3D = memo(function Card3D({ planId, label, product, store, cred
   }, [idle, px, py]);
 
   return (
-    <div ref={wrap} className={`card-wrap card3d ${ready ? 'is-ready' : ''} ${className}`}>
-      {!ready && <HoloCard planId={planId} label={label} product={product} store={store} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
+    <div ref={wrap} className={`card-wrap card3d ${ready ? 'is-ready' : ''} ${className}`} onPointerDown={onDown} onClick={onClick}>
+      {flat && <HoloCard planId={planId} label={label} product={product} store={store} credit={credit} term={term} interactive={interactive} idle={idle} className="fill" />}
       <canvas ref={canvas} className="card3d-canvas" aria-hidden="true" />
       <span className="card3d-shadow" aria-hidden="true" />
     </div>

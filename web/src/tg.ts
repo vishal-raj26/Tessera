@@ -37,6 +37,7 @@ interface TgWebApp {
     setItem(key: string, value: string, cb?: (err: unknown, ok?: boolean) => void): void;
   };
   BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
+  initDataUnsafe?: { user?: { first_name?: string } };
   // Mini Apps 2.0 (Bot API 8.0+)
   platform?: string;
   isFullscreen?: boolean;
@@ -65,6 +66,8 @@ export const tg = {
   initData: wa?.initData ?? '',
   /** 'ios', 'android', 'tdesktop', 'web'… (empty outside Telegram) */
   platform: inTelegram ? wa?.platform ?? '' : '',
+  /** the buyer's first name, for a greeting (empty outside Telegram) */
+  firstName: inTelegram ? (wa?.initDataUnsafe?.user?.first_name ?? '').trim() : '',
   main: inTelegram ? wa?.MainButton : undefined,
   secondary: inTelegram && wa?.isVersionAtLeast?.('7.10') ? wa?.SecondaryButton : undefined,
   boot() {

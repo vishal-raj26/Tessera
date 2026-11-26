@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -10,7 +11,7 @@ import { cachedSupplier } from './supplier/cache.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
 import { orders, payments, settings } from './db.js';
-import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, normalize, friendly, NETWORK } from './chain.js';
+import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, walletBalance, normalize, friendly, NETWORK } from './chain.js';
 import { createEngine } from './engine.js';
 import { startApplePriceSync } from './applePrices.js';
 import { startPaymentStream } from './stream.js';
@@ -147,6 +148,8 @@ async function quote(regionCode, planId, months = 1, store = 'appstore') {
 }
 
 const app = express();
+// gzip everything that compresses (the app's scripts, the 3D model, API answers)
+app.use(compression({ filter: (req, res) => /\.(glb)$/.test(req.path) || compression.filter(req, res) }));
 app.use(cors());
 app.use(express.json());
 
@@ -231,6 +234,7 @@ const publicOrder = (o) => o && {
   txHash: o.tx_hash,
   codes: o.status === 'delivered' ? o.codes : null,
   createdAt: o.created_at,
+  deliveredAt: o.delivered_at ?? null,
   expiresAt: o.expires_at,
 };
 
@@ -291,6 +295,18 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
     }
   }
   res.json({ ...publicOrder(orders.get(id)), invoiceLink });
+});
+
+// The connected wallet's GRAM balance, for the top bar. Read-only and cached (chain.js walletBalance).
+app.get('/api/balance', telegramAuth, async (req, res) => {
+  const address = String(req.query.address || '');
+  if (!normalize(address)) return res.status(400).json({ error: 'Not a TON address' });
+  if (PAYMENT_MODE === 'mock') return res.json({ gram: null, network: NETWORK }); // demo: no chain to ask
+  try {
+    res.json({ gram: await walletBalance(address), network: NETWORK });
+  } catch (e) {
+    res.status(503).json({ error: 'Balance unavailable right now' });
+  }
 });
 
 app.get('/api/orders', telegramAuth, (req, res) => {
@@ -438,8 +454,16 @@ setInterval(() => { try { engine.remindRenewals(); } catch (e) { console.error(e
 // Serve the built Mini App when present.
 const dist = path.resolve(process.env.WEB_DIST || '../web/dist');
 if (fs.existsSync(dist)) {
-  app.use(express.static(dist));
-  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.use(express.static(dist, {
+    setHeaders(res, file) {
+      // built files carry a content hash in their name: cache them for good. The model and pictures
+      // change rarely: a day. The page itself is always checked, so a new version shows at once.
+      if (file.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      else if (file.includes(`${path.sep}models${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=86400');
+      else res.setHeader('Cache-Control', 'no-cache');
+    },
+  }));
+  app.get(/^\/(?!api\/).*/, (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(dist, 'index.html')); });
 }
 
 app.listen(PORT, () => console.log(`Tessera API on :${PORT} · supplier=${SUPPLIER.name} · payments=${PAYMENT_MODE} · network=${NETWORK}`));

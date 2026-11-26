@@ -1,23 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, type AppConfig, type Order, type PayMethod, type Plan, type Quote, type StoreId } from './api';
 import { tg } from './tg';
-import { HoloCard, PLAN_LABEL } from './components/HoloCard';
+import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
 import { Sheet } from './components/Sheet';
 import { Guide } from './components/Guide';
 import { GramIcon } from './components/GramIcon';
 import { Header } from './components/Header';
-import { Rolling } from './components/Rolling';
+import { Emblem } from './components/Emblem';
 import { Onboarding } from './components/Onboarding';
 import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
+import { rememberTiers } from './tiers';
+import { CountUp } from './components/CountUp';
+import { latestCoverage } from './coverage';
+import { pricesShown, renewStep, type RenewTarget } from './renew';
+import { shownBalance } from './balance';
 import { createMarkQueue } from './markQueue';
 import { Amount } from './components/Amount';
 import { StarIcon } from './components/StarIcon';
 import { TermPicker } from './components/TermPicker';
 import { Segmented } from './components/Segmented';
+import { Aurora, type AuroraInputs } from './components/Aurora';
+import { Tally } from './components/Tally';
+import { PULL } from './components/PlanCarousel';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
 type SheetName = null | 'review' | 'guide';
@@ -64,14 +72,26 @@ export default function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [walletSent, setWalletSent] = useState(false);
   const [held, setHeld] = useState<Quote | null>(null); // price locked while the review sheet is open
-  const [flipped, setFlipped] = useState(true);
   const [settled, setSettled] = useState(false);
-  const reveal = useMotionValue(0);
   // how far the front card is pulled down; the price, terms and hint below make way as it comes
   const pull = useMotionValue(0);
   const hold = useMotionValue(0); // pressing the card already dims what's below, so the rays stand out
   const belowOpacity = useTransform([pull, hold] as MotionValue<number>[], ([p, h]: number[]) => Math.min(1 - Math.min(1, p / 60), 1 - h * 0.6));
   const belowY = useTransform(pull, [0, 140], [0, 48]);
+  // the aurora (components/Aurora.tsx): light resting at the bottom edge, flowing down into it. Pulling
+  // the card raises a path of light up to it (reach, glow); letting go draws it back down into the
+  // bottom (flood); then a glowing edge and an orb while paying (rim, orb)
+  const scene = useMotionValue(0);      // how lit the current screen is at rest
+  const flood = useMotionValue(0);      // after letting go: rises to meet the card (→1), then sinks (→0)
+  const auroraRim = useMotionValue(0);
+  const auroraOrb = useMotionValue(0);
+  const pullShare = useTransform(pull, (p) => Math.min(1.15, Math.max(0, p) / PULL));
+  const auroraSweep = useMotionValue(0);
+  const auroraSweepGlow = useMotionValue(0);
+  const auroraReach = useTransform([pullShare, flood] as MotionValue<number>[], ([q, f]: number[]) => Math.max(0.14 + q * 0.48, f * 0.72));
+  const auroraGlow = useTransform([pullShare, hold, flood, scene] as MotionValue<number>[], ([q, h, f, b]: number[]) =>
+    Math.min(1, b + h * 0.15 + q * 0.4 + Math.sin(Math.min(1, f) * Math.PI) * 0.5));
+  const aurora = useMemo<AuroraInputs>(() => ({ reach: auroraReach, glow: auroraGlow, sweep: auroraSweep, sweepGlow: auroraSweepGlow, rim: auroraRim, orb: auroraOrb }), [auroraReach, auroraGlow, auroraSweep, auroraSweepGlow, auroraRim, auroraOrb]);
   const [intro, setIntro] = useState<boolean | null>(null); // null while we check
   const [canHome, setCanHome] = useState(false);
   useEffect(() => {
@@ -79,15 +99,16 @@ export default function App() {
     tg.getFlag('onboarded').then((seen) => setIntro(!seen));
   }, []);
   const finishIntro = useCallback(() => { tg.setFlag('onboarded'); setIntro(false); }, []);
-  const prevIndex = useRef(0);
 
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonAddress();
 
   const [bootErr, setBootErr] = useState(false);
   const store: StoreId = storesPriced[storePick] ? storePick : 'appstore';
+  // which store's prices are loaded (Renew waits for the right one)
+  const [catalogStore, setCatalogStore] = useState<StoreId | null>(null);
   const applyCatalog = useCallback((c: Awaited<ReturnType<typeof api.catalog>>) => {
-    setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating);
+    rememberTiers(c.plans); setPlans(c.plans); setPricesUpdating(!!c.pricesUpdating); setCatalogStore(c.store ?? 'appstore');
     if (c.storesPriced) setStoresPriced(c.storesPriced);
   }, []);
   const load = useCallback(() => {
@@ -103,6 +124,8 @@ export default function App() {
       .catch(() => setBootErr(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { tg.boot(); load(); }, [load]);
+  // the buyer's orders, for the personal header (also what Your codes shows first)
+  useEffect(() => { if (config && history === null) api.orders().then(setHistory).catch(() => {}); }, [config]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live prices: refresh every 30s on the home screen and whenever the app comes back to the
   // front; the price rolls to its new value. Paused while the review sheet holds a price.
@@ -138,8 +161,10 @@ export default function App() {
     const sellable = mine.filter((p) => p.available);
     return sellable.length ? sellable : mine;
   }, [allPlans, productId]);
-  const storeLabel = config?.stores?.find((s) => s.id === store)?.label ?? 'App Store';
-  const storeOwner = store === 'play' ? 'Google' : 'Apple';
+  // labels follow the prices actually loaded (renew.ts): another store's prices never get this store's name
+  const prices = pricesShown(store, catalogStore);
+  const storeLabel = config?.stores?.find((s) => s.id === prices.store)?.label ?? 'App Store';
+  const storeOwner = prices.store === 'play' ? 'Google' : 'Apple';
   function pickProduct(id: string) {
     if (id === productId) return;
     tg.select(); setProductPick(id); setIndex(0); setErr(null);
@@ -162,6 +187,82 @@ export default function App() {
   const heldOk = !!held && held.planId === plan?.id && held.store === store && held.months === term?.months ? held : null;
   const shown = sheet === 'review' && heldOk ? heldOk : term;
   const pickTerm = (m: number) => { if (m !== term?.months) { tg.select(); setMonths(m); setErr(null); } };
+
+  // a purchase just delivered: refresh the buyer's orders so the header and the codes badge include it
+  useEffect(() => {
+    if (order?.status === 'delivered') api.orders().then(setHistory).catch(() => {});
+  }, [order?.id, order?.status]);
+
+
+  // codes bought but not redeemed yet: the badge on the top bar's codes button
+  const codesLeft = (history ?? []).reduce((n, o) => n + (o.status === 'delivered' ? (o.codes ?? []).filter((c) => !c.redeemedAt).length : 0), 0);
+
+  // the connected wallet's GRAM balance for the top bar: on connect, every 30 s while the app is open,
+  // and when the app comes back to the front. Unknown (null) shows the short address instead.
+  // Kept with the address it belongs to: after switching wallets, the old wallet's balance is never
+  // shown for the new one (the pill shows the short address until the new balance arrives).
+  const [walletBal, setWalletBal] = useState<{ address: string; gram: number | null } | null>(null);
+  const balance = shownBalance(walletBal, wallet);
+  useEffect(() => {
+    if (!wallet || !config) { setWalletBal(null); return; }
+    let alive = true;
+    const address = wallet;
+    const get = () => { if (!document.hidden) api.balance(address).then((b) => { if (alive) setWalletBal({ address, gram: b.gram }); }).catch(() => {}); };
+    get();
+    const id = setInterval(get, 30_000);
+    document.addEventListener('visibilitychange', get);
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', get); };
+  }, [wallet, config, view]);
+
+  // returning buyers: the plan they bought last and how long its credit still lasts
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setClock(Date.now()), 60_000); return () => clearInterval(id); }, []);
+  const cover = useMemo(() => latestCoverage(history, clock), [history, clock]);
+  // Renew: open the review for exactly the last purchase (same app, store, plan and term), or say it
+  // can't be renewed. The decisions are in renew.ts.
+  const [renewing, setRenewing] = useState<RenewTarget | null>(null);
+  const cantRenew = () => {
+    setRenewing(null);
+    setErr("That plan can't be renewed here right now.");
+    tg.notify('error');
+  };
+  function renew() {
+    if (!cover || !config) return;
+    const o = cover.order;
+    const target: RenewTarget = { product: o.product?.id || productId, store: o.store?.id ?? 'appstore', planId: o.plan.id, months: o.months ?? 1 };
+    tg.tap('light');
+    setErr(null);
+    // where the screen was, to go back to if that store's prices can't be loaded
+    const before = { storePick, productPick };
+    if (target.product !== productId) setProductPick(target.product);
+    if (target.store !== store) {
+      // load that store's own prices first; until they arrive the screen keeps the loaded store's name
+      // and can't buy (pricesShown), and Renew waits for them (renewStep)
+      setStorePick(target.store as StoreId);
+      api.catalog(config.region, target.store as StoreId).then(applyCatalog).catch(() => {
+        setStorePick(before.storePick);
+        setProductPick(before.productPick);
+        cantRenew();
+      });
+    }
+    setRenewing(target);
+  }
+  useEffect(() => {
+    if (!renewing) return;
+    const step = renewStep(renewing, { catalogStore, store, productId, plans, index, months: term?.months ?? months });
+    if (step.do === 'fail') cantRenew();
+    else if (step.do === 'index') setIndex(step.index);
+    else if (step.do === 'months') setMonths(step.months);
+    else if (step.do === 'open') { setRenewing(null); reviewRef.current(); }
+  }, [renewing, catalogStore, store, productId, plans, index, months, term?.months]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the screen's store has no prices loaded (a store that stopped being priced, or a Renew that ended):
+  // load them. Renew loads its own and is waited for.
+  useEffect(() => {
+    if (!config || renewing || prices.ready) return;
+    api.catalog(config.region, store).then(applyCatalog).catch(() => {});
+  }, [config, renewing, prices.ready, store, applyCatalog]);
+
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
   const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
@@ -175,8 +276,6 @@ export default function App() {
   // closing any sheet also abandons a quote still on its way, and drops the one shown
   const quoteSeq = useRef(0);
   const closeSheet = useCallback(() => { quoteSeq.current++; setHeld(null); setSheet(null); }, []);
-  const rollDir = index >= prevIndex.current ? 1 : -1;
-  useEffect(() => { prevIndex.current = index; }, [index]);
 
   const home = useCallback(() => {
     setView('home'); setOrder(null); setErr(null); setSheet(null);
@@ -205,21 +304,26 @@ export default function App() {
     return () => clearInterval(id);
   }, [view, order?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // the reveal: flip to the front, the pearl foil wipes across, sparks fly, then the codes arrive
+  // done: the check draws and the credit counts up while the edge glows, then the codes arrive
   useEffect(() => {
     if (view !== 'done') return;
-    setFlipped(true);
     setSettled(false);
-    reveal.set(0);
-    const t1 = setTimeout(() => { setFlipped(false); tg.tap('light'); }, 250);
-    const t2 = setTimeout(() => {
-      animate(reveal, 1, { duration: 1.4, ease: [0.65, 0, 0.35, 1] }).then(() => {
-        tg.notify('success');
-        setTimeout(() => setSettled(true), 250);
-      });
-    }, 1050);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [view, reveal]);
+    tg.notify('success');
+    const t = setTimeout(() => setSettled(true), 2100);
+    return () => clearTimeout(t);
+  }, [view]);
+
+  // how lit each screen is, and the edge and orb while paying and when it's done
+  useEffect(() => {
+    const failedNow = order?.status === 'failed' || order?.status === 'expired' || order?.status === 'refunded';
+    const to = (mv: MotionValue<number>, v: number, d = 0.8) => animate(mv, v, { duration: d, ease: 'easeInOut' });
+    if (view === 'home') { to(scene, sheet ? 0.18 : 0.42); to(auroraRim, 0); to(auroraOrb, 0); }
+    else if (view === 'paying') { to(scene, 0.12); to(auroraRim, failedNow ? 0.15 : 0.85, 1.2); to(auroraOrb, failedNow ? 0 : 1, 1.2); }
+    else if (view === 'done') {
+      to(scene, 0.18); to(auroraOrb, 0, 0.6);
+      animate(auroraRim, [auroraRim.get(), 1, 1, 0.3], { duration: 3.2, times: [0, 0.15, 0.6, 1] });
+    } else { to(scene, 0.25); to(auroraRim, 0); to(auroraOrb, 0); }
+  }, [view, sheet, order?.status, scene, auroraRim, auroraOrb]);
 
   useEffect(() => {
     if (!toast) return;
@@ -229,9 +333,16 @@ export default function App() {
 
   // stable handle for the memoised carousel, always calling the latest openReview
   const reviewRef = useRef<() => void>(() => {});
-  const onPull = useCallback(() => reviewRef.current(), []);
+  const onPull = useCallback(() => {
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // the path flares up to the card, then sinks back down into the bottom behind it
+      flood.set(0.85);
+      animate(flood, [0.85, 1, 0], { duration: 1.2, times: [0, 0.25, 1], ease: [[0.4, 0, 0.2, 1], [0.55, 0, 0.75, 0.2]] });
+    }
+    reviewRef.current();
+  }, [flood]);
   function openReview() {
-    if (!plan?.available || !term) return;
+    if (!plan?.available || !term || !prices.ready) return;
     if (needsWallet && !bothMethods) { tonConnectUI.openModal(); return; }
     setAgree(false);
     setErr(null);
@@ -354,15 +465,18 @@ export default function App() {
   return (
     <>
       <div className="atmos" aria-hidden="true">
-        <div className="beam" /><div className="beam" /><div className="beam" />
-        <div className="floor" />
+        <Aurora inputs={aurora} product={product?.id ?? 'claude'} />
       </div>
 
+      {/* the same mark as the page's first frame (index.html), until we know which screen comes first */}
+      {intro === null && <div className="splash" aria-label="Tessera"><Emblem size={72} stroke={1.4} /></div>}
       <AnimatePresence>{intro && <Onboarding key="ob" onDone={finishIntro} />}</AnimatePresence>
 
       {intro === false && <div className={`app ${view === 'wallet' ? 'fit' : ''}`}>
         <Header
           wallet={wallet}
+          balance={balance}
+          codesCount={codesLeft}
           onCodes={openOrders}
           onHome={view === 'done' ? home : view === 'wallet' ? toHome : undefined}
           active={view === 'wallet'}
@@ -373,9 +487,22 @@ export default function App() {
           {view === 'home' && (
             <motion.main key="home" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <motion.div className="intro" {...rise(0.2)}>
+                {/* the plan you have, only once it needs you: two weeks before it runs out, or after */}
+                {cover && cover.daysLeft <= 14 ? (
+                  <button className="notice" onClick={renew}>
+                    <span>
+                      {cover.order.plan.label ?? cover.order.plan.name}
+                      {cover.daysLeft > 1 ? ` runs out in ${cover.daysLeft} days`
+                        : cover.daysLeft === 1 ? ' runs out tomorrow'
+                        : cover.daysLeft === 0 ? ' runs out today'
+                        : ` ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}
+                    </span>
+                    <b>Renew</b>
+                  </button>
+                ) : null}
                 {products.length > 1
                   ? <Segmented id="product" label="App" value={productId} onChange={pickProduct} options={products.map((p) => ({ value: p.id, label: p.name }))} />
-                  : <h1>Choose your {product?.name ?? 'Claude'} plan</h1>}
+                  : null}
                 {storesPriced.play && (
                   <Segmented id="store" label="Your phone" value={store} onChange={pickStore}
                     options={[{ value: 'appstore', label: 'iPhone' }, { value: 'play', label: 'Android' }]} />
@@ -405,14 +532,16 @@ export default function App() {
                 {plan?.available && term ? (
                   <>
                     <div className="gram">
-                      <Rolling text={payWith === 'stars' ? term.stars!.toLocaleString() : fmtGram(term.gram!)} dir={rollDir} />
+                      {payWith === 'stars'
+                        ? <CountUp value={term.stars!} format={fmtStars} />
+                        : <CountUp value={term.gram!} format={fmtGram} />}
                       {payWith === 'stars' ? <StarIcon size={28} /> : <GramIcon size={28} />}
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       <motion.div key={plan.id + payWith + term.months} className="meta" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>
                         {testScale < 1
-                          ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>
-                          : <>≈ ${term.usd.toFixed(2)} · {plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}, {termLabel(term.months)}</>}
+                          ? <>Test price {Math.round(testScale * 100)}% · ≈ ${(term.usd * testScale).toFixed(2)}</>
+                          : <>≈ ${term.usd.toFixed(2)}</>}
                         {term.annual && term.monthly > 0 && <span className="save"> · {Math.round((1 - term.appPrice / (term.monthly * 12)) * 100)}% less than monthly</span>}
                         {bothMethods && (
                           <button className="alt-price" onClick={() => chooseMethod(payWith === 'stars' ? 'gram' : 'stars')} aria-label="Switch currency">
@@ -425,16 +554,14 @@ export default function App() {
                 ) : plan ? (
                   <div className="meta" style={{ paddingTop: 12 }}>{pricesUpdating ? 'Prices are updating. Try again in a minute.' : "This plan isn't available right now"}</div>
                 ) : null}
-                {plans && (
-                  <div className="dots">{plans.map((p, i) => <motion.i key={p.id} layout className={i === index ? 'on' : ''} />)}</div>
-                )}
               </motion.div>
               {err && <p className="error" style={{ textAlign: 'center' }}>{err}</p>}
 
               {plans && <motion.div className="pullhint" {...rise(0.95)}>
-                <div className="chev" aria-hidden="true"><span /><span /></div>
-                <span>{needsWallet ? 'Pull the card down to connect your wallet' : 'Pull the card down to buy'}</span>
-                <button onClick={openReview} disabled={!plan?.available || !term}>or tap here</button>
+                <button onClick={openReview} disabled={!plan?.available || !term}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+                  {needsWallet ? 'Pull down to connect your wallet' : 'Pull down to buy'}
+                </button>
               </motion.div>}
               </motion.div>
             </motion.main>
@@ -442,23 +569,9 @@ export default function App() {
 
           {view === 'paying' && order && (
             <motion.main key="paying" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <motion.div className="pay-stage" initial={{ y: 160, scale: 0.8, rotate: -6 }} animate={{ y: 0, scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 140, damping: 18 }}>
-                <HoloCard
-                  planId={order.plan.id}
-                  label={order.plan.label}
-                  product={order.product?.name}
-                  store={order.store?.label}
-                  term={termLabel(order.months ?? 1)}
-                  credit={fmtMoney(order.credit, order.currency)}
-                  flipped
-                  back={
-                    <>
-                      <b>{backLine}</b>
-                      <span className="amt"><Amount method={order.method} gram={order.gram} stars={order.stars} size={13} /></span>
-                      {!failed && <div className="charge"><i /></div>}
-                    </>
-                  }
-                />
+              <motion.div className="pay-hero" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}>
+                <span className="pay-amount"><Amount method={order.method} gram={order.gram} stars={order.stars} size={30} /></span>
+                <span className="pay-sub">{failed ? backLine : `${order.product?.name ?? 'Claude'} ${order.plan.label ?? PLAN_LABEL[order.plan.id]} · ${termLabel(order.months ?? 1)}`}</span>
               </motion.div>
               {failed ? (
                 <>
@@ -503,33 +616,24 @@ export default function App() {
 
           {view === 'done' && order?.codes && (
             <motion.main key="done" className="center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="reveal-stage">
-                <motion.div animate={settled ? { y: 0, scale: 1 } : { y: 30, scale: 1.06 }} transition={{ type: 'spring', stiffness: 120, damping: 18 }}>
-                  <HoloCard
-                    className="md"
-                    planId={order.plan.id}
-                    label={order.plan.label}
-                    product={order.product?.name}
-                    store={order.store?.label}
-                  term={termLabel(order.months ?? 1)}
-                    credit={fmtMoney(order.credit, order.currency)}
-                    reveal={reveal}
-                    flipped={flipped}
-                    interactive
-                    back={<><b>Ready</b><span className="amt"><Amount method={order.method} gram={order.gram} stars={order.stars} size={13} /></span></>}
-                  />
+              <div className="success">
+                <svg className="check" viewBox="0 0 52 52" aria-hidden="true">
+                  <motion.path d="M14 27.5 22.5 36 39 17" fill="none" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 0.55, ease: [0.65, 0, 0.35, 1], delay: 0.35 }} />
+                </svg>
+                <motion.div className="success-amount" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
+                  <Tally value={order.credit} format={(n) => fmtMoney(Number.isInteger(order.credit) ? Math.round(n) : n, order.currency)} delay={0.3} duration={1.6} />
                 </motion.div>
+                <motion.p className="success-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
+                  {order.store?.label ?? 'App Store'} credit · {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
+                </motion.p>
               </div>
               {settled && (
                 <div style={{ width: '100%' }}>
-                  <motion.div className="done-title" {...rise(0)}>
-                    <h1>Your credit is ready</h1>
-                    <p>{fmtMoney(order.credit, order.currency)} for {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}, {termLabel(order.months ?? 1)}</p>
-                  </motion.div>
                   <div className="actions">
                     <RedeemCodes order={order} copied={copied} onCopy={copy} onMark={markCode} delay={0.1} />
-                    <motion.button className="btn btn-quiet" onClick={() => openGuide(order)} whileTap={{ scale: 0.97 }} {...rise(0.38)}>
-                      How to activate {order.product?.name ?? 'Claude'} {order.plan.label ?? PLAN_LABEL[order.plan.id]}
+                    <motion.button className="text-btn" onClick={() => openGuide(order)} {...rise(0.38)}>
+                      How to activate {order.plan.label ?? PLAN_LABEL[order.plan.id]}
                     </motion.button>
                     {canHome && (
                       <button className="link-btn add-home" onClick={() => { tg.addToHome(); setCanHome(false); }}>
@@ -572,23 +676,11 @@ export default function App() {
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
         {plan?.available && term && shown && (
           <div className="st">
-            <div className="summary">
-              <motion.div initial={{ rotate: -14, y: 30, opacity: 0 }} animate={{ rotate: -6, y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 16, delay: 0.1 }}>
-                <HoloCard className="sm" planId={plan.id} label={plan.label} product={plan.product?.name} store={storeLabel} credit={fmtMoney(shown.credit, shown.currency)} term={termLabel(shown.months)} />
-              </motion.div>
-              <div className="what">
-                <b>{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name}</b>
-                {termLabel(shown.months)} · delivered instantly
-              </div>
+            {/* what you're buying, then what it costs: the one number that matters, large */}
+            <div className="sheet-head">
+              <p className="eyebrow">{plan.product?.name ?? 'Claude'} {plan.label ?? plan.name} · {termLabel(shown.months)}</p>
+              <div className="total amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={28} /></div>
             </div>
-            <dl className="rows">
-              <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` · ${shown.codes} codes` : ''}</dd></div>
-              <div className="row">
-                <dt>{shown.annual ? 'Yearly plan in app' : 'In-app price'}</dt>
-                <dd>{shown.months > 1 && !shown.annual ? `${shown.months} × ${fmtMoney(shown.monthly, shown.currency)}` : fmtMoney(shown.appPrice, shown.currency)}</dd>
-              </div>
-              <div className="row total"><dt>You pay</dt><dd className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={17} /></dd></div>
-            </dl>
             {shown.months > 1 && (
               <p className="term-note">
                 {shown.annual
@@ -601,12 +693,18 @@ export default function App() {
                 {(['gram', 'stars'] as const).map((m) => (
                   <button key={m} type="button" role="radio" aria-checked={payWith === m} className={payWith === m ? 'on' : ''} onClick={() => chooseMethod(m)}>
                     {payWith === m && <motion.i layoutId="pw" className="pw-bg" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
-                    <span className="pw-amt"><Amount method={m} gram={shown.gram} stars={shown.stars} size={15} /></span>
-                    <span className="pw-sub">{m === 'gram' ? (wallet || config?.paymentMode === 'mock' ? 'Wallet' : 'Connect wallet') : 'Telegram Stars'}</span>
+                    <span className="pw-amt">{m === 'gram' ? <GramIcon size={15} /> : <StarIcon size={15} />}{m === 'gram' ? 'GRAM' : 'Stars'}</span>
                   </button>
                 ))}
               </div>
             )}
+            <dl className="rows">
+              <div className="row"><dt>{storeLabel} credit</dt><dd>{fmtMoney(shown.credit, shown.currency)}{shown.codes > 1 ? ` in ${shown.codes} codes` : ''}</dd></div>
+              <div className="row">
+                <dt>{shown.annual ? 'Yearly plan in the app' : 'Plan price in the app'}</dt>
+                <dd>{shown.months > 1 && !shown.annual ? `${shown.months} × ${fmtMoney(shown.monthly, shown.currency)}` : fmtMoney(shown.appPrice, shown.currency)}</dd>
+              </div>
+            </dl>
             <label className="agree">
               <input type="checkbox" checked={agree} onChange={(e) => { tg.select(); setAgree(e.target.checked); }} />
               <span>I understand {storeLabel} credit can't be refunded once issued.</span>
@@ -616,11 +714,11 @@ export default function App() {
               <motion.button className="btn btn-pearl" onClick={() => tonConnectUI.openModal()} whileTap={{ scale: 0.97 }}>Connect wallet</motion.button>
             ) : (
               <motion.button className="btn btn-pearl" disabled={!agree || busy || !heldOk} onClick={pay} whileTap={!agree || busy || !heldOk ? undefined : { scale: 0.97 }}>
-                {busy ? <span className="spin" /> : <>Pay<span className="amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={19} /></span></>}
+                {busy ? <span className="spin" /> : 'Pay'}
               </motion.button>
             )}
             <p className="fine">
-              {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Locking your price…'}
+              {heldOk ? <>Price held for <Countdown until={heldOk.expiresAt} /></> : 'Holding your price…'}
               {config?.paymentMode === 'mock' ? ` · Demo mode, ${payWith === 'stars' ? 'no Stars are charged' : 'nothing leaves your wallet'}` : ''}
               {testScale < 1 ? ` · Testnet: you pay ${Math.round(testScale * 100)}% of the real price` : ''}
             </p>
@@ -633,7 +731,7 @@ export default function App() {
           <h2>Activate {guideFor?.product?.name ?? 'Claude'} {guideFor && (guideFor.plan.label ?? PLAN_LABEL[guideFor.plan.id])}</h2>
           <p className="sub">Four steps, about two minutes.</p>
           {guideFor && <Guide order={guideFor} />}
-          <button className="btn btn-quiet" style={{ marginTop: 18 }} onClick={view === 'wallet' ? closeSheet : home}>Done</button>
+          <button className="btn btn-quiet" onClick={view === 'wallet' ? closeSheet : home}>Done</button>
         </div>
       </Sheet>
 

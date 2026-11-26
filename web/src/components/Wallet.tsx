@@ -1,11 +1,11 @@
-// "Your codes" as a card wallet. Every purchase is a card in a stack; tap one and it lifts to the
-// top while the rest settle into a pile at the bottom. Pull the lifted card down to put it back.
-import { AnimatePresence, motion, type PanInfo } from 'framer-motion';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+// Your codes: every purchase as a plain row (plan, term, date, credit, and where it stands). Tap one to
+// open it in place: its codes to redeem one at a time and how to activate, or what's happening with it.
+import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import { fmtMoney, termLabel, type Order } from '../api';
 import { RedeemCodes } from './RedeemCodes';
 import { tg } from '../tg';
-import { HoloCard, PLAN_LABEL } from './HoloCard';
+import { PLAN_LABEL } from './HoloCard';
 import { Amount } from './Amount';
 
 interface Props {
@@ -20,21 +20,24 @@ interface Props {
   onBack: () => void;
 }
 
-const PEEK = 62; // how much of each stacked card shows
-const PILE = 46; // height of the pile when a card is lifted
-const LIFT = 0.8; // scale of the lifted card
-
 const day = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-function statusOf(o: Order): { label: string; tone: 'ok' | 'wait' | 'bad' } {
+/** where a purchase stands, in a word or two, and how it reads (accent: needs you; quiet: settled) */
+function statusOf(o: Order): { label: string; tone: 'act' | 'ok' | 'wait' | 'off' } {
+  if (o.status === 'delivered') {
+    const codes = o.codes ?? [];
+    const left = codes.filter((c) => !c.redeemedAt).length;
+    if (!codes.length) return { label: 'Ready', tone: 'ok' };
+    if (!left) return { label: 'Redeemed', tone: 'off' };
+    return { label: codes.length > 1 ? `${left} to redeem` : 'To redeem', tone: 'act' };
+  }
   switch (o.status) {
-    case 'delivered': return { label: 'Ready', tone: 'ok' };
     case 'awaiting_payment': return { label: o.paymentSeen ? 'Confirming' : 'Unpaid', tone: 'wait' };
     case 'paid': case 'fulfilling': return { label: 'Issuing', tone: 'wait' };
-    case 'underpaid': return { label: 'Partly paid', tone: 'wait' };
-    case 'refunded': return { label: 'Refunded', tone: 'bad' };
-    case 'expired': return { label: 'Expired', tone: 'bad' };
-    default: return { label: 'Needs attention', tone: 'bad' };
+    case 'underpaid': return { label: 'Partly paid', tone: 'act' };
+    case 'refunded': return { label: 'Refunded', tone: 'off' };
+    case 'expired': return { label: 'Expired', tone: 'off' };
+    default: return { label: 'Needs attention', tone: 'act' };
   }
 }
 
@@ -50,29 +53,12 @@ function note(o: Order): string {
 }
 
 export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop, onGuide, onBack }: Props) {
-  const [sel, setSel] = useState<string | null>(null);
-  const box = useRef<HTMLDivElement>(null);
-  const [h, setH] = useState(600);
-  const [cardH, setCardH] = useState(400);
-
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setH(el.clientHeight);
-      const w = Math.min(el.clientWidth * 0.78, 290);
-      setCardH(w / 0.63);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [orders === null]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Telegram back button puts a lifted card back first, then leaves the wallet
-  useEffect(() => tg.back(sel ? () => setSel(null) : onBack), [sel, onBack]);
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => tg.back(open ? () => setOpen(null) : onBack), [open, onBack]);
 
   if (error && !orders) {
     return (
-      <div className="wl-state">
+      <div className="list-state">
         <p>Couldn't load your codes.</p>
         <button className="btn btn-quiet" onClick={onRetry}>Try again</button>
       </div>
@@ -80,118 +66,56 @@ export function Wallet({ orders, error, copied, onCopy, onMark, onRetry, onShop,
   }
 
   if (!orders) {
-    return (
-      <div className="wl" ref={box}>
-        {[0, 1, 2].map((i) => (
-          <motion.div key={i} className="wl-ghost" style={{ top: i * PEEK }} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }} />
-        ))}
-      </div>
-    );
+    return <div className="list">{[0, 1, 2].map((i) => <div key={i} className="list-ghost" />)}</div>;
   }
 
   if (orders.length === 0) {
     return (
-      <div className="wl-state">
-        <motion.div className="wl-empty" initial={{ rotate: -4, y: 16, opacity: 0 }} animate={{ rotate: -4, y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 160, damping: 18 }} />
-        <p>Credit you buy lives here.</p>
+      <div className="list-state">
+        <p>Credit you buy shows up here, with its codes.</p>
         <button className="btn btn-pearl" onClick={onShop}>Choose a plan</button>
       </div>
     );
   }
 
-  const lifted = orders.find((o) => o.id === sel) ?? null;
-  // on short screens the lifted card shrinks so its codes and buttons (~230px) stay in view
-  const liftScale = Math.min(LIFT, Math.max(0.45, (h - PILE - 240) / cardH));
-  const others = orders.filter((o) => o.id !== sel);
-  const stackH = (orders.length - 1) * PEEK + cardH + 24;
-
-  function place(o: Order, i: number) {
-    if (!lifted) return { y: i * PEEK, scale: 1, opacity: 1, z: i };
-    if (o.id === lifted.id) return { y: 0, scale: liftScale, opacity: 1, z: 100 };
-    const k = Math.min(others.indexOf(o), 3);
-    return { y: h - PILE + k * 7, scale: 0.92 - k * 0.03, opacity: k > 2 ? 0 : 1, z: 10 - k };
-  }
-
-  function lift(id: string) {
-    tg.tap('light');
-    setSel((s) => (s === id ? null : id));
-  }
-
-  function release(_: unknown, info: PanInfo) {
-    if (info.offset.y > 90 || info.velocity.y > 600) { tg.tap('soft'); setSel(null); }
-  }
-
   return (
-    <div className={`wl ${lifted ? 'is-lifted' : ''}`} ref={box}>
-      <div className="wl-scroll" style={{ height: lifted ? h : Math.max(h, stackH) }}>
-        {orders.map((o, i) => {
-          const p = place(o, i);
-          const st = statusOf(o);
-          const left = o.codes?.filter((c) => !c.redeemedAt).length ?? 0;
-          const isLifted = lifted?.id === o.id;
-          return (
-            <motion.button
-              key={o.id}
-              className="wl-card"
-              style={{ zIndex: p.z, pointerEvents: lifted && !isLifted && others.indexOf(o) > 0 ? 'none' : 'auto' }}
-              initial={{ y: i * PEEK + 120, opacity: 0 }}
-              animate={{ y: p.y, scale: p.scale, opacity: p.opacity }}
-              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-              drag={isLifted ? 'y' : false}
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0.05, bottom: 0.6 }}
-              onDragEnd={release}
-              onClick={() => (lifted && !isLifted ? setSel(null) : lift(o.id))}
-              aria-label={`${o.product?.name ?? 'Claude'} ${o.plan.label ?? PLAN_LABEL[o.plan.id]}, ${fmtMoney(o.credit, o.currency)}, ${st.label}`}
-              aria-expanded={isLifted}
-            >
-              <HoloCard
-                className="wlc"
-                planId={o.plan.id}
-                label={o.plan.label}
-                product={o.product?.name}
-                store={o.store?.label}
-                credit={fmtMoney(o.credit, o.currency)}
-                term={termLabel(o.months ?? 1)}
-                reveal={o.status === 'delivered' ? 1 : 0}
-                interactive={isLifted}
-                top={<><span><b>{o.product?.name ?? 'Claude'} {o.plan.label ?? PLAN_LABEL[o.plan.id]}</b> · {day(o.createdAt)}</span><span className={`wl-tag ${st.tone}`}>{o.status === 'delivered' && o.codes?.length ? (left ? (o.codes.length > 1 ? `${left} to redeem` : 'Ready') : 'Redeemed') : st.label}</span></>}
-              />
-            </motion.button>
-          );
-        })}
-      </div>
-
-      <AnimatePresence>
-        {lifted && (
-          <motion.div
-            key={lifted.id}
-            className="wl-detail"
-            style={{ top: cardH * liftScale + 14, bottom: PILE + 10 }}
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0, transition: { delay: 0.12, type: 'spring', stiffness: 260, damping: 26 } }}
-            exit={{ opacity: 0, y: 12, transition: { duration: 0.15 } }}
-          >
-            <div className="wl-meta">
-              <span>{lifted.product?.name ?? 'Claude'} {lifted.plan.label ?? PLAN_LABEL[lifted.plan.id]}, {termLabel(lifted.months ?? 1)} · {fmtMoney(lifted.credit, lifted.currency)}</span>
-              <span className="amt"><Amount method={lifted.method} gram={lifted.gram} stars={lifted.stars} size={12} /></span>
-            </div>
-            {lifted.codes?.length ? (
-              <>
-                <RedeemCodes order={lifted} copied={copied} onCopy={onCopy} onMark={onMark} delay={0.18} />
-                <div className="wl-actions">
-                  <button className="btn btn-quiet" onClick={() => onGuide(lifted)}>How to activate</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="wl-note">{note(lifted)}</p>
-                {lifted.method !== 'stars' && (lifted.status === 'awaiting_payment' || lifted.status === 'underpaid') && <div className="memo">memo {lifted.comment}</div>}
-              </>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <ul className="list">
+      {orders.map((o, i) => {
+        const st = statusOf(o);
+        const isOpen = open === o.id;
+        const name = `${o.product?.name ?? 'Claude'} ${o.plan.label ?? PLAN_LABEL[o.plan.id]}`;
+        return (
+          <motion.li key={o.id} className={`item ${isOpen ? 'is-open' : ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 8) * 0.04 }}>
+            <button className="item-row" onClick={() => { tg.select(); setOpen(isOpen ? null : o.id); }} aria-expanded={isOpen}>
+              <span className="item-main">
+                <b>{name}</b>
+                <span>{termLabel(o.months ?? 1)} · {fmtMoney(o.credit, o.currency)} {o.store?.label ?? 'App Store'} credit · {day(o.createdAt)}</span>
+              </span>
+              <span className={`item-status ${st.tone}`}>{st.label}</span>
+            </button>
+            <AnimatePresence initial={false}>
+              {isOpen && (
+                <motion.div className="item-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}>
+                  <div className="item-inner">
+                    <p className="item-paid">Paid <span className="amt"><Amount method={o.method} gram={o.gram} stars={o.stars} size={12} /></span></p>
+                    {o.codes?.length ? (
+                      <>
+                        <RedeemCodes order={o} copied={copied} onCopy={onCopy} onMark={onMark} />
+                        <button className="text-btn" onClick={() => onGuide(o)}>How to activate</button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="item-note">{note(o)}</p>
+                        {o.method !== 'stars' && (o.status === 'awaiting_payment' || o.status === 'underpaid') && <div className="memo">memo {o.comment}</div>}
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.li>
+        );
+      })}
+    </ul>
   );
 }
