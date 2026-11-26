@@ -35,7 +35,7 @@ export interface Order {
   merchant: string | null; network: 'mainnet' | 'testnet'; receivedNano: string; paymentSeen: boolean; payload: string; status: OrderStatus; error: string | null;
   txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number; deliveredAt?: number | null;
 }
-export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; relay?: 'live' | 'test' | 'off'; testScale?: number; products: Product[]; stores: Store[] }
+export interface AppConfig { paymentMode: 'mock' | 'chain'; network: 'mainnet' | 'testnet'; merchant: string | null; supplier: string; region: string; stars: boolean; bot?: string | null; relay?: 'live' | 'test' | 'off'; testScale?: number; products: Product[]; stores: Store[] }
 
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
