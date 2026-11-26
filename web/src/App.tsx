@@ -330,6 +330,7 @@ export default function App() {
   // topping up GRAM from another chain (through Relay, into the buyer's own wallet): the coins on offer
   const [coins, setCoins] = useState<CoinRoute[]>([]);
   const [coinIcons, setCoinIcons] = useState<Record<string, string>>({});
+  const [chainIcons, setChainIcons] = useState<Record<string, string>>({});
   const coinList = useMemo(() => [...new Set(coins.map((c) => c.coin))], [coins]);
   const [topUpNeed, setTopUpNeed] = useState(0);
   const [topUpFrom, setTopUpFrom] = useState<'checkout' | 'bar'>('checkout');
@@ -337,7 +338,7 @@ export default function App() {
   const openTopUp = () => { tg.select(); setTopUpNeed(0); setTopUpFrom('bar'); setSheet('topup'); };
   useEffect(() => {
     if (!config?.relay || config.relay === 'off') return;
-    api.relayOptions().then((r) => { setCoins(r.options); setCoinIcons(r.icons ?? {}); }).catch(() => {});
+    api.relayOptions().then((r) => { setCoins(r.options); setCoinIcons(r.icons ?? {}); setChainIcons(r.chainIcons ?? {}); }).catch(() => {});
   }, [config]);
   // closing any sheet also abandons a quote still on its way, and drops the one shown
   const quoteSeq = useRef(0);
@@ -898,7 +899,7 @@ export default function App() {
 
 
       <Sheet open={sheet === 'topup'} onClose={closeSheet} label="Add GRAM">
-        <TopUp coins={coins} wallet={wallet} needGram={topUpNeed} onConnect={() => tonConnectUI.openModal()}
+        <TopUp coins={coins} icons={coinIcons} chainIcons={chainIcons} wallet={wallet} needGram={topUpNeed} onConnect={() => tonConnectUI.openModal()}
           onBack={topUpFrom === 'checkout' && view === 'home' && plan?.available ? () => openReview() : closeSheet} onToast={setToast} />
       </Sheet>
 

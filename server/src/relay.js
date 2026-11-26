@@ -116,10 +116,10 @@ export function createRelay({
   async function options() {
     const out = [];
     for (const r of offered()) {
-      try { if (await currencyOf(r)) out.push({ key: r.key, coin: r.coin, network: r.network }); } catch { /* Relay unreachable: skip */ }
+      try { if (await currencyOf(r)) out.push({ key: r.key, coin: r.coin, network: r.network, chainId: r.chainId }); } catch { /* Relay unreachable: skip */ }
     }
     // if Relay can't be reached at all, still show the list in test mode (prices just come back empty)
-    return out.length || mode !== 'test' ? out : offered().map((r) => ({ key: r.key, coin: r.coin, network: r.network }));
+    return out.length || mode !== 'test' ? out : offered().map((r) => ({ key: r.key, coin: r.coin, network: r.network, chainId: r.chainId }));
   }
 
   const routeOf = (routeKey) => {
@@ -182,5 +182,13 @@ export function createRelay({
     return readStatus(j.requests, since);
   }
 
-  return { mode, options, coinIcons, topUpAddress, estimate, status, hasKey: !!apiKey };
+  /** each network's logo (Relay's chain icon), by chain id */
+  async function chainIcons() {
+    try {
+      const chains = await chainList();
+      return Object.fromEntries([...new Set(ROUTES.map((r) => r.chainId))].map((id) => [id, chains.get(id)?.iconUrl]).filter(([, u]) => u));
+    } catch { return {}; }
+  }
+
+  return { mode, options, coinIcons, chainIcons, topUpAddress, estimate, status, hasKey: !!apiKey };
 }
