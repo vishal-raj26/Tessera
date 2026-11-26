@@ -188,6 +188,12 @@ html, body, #root { background: var(--void); }
 .ob-copy h1 { font-size: 32px; font-weight: 600; letter-spacing: -0.055em; line-height: 1.08; margin: 0 0 10px; }
 .ob-copy p { margin: 0 auto; max-width: 300px; font-size: 15px; line-height: 1.45; color: var(--mute); }
 .ob-foot { padding: 8px var(--pad) max(20px, env(safe-area-inset-bottom)); display: grid; gap: 18px; }
+.ob-wallet { position: relative; width: 168px; height: 168px; border-radius: 44px; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, rgba(48, 161, 245, 0.22), rgba(48, 161, 245, 0.04) 70%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 30px 80px -30px rgba(48, 161, 245, 0.55); will-change: transform; }
+.ob-wallet .gram-ic { filter: drop-shadow(0 10px 24px rgba(48, 161, 245, 0.45)); }
+.ob-wallet-ok { position: absolute; right: -6px; bottom: -6px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--void); box-shadow: 0 0 0 4px var(--void); }
+.ob-actions { display: grid; gap: 14px; justify-items: center; }
+.ob-actions .btn { width: 100%; }
+.ob-later { font-size: 15px; color: var(--mute); text-decoration: none; }
 .ob-dots { display: flex; justify-content: center; gap: 2px; }
 .ob-dots button { padding: 6px 3px; }
 .ob-dots i { display: block; height: 6px; border-radius: 3px; background: var(--ink); }

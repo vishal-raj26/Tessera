@@ -1,14 +1,17 @@
 // First-run intro: three calm pages on black, each with a real render of the card (made in Blender,
-// design/card3d), a short headline and one button. Swipe or tap Continue; Skip leaves at once.
+// design/card3d), a short headline and one button, then a last page that connects the TON wallet
+// (or leaves it for later; Stars need no wallet). Swipe or tap Continue; Skip leaves at once.
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type PanInfo } from 'framer-motion';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { Emblem } from './Emblem';
+import { GramIcon } from './GramIcon';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
 const BG = '#0a0a0a';
 
-interface Page { img: string; alt: string; title: string; body: string; pull?: boolean }
+interface Page { img: string; alt: string; title: string; body: string; pull?: boolean; wallet?: boolean }
 
 const PAGES: Page[] = [
   {
@@ -26,13 +29,29 @@ const PAGES: Page[] = [
     title: 'Your code, in seconds.',
     body: 'You get App Store or Google Play credit. Redeem it, then subscribe in the app.',
   },
+  {
+    img: '', alt: '', wallet: true,
+    title: 'Connect your wallet.',
+    body: 'Link your TON wallet to pay in GRAM. Paying with Stars needs no wallet.',
+  },
 ];
+
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [i, setI] = useState(0);
   const [dir, setDir] = useState(1);
   const p = PAGES[i];
   const last = i === PAGES.length - 1;
+  const [tonConnectUI] = useTonConnectUI();
+  const address = useTonAddress();
+  // once the wallet is linked on the last page, say so and leave on its own
+  useEffect(() => {
+    if (!p.wallet || !address) return;
+    tg.notify('success');
+    const t = setTimeout(() => finishRef.current(), 1400);
+    return () => clearTimeout(t);
+  }, [p.wallet, address]);
 
   // the card leans a little with the finger or the phone
   const rawX = useMotionValue(0);
@@ -50,6 +69,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   useEffect(() => { tg.chrome(BG); }, []);
 
   const finish = useCallback(() => { tg.chrome(BG); onDone(); }, [onDone]);
+  const finishRef = useRef(finish);
+  finishRef.current = finish;
   const go = useCallback((n: number) => {
     if (n < 0) return;
     if (n >= PAGES.length) { finish(); return; }
@@ -80,12 +101,25 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             exit={{ opacity: 0, x: dir * -50, rotate: dir * -4 }}
             transition={{ duration: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
           >
-            <motion.img
-              src={`${BASE}models/${p.img}.webp`} alt={p.alt} draggable={false}
-              style={{ rotateX, rotateY }}
-              animate={p.pull ? { y: [0, 34, 0] } : { y: [0, -6, 0] }}
-              transition={p.pull ? { duration: 2.6, repeat: Infinity, ease: [0.45, 0, 0.25, 1], repeatDelay: 0.4 } : { duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-            />
+            {p.wallet ? (
+              <motion.div className={`ob-wallet ${address ? 'on' : ''}`} style={{ rotateX, rotateY }} animate={{ y: [0, -6, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}>
+                <GramIcon size={88} />
+                <AnimatePresence>
+                  {address && (
+                    <motion.span className="ob-wallet-ok" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 420, damping: 22 }} aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            ) : (
+              <motion.img
+                src={`${BASE}models/${p.img}.webp`} alt={p.alt} draggable={false}
+                style={{ rotateX, rotateY }}
+                animate={p.pull ? { y: [0, 34, 0] } : { y: [0, -6, 0] }}
+                transition={p.pull ? { duration: 2.6, repeat: Infinity, ease: [0.45, 0, 0.25, 1], repeatDelay: 0.4 } : { duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -93,8 +127,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       <div className="ob-copy">
         <AnimatePresence mode="wait">
           <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3 }}>
-            <h1>{p.title}</h1>
-            <p>{p.body}</p>
+            <h1>{p.wallet && address ? 'Wallet connected.' : p.title}</h1>
+            <p>{p.wallet && address ? short(address) : p.body}</p>
           </motion.div>
         </AnimatePresence>
       </div>
@@ -107,9 +141,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </button>
           ))}
         </div>
-        <motion.button className="btn btn-pearl" onClick={() => { tg.tap('medium'); go(i + 1); }} whileTap={{ scale: 0.97 }}>
-          {last ? 'Get started' : 'Continue'}
-        </motion.button>
+        {p.wallet && !address ? (
+          <div className="ob-actions">
+            <motion.button className="btn btn-pearl" onClick={() => { tg.tap('medium'); tonConnectUI.openModal(); }} whileTap={{ scale: 0.97 }}>
+              Connect wallet
+            </motion.button>
+            <button className="link ob-later" onClick={finish}>Not now</button>
+          </div>
+        ) : (
+          <motion.button className="btn btn-pearl" onClick={() => { tg.tap('medium'); go(i + 1); }} whileTap={{ scale: 0.97 }}>
+            {last ? 'Get started' : 'Continue'}
+          </motion.button>
+        )}
       </div>
     </motion.div>
   );
