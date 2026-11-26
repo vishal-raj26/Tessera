@@ -12,7 +12,8 @@
          smooth while the app loads underneath; the app fades it out (App.tsx) after a full lap, once ready. */
       #splash { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: #0a0a0a; transition: opacity 0.4s ease-out; }
       #splash.gone { opacity: 0; pointer-events: none; }
-      .mark { position: relative; width: 90px; height: 90px; color: #e8875f; }
+      /* drawn at 90 px and shown at 110 px */
+      .mark { position: relative; width: 90px; height: 90px; color: #e8875f; transform: scale(1.2222); }
       .mark i { position: absolute; left: 31.6px; top: 31.6px; width: 26.8px; height: 26.8px; transform: translate(var(--x), var(--y)); }
       .mark i::before, .mark i::after { content: ''; position: absolute; inset: 0; box-sizing: border-box; border-radius: 7.4px; transform: rotate(45deg); }
       .mark i::before { border: 4.9px solid currentColor; }
