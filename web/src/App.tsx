@@ -15,7 +15,7 @@ import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
 import { rememberTiers } from './tiers';
 import { CountUp } from './components/CountUp';
-import { latestCoverage } from './coverage';
+import { coverDays, latestCoverage } from './coverage';
 import { pricesShown, renewStep, type RenewTarget } from './renew';
 import { shownBalance } from './balance';
 import { createMarkQueue } from './markQueue';
@@ -27,9 +27,10 @@ import { Aurora, type AuroraInputs } from './components/Aurora';
 import { Tally } from './components/Tally';
 import { PULL } from './components/PlanCarousel';
 import { TopUp } from './components/TopUp';
+import { Menu } from './components/Menu';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
-type SheetName = null | 'review' | 'guide' | 'topup';
+type SheetName = null | 'review' | 'guide' | 'topup' | 'menu';
 
 const rise = (delay = 0) => ({
   initial: { opacity: 0, y: 12 },
@@ -300,6 +301,9 @@ export default function App() {
   // topping up GRAM from another chain (through Relay, into the buyer's own wallet): the coins on offer
   const [coins, setCoins] = useState<CoinRoute[]>([]);
   const [topUpNeed, setTopUpNeed] = useState(0);
+  const [topUpFrom, setTopUpFrom] = useState<'checkout' | 'bar'>('checkout');
+  const canTopUp = coins.length > 0 && config?.relay !== 'off';
+  const openTopUp = () => { tg.select(); setTopUpNeed(0); setTopUpFrom('bar'); setSheet('topup'); };
   useEffect(() => {
     if (!config?.relay || config.relay === 'off') return;
     api.relayOptions().then((r) => setCoins(r.options)).catch(() => {});
@@ -546,6 +550,24 @@ export default function App() {
     </button>
   ) : null;
 
+  // returning buyers: the plan they have, at the top of the home screen, with how long it has left
+  const planCard = cover ? (() => {
+    const total = coverDays(cover.order.months ?? 1);
+    const left = Math.max(0, Math.min(1, cover.daysLeft / total));
+    const soon = cover.daysLeft <= 7;
+    return (
+      <motion.button className={`plan-card ${soon ? 'is-soon' : ''}`} onClick={renew} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+        <span className="pc-main">
+          <small>Your plan</small>
+          <b>{planName(cover.order.product?.name, { ...cover.order.plan, label: cover.order.plan.label ?? PLAN_LABEL[cover.order.plan.id] })}</b>
+          <span className="pc-days">{cover.daysLeft > 1 ? `${cover.daysLeft} days left` : cover.daysLeft === 1 ? 'Runs out tomorrow' : cover.daysLeft === 0 ? 'Runs out today' : `Ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}</span>
+          <i className="pc-bar" aria-hidden="true"><i style={{ width: `${left * 100}%` }} /></i>
+        </span>
+        <span className="pc-renew">Renew</span>
+      </motion.button>
+    );
+  })() : null;
+
   return (
     <>
       <div className="atmos" aria-hidden="true">
@@ -564,15 +586,16 @@ export default function App() {
           balance={balance}
           codesCount={codesLeft}
           onCodes={openOrders}
-          onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : undefined}
           active={view === 'wallet'}
-          onWallet={() => (wallet ? confirm('Disconnect wallet?') && tonConnectUI.disconnect() : tonConnectUI.openModal())}
+          onMenu={() => { tg.select(); setSheet('menu'); }}
+          onConnect={() => tonConnectUI.openModal()}
+          onTopUp={canTopUp ? openTopUp : undefined}
         />
 
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={renewNotice} onHowItWorks={() => setIntro(true)} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} payWith={payWith} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
@@ -801,7 +824,7 @@ export default function App() {
               <button className="topup-link" onClick={() => {
                 tg.select();
                 setTopUpNeed(shown?.gram ? Math.max(0, shown.gram - (balance ?? 0)) : 0);
-                quoteSeq.current++; setSheet('topup');
+                quoteSeq.current++; setTopUpFrom('checkout'); setSheet('topup');
               }}>
                 <span>{balance != null && shown?.gram != null && balance < shown.gram ? 'Not enough GRAM?' : 'No GRAM?'} Top up with {[...new Set(coins.map((c) => c.coin))].slice(0, 3).join(', ')}…</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
@@ -835,9 +858,19 @@ export default function App() {
         )}
       </Sheet>
 
+      <Sheet open={sheet === 'menu'} onClose={closeSheet} label="Menu">
+        <Menu wallet={wallet} codesCount={codesLeft} canTopUp={canTopUp}
+          onCodes={() => { closeSheet(); openOrders(); }}
+          onTopUp={openTopUp}
+          onHowItWorks={() => { closeSheet(); setIntro(true); }}
+          onHelp={() => { tg.select(); if (config?.bot) tg.openTelegramLink(`https://t.me/${config.bot}`); else setToast('Write to us in the bot chat'); }}
+          onConnect={() => { closeSheet(); tonConnectUI.openModal(); }}
+          onDisconnect={() => { closeSheet(); tonConnectUI.disconnect(); }} />
+      </Sheet>
+
       <Sheet open={sheet === 'topup'} onClose={closeSheet} label="Top up GRAM">
         <TopUp coins={coins} wallet={wallet} needGram={topUpNeed} onConnect={() => tonConnectUI.openModal()}
-          onBack={view === 'home' && plan?.available ? () => openReview() : closeSheet} onToast={setToast} />
+          onBack={topUpFrom === 'checkout' && view === 'home' && plan?.available ? () => openReview() : closeSheet} onToast={setToast} />
       </Sheet>
 
       <Sheet open={sheet === 'guide'} onClose={closeSheet} label="How to activate">

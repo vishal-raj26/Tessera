@@ -170,10 +170,17 @@ app.get('/tonconnect-manifest.json', (req, res) => {
 
 app.get('/healthz', (req, res) => res.json({ ok: true, network: NETWORK, payments: PAYMENT_MODE, gram: rateStatus(), supplier: { name: SUPPLIER.name, live: SUPPLIER.live, snapshots: SUPPLIER.status() } }));
 
+// the bot's @username, for the app's Help (it opens the bot chat, where buyers' messages reach the admins)
+let BOT_USERNAME = null;
+if (process.env.BOT_TOKEN) {
+  fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getMe`).then((r) => r.json())
+    .then((j) => { BOT_USERNAME = j?.result?.username ?? null; }).catch(() => {});
+}
+
 app.get('/api/config', (req, res) => {
   const testScale = NETWORK === 'testnet' ? Number(process.env.TEST_PRICE_SCALE || 1) : 1;
   res.json({
-    paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, relay: RELAY_MODE, supplier: SUPPLIER.name, supplierLive: SUPPLIER.live, region: STORE_REGION, stars: STARS, testScale,
+    paymentMode: PAYMENT_MODE, network: NETWORK, merchant: MERCHANT_FRIENDLY, relay: RELAY_MODE, supplier: SUPPLIER.name, supplierLive: SUPPLIER.live, region: STORE_REGION, stars: STARS, testScale, bot: BOT_USERNAME,
     products: enabledProducts().map((p) => ({ id: p.id, name: p.name, app: p.app })),
     stores: Object.values(STORES),
   });

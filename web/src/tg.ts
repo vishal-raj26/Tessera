@@ -23,6 +23,7 @@ interface TgWebApp {
   setBackgroundColor?(c: string): void;
   setBottomBarColor?(c: string): void;
   openLink?(url: string): void;
+  openTelegramLink?(url: string): void;
   openInvoice?(url: string, cb?: (status: InvoiceStatus) => void): void;
   isVersionAtLeast?(v: string): boolean;
   MainButton?: BottomButton;
@@ -140,6 +141,11 @@ export const tg = {
   },
   openLink(url: string) {
     if (inTelegram && wa?.openLink) wa.openLink(url);
+    else window.open(url, '_blank', 'noopener');
+  },
+  /** a t.me link, opened inside Telegram (a chat, a bot) */
+  openTelegramLink(url: string) {
+    if (inTelegram && wa?.openTelegramLink) wa.openTelegramLink(url);
     else window.open(url, '_blank', 'noopener');
   },
   /** Per-user flag stored in Telegram CloudStorage (follows the user across devices), with localStorage fallback. */
