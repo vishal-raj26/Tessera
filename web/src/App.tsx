@@ -30,6 +30,7 @@ import { CoinStack } from './components/CoinStack';
 import { RegionPop, RegionSheet } from './components/Region';
 import { WalletSheet } from './components/WalletSheet';
 import { Profile } from './components/Profile';
+import { Dock } from './components/Dock';
 
 type View = 'home' | 'paying' | 'done' | 'wallet' | 'me';
 type SheetName = null | 'review' | 'guide' | 'topup' | 'region';
@@ -632,7 +633,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'home' && browsing && (
             <motion.main key="store" className="home" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
-              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard} onHowItWorks={() => setIntro(true)} codesCount={codesLeft} onCodes={openOrders} onMe={openMe} onHelp={config?.bot ? () => tg.openTelegramLink(`https://t.me/${config.bot}`) : undefined} />
+              <Showcase products={products.length ? products : [{ id: 'claude', name: 'Claude' }]} plans={allPlans} onPick={pickProduct} notice={planCard} />
             </motion.main>
           )}
           {view === 'home' && !browsing && (
@@ -829,6 +830,13 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>}
+
+      {intro === false && (() => {
+        // the bottom bar, on the main screens only (not inside one app's plans, or while paying)
+        const tab = view === 'home' && browsing ? 'home' : view === 'wallet' ? 'codes' : view === 'me' ? 'me' : null;
+        return tab && <Dock active={tab} codesCount={codesLeft}
+          onHome={() => { setBrowsing(true); toHome(); }} onCodes={openOrders} onGuide={() => setIntro(true)} onMe={openMe} />;
+      })()}
 
       <Sheet open={sheet === 'review'} onClose={closeSheet} label="Review payment">
         {plan?.available && term && shown && (

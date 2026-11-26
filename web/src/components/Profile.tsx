@@ -1,13 +1,15 @@
 // Your dashboard: who you are (your Telegram photo, name and @username, when you joined), your invite
 // link with what it has earned you, and what you've done here (purchases, spent, credit received, apps).
-// Store country, wallet, codes and your plan live in the top bar, the dock and the home screen, so they
-// aren't repeated here.
+// Store country, wallet, codes and your plan live in the top bar, the bottom bar and the home screen, so
+// they aren't repeated here. Settings holds Help & support.
 import { motion } from 'framer-motion';
 import { fmtGram, fmtMoney, type Order, type Referral } from '../api';
 import { GramIcon } from './GramIcon';
 import { tg } from '../tg';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
+// where Help & support goes: the founder's Telegram
+const SUPPORT = 'https://t.me/vixxance';
 const day = (t: number) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 const rise = (delay: number) => ({ initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { delay, duration: 0.4 } });
 
@@ -68,6 +70,19 @@ export function Profile({ history, joinedAt, referral, onCopied }: Props) {
           </div>
         </motion.section>
       )}
+
+      <motion.section className="me-sec" {...rise(0.22)}>
+        <p className="me-label">Settings</p>
+        <div className="me-rows">
+          <button onClick={() => { tg.tap('light'); tg.openTelegramLink(SUPPORT); }}>
+            <span className="me-row-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 7A2.5 2.5 0 0 1 7 4.5h10A2.5 2.5 0 0 1 19.5 7v7a2.5 2.5 0 0 1-2.5 2.5h-6l-4.5 3.5v-3.5H7A2.5 2.5 0 0 1 4.5 14Z" /><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01" strokeWidth="2.4" /></svg>
+            </span>
+            <span className="me-row-text"><b>Help & support</b><small>Message @vixxance on Telegram</small></span>
+            <svg className="me-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+          </button>
+        </div>
+      </motion.section>
     </div>
   );
 }
