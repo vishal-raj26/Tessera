@@ -26,7 +26,9 @@ interface Props {
 }
 
 export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, onConnect, onBack, onToast }: Props) {
-  const [route, setRoute] = useState<string | null>(() => { try { return localStorage.getItem('coin'); } catch { return null; } });
+  // nothing chosen when the sheet opens: first a coin, then (if it's on more than one) its network
+  const [coin, setCoin] = useState<string | null>(null);
+  const [route, setRoute] = useState<string | null>(null);
   const picked = coins.find((c) => c.key === route) ?? null;
   const [addr, setAddr] = useState<TopUpAddr | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -56,10 +58,18 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
     return () => clearInterval(id);
   }, [addr, state]);
 
-  const pick = (k: string) => { tg.select(); setRoute(k); try { localStorage.setItem('coin', k); } catch { /* ignore */ } };
+  // tap a coin: its only network is taken at once; with several, they appear to pick from. Tap it again to unpick.
+  const pickCoin = (c: string) => {
+    tg.select();
+    if (c === coin) { setCoin(null); setRoute(null); setAddr(null); setErr(null); return; }
+    const on = coins.filter((x) => x.coin === c);
+    setCoin(c); setAddr(null); setErr(null);
+    setRoute(on.length === 1 ? on[0].key : null);
+  };
+  const pickNet = (k: string) => { tg.select(); setRoute(k); };
   const copy = (t: string, what: string) => navigator.clipboard?.writeText(t).then(() => { onToast(`${what} copied`); tg.notify('success'); }).catch(() => onToast('Press and hold to copy'));
   const list = [...new Set(coins.map((c) => c.coin))];
-  const nets = picked ? coins.filter((c) => c.coin === picked.coin) : [];
+  const nets = coin ? coins.filter((c) => c.coin === coin) : [];
 
   return (
     <div className="st topup">
@@ -81,10 +91,10 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
         <>
           <section className="tu-step">
             <p className="tu-label">Coin</p>
-            <div className={`tu-grid coins ${picked ? 'has-pick' : ''}`} role="radiogroup" aria-label="Coin">
+            <div className={`tu-grid coins ${coin ? 'has-pick' : ''}`} role="radiogroup" aria-label="Coin">
               {list.map((c) => (
-                <button key={c} type="button" role="radio" aria-checked={picked?.coin === c} className={picked?.coin === c ? 'on' : ''}
-                  onClick={() => pick(coins.find((x) => x.coin === c)!.key)}>
+                <button key={c} type="button" role="radio" aria-checked={coin === c} className={coin === c ? 'on' : ''}
+                  onClick={() => pickCoin(c)}>
                   <Logo src={icons[c]} label={c} big />
                   <span>{c}</span>
                 </button>
@@ -94,11 +104,11 @@ export function TopUp({ coins, icons = {}, chainIcons = {}, wallet, needGram, on
 
           <AnimatePresence initial={false}>
             {nets.length > 1 && (
-              <motion.section key={picked?.coin} className="tu-step" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
+              <motion.section key={coin} className="tu-step" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
                 <p className="tu-label">Network</p>
                 <div className={`tu-grid nets ${route && nets.some((n) => n.key === route) ? 'has-pick' : ''}`} role="radiogroup" aria-label="Network">
                   {nets.map((n) => (
-                    <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pick(n.key)}>
+                    <button key={n.key} type="button" role="radio" aria-checked={route === n.key} className={route === n.key ? 'on' : ''} onClick={() => pickNet(n.key)}>
                       <Logo src={n.chainId != null ? chainIcons[n.chainId] : undefined} label={n.network} />
                       <span>{n.network}</span>
                     </button>
