@@ -38,7 +38,7 @@ export function RegionPop({ regions, value, onPick }: { regions: Region[]; value
     <div className="pop-region">
       <div className="pop-head">
         <b>Store country</b>
-        <small>Where your App Store or Google Play account is</small>
+        <small>Your App Store or Google Play country</small>
       </div>
       <div className="pop-rows" role="radiogroup" aria-label="Store country">
         {regions.map((r) => (
