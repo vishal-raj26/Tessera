@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { CHAIN, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type Region, type PayMethod, type CoinRoute, type Plan, type Quote, type StoreId } from './api';
+import { api, fmtGram, fmtStars, fmtMoney, termLabel, planName, type AppConfig, type Order, type Region, type PayMethod, type CoinRoute, type Plan, type Quote, type Referral, type StoreId } from './api';
 import { tg } from './tg';
 import { PLAN_LABEL } from './components/HoloCard';
 import { PlanCarousel } from './components/PlanCarousel';
@@ -137,6 +137,9 @@ export default function App() {
   useEffect(() => { tg.getValue('region').then((v) => { if (v && v !== regionRef.current) setRegionState(v); }); }, []);
   const [regions, setRegions] = useState<Region[]>([]);
   const [joinedAt, setJoinedAt] = useState<number | null>(null);
+  const [referral, setReferral] = useState<Referral | null>(null);
+  // fresh numbers each time the dashboard opens
+  useEffect(() => { if (view === 'me') api.referral().then(setReferral).catch(() => {}); }, [view]);
 
   const [bootErr, setBootErr] = useState(false);
   const store: StoreId = storesPriced[storePick] ? storePick : 'appstore';
@@ -152,7 +155,8 @@ export default function App() {
       .then(async (c) => {
         setConfig(c);
         api.regions().then(setRegions).catch(() => {});
-        api.me().then((m) => setJoinedAt(m.joinedAt)).catch(() => {});
+        // me() first: opening through a friend's link is recorded there, before the referral card loads
+        api.me().then((m) => setJoinedAt(m.joinedAt)).catch(() => {}).finally(() => api.referral().then(setReferral).catch(() => {}));
         const rc = regionRef.current ?? c.region;
         let cat = await api.catalog(rc, storePick);
         // the preferred store has nothing priced (e.g. Google Play not set up yet): use the App Store
@@ -246,7 +250,10 @@ export default function App() {
 
   // a purchase just delivered: refresh the buyer's orders so the header and the codes badge include it
   useEffect(() => {
-    if (order?.status === 'delivered') api.orders().then(setHistory).catch(() => {});
+    if (order?.status === 'delivered') {
+      api.orders().then(setHistory).catch(() => {});
+      api.referral().then(setReferral).catch(() => {}); // credit this order used is gone now
+    }
   }, [order?.id, order?.status]);
 
 
@@ -323,6 +330,9 @@ export default function App() {
   // how to pay: the buyer's last choice, but only offer what this plan can be paid with right now
   const [method, setMethod] = useState<PayMethod>(() => { try { return localStorage.getItem('pay') === 'stars' ? 'stars' : 'gram'; } catch { return 'gram'; } });
   const payWith: PayMethod = !config?.stars || !term?.stars ? 'gram' : term?.gram == null ? 'stars' : method;
+  // referral credit comes off GRAM prices: what's left to send from the wallet
+  const refOff = payWith === 'gram' && heldOk?.refCredit ? heldOk.refCredit : 0;
+  const payGram = refOff && heldOk?.payGram != null ? heldOk.payGram : shown?.gram ?? null;
   const bothMethods = !!config?.stars && term?.gram != null && term?.stars != null;
   function chooseMethod(m: PayMethod) {
     if (m === method) return;
@@ -492,6 +502,12 @@ export default function App() {
         setWalletSent(true);
         tg.tap('medium');
         await api.mockPay(o.id);
+      } else if (o.amountNano === '0') {
+        // invite credit covered the whole price: nothing to send, the order is already paid
+        tg.notify('success');
+        setWalletSent(true);
+        setSheet(null);
+        setView('paying');
       } else if (config.paymentMode === 'chain' && o.merchant) {
         await tonConnectUI.sendTransaction({
           validUntil: Math.floor(o.expiresAt / 1000),
@@ -816,8 +832,7 @@ export default function App() {
 
           {view === 'me' && (
             <motion.main key="me" className="me-view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Profile history={history} joinedAt={joinedAt} codesLeft={codesLeft} region={regions.find((r) => r.code === region) ?? null} wallet={wallet} plan={planCard}
-                onCodes={openOrders} onRegion={() => { tg.select(); setPop('region'); }} onWallet={() => (wallet ? setPop('wallet') : tonConnectUI.openModal())} />
+              <Profile history={history} joinedAt={joinedAt} referral={referral} onCopied={setToast} />
             </motion.main>
           )}
 
@@ -854,7 +869,7 @@ export default function App() {
             {/* what you're buying, then what it costs: the one number that matters, large */}
             <div className="sheet-head">
               <p className="eyebrow">{planName(plan.product?.name, plan)} · {termLabel(shown.months)}</p>
-              <div className="total amt"><Amount method={payWith} gram={shown.gram} stars={shown.stars} size={28} /></div>
+              <div className="total amt"><Amount method={payWith} gram={payGram} stars={shown.stars} size={28} /></div>
             </div>
             {shown.months > 1 && (
               <p className="term-note">
@@ -876,10 +891,10 @@ export default function App() {
             {payWith === 'gram' && coins.length > 0 && config?.relay !== 'off' && (
               <button className="topup-link" onClick={() => {
                 tg.select();
-                setTopUpNeed(shown?.gram ? Math.max(0, shown.gram - (balance ?? 0)) : 0);
+                setTopUpNeed(payGram ? Math.max(0, payGram - (balance ?? 0)) : 0);
                 quoteSeq.current++; setTopUpFrom('checkout'); setSheet('topup');
               }}>
-                <span>{balance != null && shown?.gram != null && balance < shown.gram ? 'Not enough GRAM?' : 'No GRAM?'} <b>Add GRAM</b></span>
+                <span>{balance != null && payGram != null && balance < payGram ? 'Not enough GRAM?' : 'No GRAM?'} <b>Add GRAM</b></span>
                 <CoinStack coins={coinList} icons={coinIcons} size={18} />
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
               </button>
@@ -890,6 +905,9 @@ export default function App() {
                 <dt>{shown.annual ? 'Yearly plan in the app' : 'Plan price in the app'}</dt>
                 <dd>{shown.months > 1 && !shown.annual ? `${shown.months} × ${fmtMoney(shown.monthly, shown.currency)}` : fmtMoney(shown.appPrice, shown.currency)}</dd>
               </div>
+              {refOff > 0 && (
+                <div className="row row-ref"><dt>Invite credit</dt><dd>−{fmtGram(refOff)}<GramIcon size={13} /></dd></div>
+              )}
             </dl>
             <label className="agree">
               <input type="checkbox" checked={agree} onChange={(e) => { tg.select(); setAgree(e.target.checked); }} />

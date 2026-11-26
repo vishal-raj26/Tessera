@@ -10,10 +10,11 @@ import { requiredCredit, usableCards, pickPackages, SupplierUnavailable } from '
 import { cachedSupplier } from './supplier/cache.js';
 import { mockSupplier } from './supplier/mock.js';
 import { bitrefillSupplier } from './supplier/bitrefill.js';
-import { orders, payments, settings } from './db.js';
+import { db, orders, payments, settings } from './db.js';
+import { createReferrals } from './referrals.js';
 import { gramUsd, refreshRate, startRateFeed, rateStatus, rateAgeMs, RATE_MAX_AGE_MS, commentPayload, recentIncoming, walletBalance, normalize, friendly, NETWORK } from './chain.js';
 import { createRelay } from './relay.js';
-import { createEngine } from './engine.js';
+import { createEngine, LATE_MS } from './engine.js';
 import { startApplePriceSync } from './applePrices.js';
 import { startPaymentStream } from './stream.js';
 import { startAdminBot } from './bot.js';
@@ -27,6 +28,13 @@ const SUPPLIER = cachedSupplier(process.env.SUPPLIER === 'bitrefill' ? bitrefill
 const PAYMENT_MODE = process.env.PAYMENT_MODE || 'mock'; // mock | chain
 const MERCHANT = process.env.MERCHANT_WALLET || '';
 const MARGIN = Number(process.env.MARGIN ?? 0.08);
+// Referrals: a referrer earns REF_SHARE of our margin on each delivered GRAM purchase of a friend they
+// brought, as GRAM credit (capped at REF_MONTHLY_CAP_USD a month). REF_SHARE=0 turns rewards off.
+const referrals = createReferrals({
+  db, margin: MARGIN, normalize,
+  share: Number(process.env.REF_SHARE ?? 0.25),
+  monthlyCapUsd: Number(process.env.REF_MONTHLY_CAP_USD ?? 25),
+});
 // The App Store country we sell credit for. Set by you, never shown to users.
 const STORE_REGION = String(process.env.STORE_REGION || 'US').toUpperCase();
 const QUOTE_TTL_MS = 20 * 60 * 1000;
@@ -239,6 +247,9 @@ const publicOrder = (o) => o && {
   stars: o.stars,
   gram: fromNano(o.amount_nano),
   amountNano: o.amount_nano,
+  // referral credit that came off this order (GRAM), and the price before it
+  refCredit: fromNano(o.ref_credit_nano || '0'),
+  fullGram: fromNano(o.gross_nano || o.amount_nano),
   comment: o.comment,
   merchant: MERCHANT_FRIENDLY,
   network: NETWORK,
@@ -326,7 +337,10 @@ app.post('/api/quotes', telegramAuth, async (req, res) => {
   const expiresAt = Date.now() + QUOTE_TTL_MS;
   quotes.set(id, { ...q, user: String(req.tgUser.id), expiresAt });
   // planId, store and region say exactly what this price is for, so the app can match it to the open review
-  res.json({ id, expiresAt, planId: q.planId, store: q.store, region: q.regionCode, months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, needed: q.needed, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd });
+  // referral credit the buyer has, as much of it as this GRAM price can use (the order takes it)
+  const refNano = q.amountNano ? [referrals.balanceNano(req.tgUser.id), BigInt(q.amountNano)].reduce((a, b) => (a < b ? a : b)) : 0n;
+  res.json({ id, expiresAt, planId: q.planId, store: q.store, region: q.regionCode, months: q.months, label: termLabel(q.months), annual: q.annual, monthly: q.monthly, appPrice: q.appPrice, needed: q.needed, currency: q.currency, credit: q.credit, codes: q.codes, gram: q.gram, stars: q.stars, usd: q.usd,
+    refCredit: refNano > 0n ? fromNano(refNano) : 0, payGram: q.amountNano ? fromNano(BigInt(q.amountNano) - refNano) : null });
 });
 
 app.post('/api/orders', telegramAuth, async (req, res) => {
@@ -346,11 +360,14 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
   const now = Date.now();
   const id = crypto.randomUUID();
   const memo = 'TS-' + crypto.randomBytes(5).toString('hex').toUpperCase();
+  // GRAM orders use the buyer's referral credit first (all of it, up to the price)
+  const refNano = method === 'gram' ? referrals.reserve(req.tgUser.id, id, q.amountNano) : 0n;
+  const payNano = method === 'gram' ? (BigInt(q.amountNano) - refNano).toString() : '0';
   orders.insert({
     id, tgUserId: String(req.tgUser.id), wallet: wallet || null, region: code, planId,
     packages: q.packages, faceValue: q.credit, currency: q.currency, costUsd: q.costUsd,
     // a held quote keeps its own deadline, but the buyer always gets at least 10 minutes to pay
-    amountNano: method === 'gram' ? q.amountNano : '0', comment: memo, createdAt: now,
+    amountNano: payNano, grossNano: method === 'gram' ? q.amountNano : null, refCreditNano: refNano.toString(), comment: memo, createdAt: now,
     expiresAt: useHeld ? Math.max(held.expiresAt, now + 10 * 60e3) : now + QUOTE_TTL_MS,
     method, stars: method === 'stars' ? q.stars : null, months, store,
   });
@@ -363,6 +380,11 @@ app.post('/api/orders', telegramAuth, async (req, res) => {
       orders.transition(id, 'awaiting_payment', 'expired');
       return res.status(502).json({ error: "Couldn't start the Stars payment. Try again." });
     }
+  }
+  // credit covered all of it: nothing to send, so it's paid now
+  if (method === 'gram' && payNano === '0' && orders.transition(id, 'awaiting_payment', 'paid')) {
+    orders.update(id, { tx_hash: `credit:${id}` });
+    await engine.fulfil(id);
   }
   res.json({ ...publicOrder(orders.get(id)), invoiceLink });
 });
@@ -385,10 +407,25 @@ app.get('/api/me', telegramAuth, (req, res) => {
   const uid = String(req.tgUser.id);
   const key = `joined:${uid}`;
   let joined = Number(settings.get(key)) || 0;
-  const first = orders.byUser(uid).reduce((m, o) => Math.min(m, o.created_at), Infinity);
+  const mine = orders.byUser(uid);
+  // opened through a friend's link: a brand-new user (never seen, no orders) becomes theirs
+  if (req.tgStart) referrals.claim(uid, req.tgStart, { isNew: !joined && !mine.length });
+  const first = mine.reduce((m, o) => Math.min(m, o.created_at), Infinity);
   const at = Math.min(joined || Date.now(), Number.isFinite(first) ? first : Date.now());
   if (at !== joined) { joined = at; settings.set(key, String(joined)); }
   res.json({ joinedAt: joined });
+});
+
+// The buyer's referral card: their link, how many friends joined and bought, and their credit.
+app.get('/api/referral', telegramAuth, (req, res) => {
+  const s = referrals.stats(req.tgUser.id);
+  // MINIAPP_LINK (e.g. https://t.me/TesseraBot/app) if set, else the bot's main Mini App
+  const base = process.env.MINIAPP_LINK || (BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null);
+  res.json({
+    link: base ? `${base}?startapp=ref_${s.code}` : null,
+    code: s.code, invited: s.invited, bought: s.bought, share: s.share, margin: MARGIN,
+    earned: fromNano(s.earnedNano), balance: fromNano(s.balanceNano),
+  });
 });
 
 app.get('/api/orders', telegramAuth, (req, res) => {
@@ -485,8 +522,24 @@ const engine = createEngine({
   payments,
   supplier: SUPPLIER,
   fetchIncoming: PAYMENT_MODE === 'chain' ? () => recentIncoming(MERCHANT, 100, flagRejected) : null,
-  notify: (e) => bot.notify(e),
+  notify: (e) => { onOrderEvent(e); return bot.notify(e); },
 });
+
+// Referral bookkeeping on order events: a delivered order rewards whoever referred its buyer; a refunded
+// one gives back any credit it used.
+function onOrderEvent(e) {
+  try {
+    if (e.type === 'delivered') {
+      const r = referrals.reward(orders.get(e.order.id));
+      if (r) bot.notify({ type: 'referral_reward', referrer: r.referrer, gram: fromNano(r.nano) });
+    }
+    if (e.type === 'refunded') referrals.release(e.order.id);
+  } catch (err) { console.error('[referrals]', err); }
+}
+// an order that expired unpaid (and is past the late-payment window) gives its credit back
+setInterval(() => {
+  try { for (const o of orders.expiredWithCredit(Date.now() - LATE_MS)) referrals.release(o.id); } catch (e) { console.error(e); }
+}, 10 * 60e3);
 
 // A transfer with an order memo that the strict credit check rejected: tell a person once, never auto-pay.
 function flagRejected(t) {

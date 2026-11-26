@@ -96,6 +96,7 @@ html, body, #root { background: var(--void); }
 .row { padding: 11px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
 .row dt { color: var(--mute); }
 .row dd { color: var(--ink-2); }
+.row-ref dd { display: inline-flex; align-items: center; gap: 4px; color: var(--clay); font-weight: 500; }
 .term-note { font-size: 13px; color: var(--mute); margin: -6px 0 16px; }
 
 /* pay with: two compact choices; the chosen one outlined in ink */
@@ -466,12 +467,13 @@ html, body, #root { background: var(--void); }
 .me-head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.04em; }
 .me-user { margin: 0; font-size: 14px; color: var(--mute); }
 .me-since { margin: 8px 0 0; padding: 5px 11px; border-radius: 99px; font-size: 12px; color: var(--ink-2); background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px var(--line); }
-.me-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.me-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .me-stats > * { display: grid; align-content: start; gap: 6px; padding: 14px; border-radius: 18px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--line); text-align: left; color: var(--ink); }
 .me-stats small { font-size: 12px; color: var(--mute); }
-.me-stats b { display: flex; align-items: center; gap: 6px; font-size: 20px; font-weight: 600; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+.me-stats b { display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 600; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
 .me-stats b .me-chev { margin-left: auto; color: var(--dim); }
 .me-spent { flex-wrap: wrap; }
+.me-spent { flex-direction: column; align-items: flex-start !important; gap: 2px !important; }
 .me-spent span { display: inline-flex; align-items: center; gap: 4px; }
 .me-sec { display: grid; gap: 10px; }
 .me-label { margin: 0; font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
@@ -480,11 +482,29 @@ html, body, #root { background: var(--void); }
 .me-app img { width: 28px; height: 28px; padding: 5px; border-radius: 50%; object-fit: contain; background: var(--app-c, #333); }
 .me-app-claude { --app-c: #d97757; } .me-app-chatgpt { --app-c: #3941ff; } .me-app-grok { --app-c: #2a2a2a; }
 .me-app em { font-style: normal; font-size: 12px; color: var(--mute); }
-.me-rows { gap: 0; border-radius: 18px; background: rgba(255, 255, 255, 0.035); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-.me-rows button { display: flex; align-items: center; gap: 8px; height: 54px; padding: 0 14px 0 16px; color: var(--ink); font-size: 15px; text-align: left; }
-.me-rows button + button { border-top: 1px solid var(--line); }
-.me-rows span { flex: 1; }
-.me-rows em { font-style: normal; font-size: 14px; color: var(--mute); }
-.me-rows em.mono { font-family: var(--mono); font-size: 13px; }
-.me-chev { color: var(--dim); flex: none; }
 .dock-me { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.25); }
+
+/* Invite card: the highlighted block on the dashboard. A slowly turning warm edge around a dark card. */
+@property --inv-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.invite { position: relative; padding: 1.5px; border-radius: 24px; overflow: hidden;
+  background: conic-gradient(from var(--inv-a), rgba(232, 135, 95, 0.95), rgba(122, 157, 255, 0.55), rgba(255, 255, 255, 0.12), rgba(232, 135, 95, 0.95));
+  animation: inv-spin 9s linear infinite; box-shadow: 0 18px 50px -24px rgba(232, 135, 95, 0.55); }
+@keyframes inv-spin { to { --inv-a: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .invite { animation: none; } }
+.invite-in { position: relative; display: grid; gap: 16px; padding: 16px; border-radius: 22.5px;
+  background: radial-gradient(120% 90% at 100% 0%, rgba(232, 135, 95, 0.2), transparent 55%), radial-gradient(90% 80% at 0% 100%, rgba(122, 157, 255, 0.12), transparent 60%), #111; }
+.invite-top { display: flex; align-items: center; gap: 12px; }
+.invite-top h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.03em; }
+.invite-top p { margin: 2px 0 0; font-size: 13.5px; color: var(--mute); }
+.invite-gift { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; flex: none; color: #fff;
+  background: linear-gradient(145deg, var(--clay), var(--clay-deep)); box-shadow: 0 8px 20px -8px rgba(232, 135, 95, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.invite-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-radius: 16px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px var(--line); }
+.invite-stats > div { display: grid; gap: 3px; padding: 11px 12px; text-align: center; }
+.invite-stats > div + div { border-left: 1px solid var(--line); }
+.invite-stats dt { font-size: 11.5px; color: var(--mute); }
+.invite-stats dd { display: inline-flex; justify-content: center; align-items: center; gap: 4px; margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.invite-actions { display: flex; gap: 8px; }
+.invite-share { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; border-radius: 15px; font-size: 15px; font-weight: 600;
+  color: #fff; background: linear-gradient(145deg, var(--clay), var(--clay-deep)); box-shadow: 0 10px 24px -12px rgba(232, 135, 95, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+.invite-copybtn { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: var(--ink); background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
+.invite-share:disabled, .invite-copybtn:disabled { opacity: 0.45; }

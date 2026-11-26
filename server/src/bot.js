@@ -90,6 +90,8 @@ export function createBot({ api, adminIds, getEngine, orders, prices, publicUrl 
         return toAdmins(`❓ <b>Stars payment for an unknown order</b>\n${e.amount} ⭐ from <a href="tg://user?id=${esc(e.userId)}">${esc(e.userId)}</a>\nOrder <code>${esc(e.orderId)}</code>\nCharge <code>${esc(e.chargeId)}</code>`);
       case 'unmatched':
         return toAdmins(`❓ <b>Payment with unknown memo</b>\nMemo <code>${esc(e.memo)}</code> · ${fromNano(e.valueNano)} GRAM\nFrom <code>${esc(e.source)}</code>\nTx <code>${esc(e.hash)}</code>`);
+      case 'referral_reward':
+        return /^\d+$/.test(String(e.referrer)) ? send(e.referrer, `🎉 A friend you invited just bought on Tessera. You earned <b>${e.gram}</b> GRAM credit. It comes off your next purchase.`, openApp) : undefined;
       case 'refunded':
         return toBuyer(o, isStars(o) ? `Your ${o.stars} Stars were refunded. Sorry it didn’t work out this time.` : 'Your order was refunded. Sorry it didn’t work out this time.');
       case 'renewal':
