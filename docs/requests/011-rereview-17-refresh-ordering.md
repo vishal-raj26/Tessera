@@ -1,6 +1,6 @@
 # 011: Re-review PR #17 (older refreshes can't restore dropped cards)
 
-**Status:** open
+**Status:** done (re-review clean 2026-11-03; merged into main as 67f4020)
 **Base:** `claude/supplier-pricing` @ latest (PR #17).
 
 ## Your finding, fixed
