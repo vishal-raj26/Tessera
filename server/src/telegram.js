@@ -22,10 +22,13 @@ export function telegramAuth(req, res, next) {
   const initData = req.get('x-telegram-init-data');
   if (!token) {
     req.tgUser = { id: req.get('x-dev-user') || 'dev' };
+    req.tgStart = req.get('x-dev-start') || null;
     return next();
   }
   const user = verifyInitData(initData, token);
   if (!user) return res.status(401).json({ error: 'Open this app from Telegram to continue.' });
   req.tgUser = user;
+  // the link's startapp value (e.g. a referral code), signed by Telegram along with the user
+  req.tgStart = new URLSearchParams(initData).get('start_param');
   next();
 }

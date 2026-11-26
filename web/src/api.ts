@@ -12,7 +12,13 @@ export interface Term {
   credit: number; codes: number; gram: number | null; stars: number | null; usd: number;
 }
 /** A price held for 20 minutes while the buyer reviews it. */
-export interface Quote extends Term { id: string; expiresAt: number; planId: PlanId; store: StoreId; region: string }
+export interface Quote extends Term {
+  id: string; expiresAt: number; planId: PlanId; store: StoreId; region: string;
+  /** referral credit this GRAM price can use (GRAM), and what's left to pay after it */
+  refCredit?: number; payGram?: number | null;
+}
+/** the buyer's referral card */
+export interface Referral { link: string | null; code: string; invited: number; bought: number; share: number; margin: number; earned: number; balance: number }
 export interface Plan {
   id: PlanId; name: string; label: string; inApp?: string; product: Product; term: string; blurb: string; available: boolean;
   terms?: Term[];
@@ -32,6 +38,7 @@ export interface Order {
   product: Product; store: Store;
   months: number; annual: boolean;
   credit: number; currency: string; method: PayMethod; stars: number | null; invoiceLink?: string | null; gram: number; amountNano: string; comment: string;
+  refCredit?: number; fullGram?: number;
   merchant: string | null; network: 'mainnet' | 'testnet'; receivedNano: string; paymentSeen: boolean; payload: string; status: OrderStatus; error: string | null;
   txHash: string | null; codes: Code[] | null; createdAt: number; expiresAt: number; deliveredAt?: number | null;
 }
@@ -52,6 +59,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   config: () => req<AppConfig>('/api/config'),
   me: () => req<{ joinedAt: number }>('/api/me'),
+  referral: () => req<Referral>('/api/referral'),
   regions: () => req<{ regions: Region[] }>('/api/regions').then((r) => r.regions),
   catalog: (region: string, store: StoreId = 'appstore') =>
     req<{ plans: Plan[]; store?: StoreId; pricesUpdating?: boolean; storesPriced?: Record<StoreId, boolean> }>(`/api/catalog?region=${region}&store=${store}`),

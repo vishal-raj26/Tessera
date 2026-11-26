@@ -61,6 +61,9 @@ export function openStore(file) {
   if (!cols.includes('months')) db.exec('ALTER TABLE orders ADD COLUMN months INTEGER NOT NULL DEFAULT 1');
   // where the credit is for: 'appstore' or 'play'
   if (!cols.includes('store')) db.exec("ALTER TABLE orders ADD COLUMN store TEXT NOT NULL DEFAULT 'appstore'");
+  // referral credit taken off a GRAM order, and the full price before it (what the referrer's reward is worked from)
+  if (!cols.includes('gross_nano')) db.exec('ALTER TABLE orders ADD COLUMN gross_nano TEXT');
+  if (!cols.includes('ref_credit_nano')) db.exec("ALTER TABLE orders ADD COLUMN ref_credit_nano TEXT NOT NULL DEFAULT '0'");
 
   const parse = (row) => row && {
     ...row,
@@ -71,10 +74,10 @@ export function openStore(file) {
   const orders = {
     insert(o) {
       db.prepare(`INSERT INTO orders (id, tg_user_id, wallet, region, plan_id, packages, face_value, currency, cost_usd,
-        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars, months, store)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        amount_nano, comment, status, created_at, expires_at, updated_at, method, stars, months, store, gross_nano, ref_credit_nano)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
         o.id, o.tgUserId ?? null, o.wallet ?? null, o.region, o.planId, JSON.stringify(o.packages), o.faceValue, o.currency,
-        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null, o.months ?? 1, o.store ?? 'appstore');
+        o.costUsd, o.amountNano, o.comment, 'awaiting_payment', o.createdAt, o.expiresAt, o.createdAt, o.method ?? 'gram', o.stars ?? null, o.months ?? 1, o.store ?? 'appstore', o.grossNano ?? null, o.refCreditNano ?? '0');
     },
     get: (id) => parse(db.prepare('SELECT * FROM orders WHERE id = ?').get(id)),
     byMemo: (memo) => parse(db.prepare('SELECT * FROM orders WHERE comment = ?').get(memo)),
@@ -102,6 +105,9 @@ export function openStore(file) {
     forOrder: (orderId) => db.prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY seen_at').all(orderId),
   };
 
+  orders.expiredWithCredit = (before) =>
+    db.prepare("SELECT * FROM orders WHERE status = 'expired' AND ref_credit_nano != '0' AND expires_at < ?").all(before).map(parse);
+
   orders.dueForReminder = (before) =>
     db.prepare("SELECT * FROM orders WHERE status = 'delivered' AND reminded_at IS NULL AND delivered_at IS NOT NULL AND delivered_at < ?").all(before).map(parse);
 
@@ -115,6 +121,7 @@ export function openStore(file) {
 }
 
 const store = openStore(process.env.DB_PATH || path.resolve('data/tessera.db'));
+export const db = store.db;
 export const orders = store.orders;
 export const payments = store.payments;
 export const settings = store.settings;
