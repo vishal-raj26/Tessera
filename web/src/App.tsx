@@ -15,7 +15,7 @@ import { Wallet } from './components/Wallet';
 import { RedeemCodes } from './components/RedeemCodes';
 import { rememberTiers } from './tiers';
 import { CountUp } from './components/CountUp';
-import { coverDays, latestCoverage } from './coverage';
+import { latestCoverage } from './coverage';
 import { pricesShown, renewStep, type RenewTarget } from './renew';
 import { shownBalance } from './balance';
 import { createMarkQueue } from './markQueue';
@@ -581,20 +581,15 @@ export default function App() {
     </button>
   ) : null;
 
-  // returning buyers: the plan they have, at the top of the home screen, with how long it has left
+  // returning buyers: the plan they have, as one quiet line at the top of the home screen
   const planCard = cover ? (() => {
-    const total = coverDays(cover.order.months ?? 1);
-    const left = Math.max(0, Math.min(1, cover.daysLeft / total));
-    const soon = cover.daysLeft <= 7;
+    const state = cover.daysLeft < 0 ? 'over' : cover.daysLeft <= 7 ? 'soon' : 'ok';
     return (
-      <motion.button className={`plan-card ${soon ? 'is-soon' : ''}`} onClick={renew} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-        <span className="pc-main">
-          <small>Your plan</small>
-          <b>{planName(cover.order.product?.name, { ...cover.order.plan, label: cover.order.plan.label ?? PLAN_LABEL[cover.order.plan.id] })}</b>
-          <span className="pc-days">{cover.daysLeft > 1 ? `${cover.daysLeft} days left` : cover.daysLeft === 1 ? 'Runs out tomorrow' : cover.daysLeft === 0 ? 'Runs out today' : `Ran out ${-cover.daysLeft} day${cover.daysLeft === -1 ? '' : 's'} ago`}</span>
-          <i className="pc-bar" aria-hidden="true"><i style={{ width: `${left * 100}%` }} /></i>
-        </span>
-        <span className="pc-renew">Renew</span>
+      <motion.button className={`plan-line ${state}`} onClick={renew} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
+        <i className="pl-dot" aria-hidden="true" />
+        <span className="pl-name">{planName(cover.order.product?.name, { ...cover.order.plan, label: cover.order.plan.label ?? PLAN_LABEL[cover.order.plan.id] })}</span>
+        <span className="pl-days">{cover.daysLeft > 1 ? `${cover.daysLeft} days left` : cover.daysLeft === 1 ? 'ends tomorrow' : cover.daysLeft === 0 ? 'ends today' : `ended ${-cover.daysLeft}d ago`}</span>
+        <span className="pl-renew">Renew</span>
       </motion.button>
     );
   })() : null;
