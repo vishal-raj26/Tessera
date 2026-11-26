@@ -27,11 +27,11 @@ import { Aurora, type AuroraInputs } from './components/Aurora';
 import { Tally } from './components/Tally';
 import { PULL } from './components/PlanCarousel';
 import { TopUp } from './components/TopUp';
-import { RegionSheet } from './components/Region';
+import { RegionPop, RegionSheet } from './components/Region';
 import { WalletSheet } from './components/WalletSheet';
 
 type View = 'home' | 'paying' | 'done' | 'wallet';
-type SheetName = null | 'review' | 'guide' | 'topup' | 'region' | 'wallet';
+type SheetName = null | 'review' | 'guide' | 'topup' | 'region';
 
 const rise = (delay = 0) => ({
   initial: { opacity: 0, y: 12 },
@@ -168,6 +168,8 @@ export default function App() {
   useEffect(() => {
     if (intro === false && config && !region && regions.length && view === 'home') setSheet((x) => x ?? 'region');
   }, [intro, config, region, regions.length, view]);
+  // the small popovers dropping from the top bar
+  const [pop, setPop] = useState<null | 'region' | 'wallet'>(null);
   const pickRegion = useCallback((code: string) => {
     setRegionState(code);
     tg.setValue('region', code);
@@ -612,10 +614,17 @@ export default function App() {
           balance={balance}
           onHome={view === 'done' ? home : view === 'wallet' ? toHome : view === 'home' && !browsing ? () => setBrowsing(true) : () => {}}
           onConnect={() => tonConnectUI.openModal()}
-          onWallet={() => { tg.select(); setSheet('wallet'); }}
+          onWallet={() => { tg.select(); setPop((x) => (x === 'wallet' ? null : 'wallet')); }}
           onTopUp={canTopUp ? openTopUp : undefined}
           region={region ? { code: region, flag: regions.find((r) => r.code === region)?.flag ?? '' } : null}
-          onRegion={() => { tg.select(); setSheet('region'); }}
+          onRegion={() => { tg.select(); setPop((x) => (x === 'region' ? null : 'region')); }}
+          onPopClose={() => setPop(null)}
+          pop={pop === 'region' ? { key: 'region', content: <RegionPop regions={regions} value={region} onPick={(c) => { pickRegion(c); setPop(null); }} /> }
+            : pop === 'wallet' && wallet ? { key: 'wallet', content: <WalletSheet address={wallet} balance={balance} canTopUp={canTopUp}
+                onTopUp={() => { setPop(null); openTopUp(); }}
+                onCopy={() => navigator.clipboard?.writeText(wallet).then(() => setToast('Address copied')).catch(() => {})}
+                onDisconnect={() => { setPop(null); tonConnectUI.disconnect(); }} /> }
+            : null}
         />
 
         <AnimatePresence mode="wait">
@@ -888,11 +897,6 @@ export default function App() {
         <RegionSheet regions={regions} value={region} onPick={(c) => { pickRegion(c); closeSheet(); }} />
       </Sheet>
 
-      <Sheet open={sheet === 'wallet'} onClose={closeSheet} label="Wallet">
-        {wallet && <WalletSheet address={wallet} balance={balance} canTopUp={canTopUp} onTopUp={openTopUp}
-          onCopy={() => navigator.clipboard?.writeText(wallet).then(() => setToast('Address copied')).catch(() => {})}
-          onDisconnect={() => { closeSheet(); tonConnectUI.disconnect(); }} />}
-      </Sheet>
 
       <Sheet open={sheet === 'topup'} onClose={closeSheet} label="Top up GRAM">
         <TopUp coins={coins} wallet={wallet} needGram={topUpNeed} onConnect={() => tonConnectUI.openModal()}

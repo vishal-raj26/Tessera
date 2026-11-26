@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import type { ReactNode } from 'react';
 import { GramIcon } from './GramIcon';
 
 interface Props {
@@ -15,6 +16,9 @@ interface Props {
   onRegion: () => void;
   /** the connected wallet's GRAM balance, when known */
   balance?: number | null;
+  /** a small popover dropping from the bar (the country list or the wallet), and closing it */
+  pop?: { key: string; content: ReactNode } | null;
+  onPopClose?: () => void;
 }
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
@@ -22,7 +26,7 @@ const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 
 
 /** The top bar. Left: the Tessera logo, home. Right, in one capsule: your store country (tap to change)
  *  and your wallet: its balance (tap for the wallet popup) with a + to top up, or Connect wallet. */
-export function Header({ wallet, onHome, onConnect, onWallet, onTopUp, region, onRegion, balance }: Props) {
+export function Header({ wallet, onHome, onConnect, onWallet, onTopUp, region, onRegion, balance, pop, onPopClose }: Props) {
   return (
     <motion.header className="bar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
       <button className="bar-logo" onClick={onHome} aria-label="Tessera, home">
@@ -50,6 +54,19 @@ export function Header({ wallet, onHome, onConnect, onWallet, onTopUp, region, o
           <button className="bar-connect" onClick={onConnect}>Connect wallet</button>
         )}
       </div>
+
+      <AnimatePresence>
+        {pop && (
+          <>
+            <motion.div key="veil" className="pop-veil" onClick={onPopClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+            <motion.div key={pop.key} className="pop" role="dialog"
+              initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -4 }}
+              transition={{ type: 'spring', stiffness: 520, damping: 36 }}>
+              {pop.content}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.header>
   );
 }
