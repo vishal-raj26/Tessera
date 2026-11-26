@@ -91,6 +91,27 @@ export function createRelay({
 
   const offered = () => (mode === 'off' ? [] : ROUTES.filter((r) => !r.needsKey || apiKey || mode === 'test'));
 
+  // each coin's logo, as Relay publishes it (token list for USDT/USDC/ETH/SOL, the chain icon for BTC);
+  // looked up once a day, empty if Relay can't be reached
+  let iconsAt = 0; let icons = {};
+  async function coinIcons() {
+    if (now() - iconsAt < 86400e3) return icons;
+    iconsAt = now();
+    const out = {};
+    try {
+      const list = await call('/currencies/v2', { method: 'POST', body: JSON.stringify({ chainIds: [1, 792703809], term: '', defaultList: true, limit: 40, verified: true }) });
+      const flat = (Array.isArray(list) ? list.flat(2) : list.currencies || []);
+      for (const [coin, chainId] of [['USDT', 1], ['USDC', 1], ['ETH', 1], ['SOL', 792703809]]) {
+        const t = flat.find((x) => x.symbol === coin && x.chainId === chainId && x.metadata?.logoURI);
+        if (t) out[coin] = t.metadata.logoURI;
+      }
+      const btc = (await chainList()).get(8253038);
+      if (btc?.iconUrl) out.BTC = btc.iconUrl;
+    } catch { iconsAt = 0; }
+    icons = out;
+    return icons;
+  }
+
   /** The coins and networks a buyer can pick from right now. */
   async function options() {
     const out = [];
@@ -161,5 +182,5 @@ export function createRelay({
     return readStatus(j.requests, since);
   }
 
-  return { mode, options, topUpAddress, estimate, status, hasKey: !!apiKey };
+  return { mode, options, coinIcons, topUpAddress, estimate, status, hasKey: !!apiKey };
 }

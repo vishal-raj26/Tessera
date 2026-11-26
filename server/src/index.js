@@ -254,10 +254,13 @@ const publicOrder = (o) => o && {
   expiresAt: o.expires_at,
 };
 
-// The coins a buyer can top up from, for the Top up GRAM sheet.
+// The coins a buyer can add GRAM from (with their logos), for the Add GRAM sheet.
 app.get('/api/relay/options', telegramAuth, async (req, res) => {
   if (RELAY_MODE === 'off') return res.json({ mode: 'off', options: [] });
-  try { res.json({ mode: RELAY_MODE, options: await relay.options() }); } catch { res.json({ mode: RELAY_MODE, options: [] }); }
+  try {
+    const [options, icons] = await Promise.all([relay.options(), relay.coinIcons().catch(() => ({}))]);
+    res.json({ mode: RELAY_MODE, options, icons });
+  } catch { res.json({ mode: RELAY_MODE, options: [], icons: {} }); }
 });
 
 // The buyer's own top-up address for one coin: anything sent there arrives as GRAM in their wallet. One per

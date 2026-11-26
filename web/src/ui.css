@@ -376,13 +376,13 @@ html, body, #root { background: var(--void); }
 .pop-note { display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px 12px 6px; font-size: 12px; color: var(--mute); }
 
 .pop-wallet { display: grid; gap: 6px; }
-.wcard { display: grid; gap: 14px; padding: 14px 14px 12px; border-radius: 18px; position: relative; overflow: hidden;
+.wcard { display: grid; gap: 6px; padding: 12px 12px 10px; border-radius: 16px; position: relative; overflow: hidden;
   background: radial-gradient(120% 90% at 100% 0%, rgba(48, 161, 245, 0.28), transparent 60%), linear-gradient(160deg, #23262c, #17181b);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .wcard-top { display: flex; align-items: center; gap: 9px; }
-.wcard-icon { width: 26px; height: 26px; border-radius: 8px; flex: none; }
+.wcard-icon { width: 20px; height: 20px; border-radius: 6px; flex: none; }
 .wcard-icon.blank { display: grid; place-items: center; background: rgba(48, 161, 245, 0.18); }
-.wcard-name { flex: 1; font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
+.wcard-name { flex: 1; font-size: 13.5px; font-weight: 500; color: var(--ink-2); }
 .wcard-net { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 99px; color: #30a1f5; background: rgba(48, 161, 245, 0.14); }
 .wcard-net.testnet { color: #f5b14a; background: rgba(245, 177, 74, 0.14); }
 .wcard-bal { display: grid; gap: 2px; }
@@ -412,3 +412,14 @@ html, body, #root { background: var(--void); }
 .pop-actions button { justify-content: center; }
 .pop-actions span { flex: none; }
 .pop-actions small { display: none; }
+
+/* wallet popover, compact: name, balance, address on three short lines */
+.wcard-top { gap: 7px; }
+.wcard-bal { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 24px; font-weight: 600; letter-spacing: -0.045em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.wcard-addr { font-size: 11.5px; }
+.pop-actions button { height: 44px; }
+/* the coins you can add GRAM from, overlapping */
+.coin-stack { display: inline-flex; align-items: center; padding-left: 4px; }
+.cs-coin { width: var(--cs); height: var(--cs); margin-left: calc(var(--cs) * -0.3); border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #2a2a2c; box-shadow: 0 0 0 2px #1c1c1e; font-size: calc(var(--cs) * 0.5); font-weight: 700; color: var(--ink); }
+.cs-coin img { width: 100%; height: 100%; object-fit: cover; }
+.topup-link b { color: var(--ink); font-weight: 600; }

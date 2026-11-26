@@ -61,7 +61,7 @@ export const api = {
   order: (id: string) => req<Order>(`/api/orders/${id}`),
   orders: () => req<{ orders: Order[] }>('/api/orders').then((r) => r.orders),
   balance: (address: string) => req<{ gram: number | null; network: string }>(`/api/balance?address=${encodeURIComponent(address)}`),
-  relayOptions: () => req<{ mode: 'live' | 'test' | 'off'; options: CoinRoute[] }>('/api/relay/options'),
+  relayOptions: () => req<{ mode: 'live' | 'test' | 'off'; options: CoinRoute[]; icons?: Record<string, string> }>('/api/relay/options'),
   topUp: (route: string, wallet: string, needNano?: string) =>
     req<TopUp>('/api/relay/topup', { method: 'POST', body: JSON.stringify({ route, wallet, needNano }) }),
   topUpStatus: (address: string | null, route: string, since: number) =>

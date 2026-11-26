@@ -27,6 +27,7 @@ import { Aurora, type AuroraInputs } from './components/Aurora';
 import { Tally } from './components/Tally';
 import { PULL } from './components/PlanCarousel';
 import { TopUp } from './components/TopUp';
+import { CoinStack } from './components/CoinStack';
 import { RegionPop, RegionSheet } from './components/Region';
 import { WalletSheet } from './components/WalletSheet';
 
@@ -328,13 +329,15 @@ export default function App() {
   const needsWallet = config?.paymentMode === 'chain' && !wallet && payWith === 'gram';
   // topping up GRAM from another chain (through Relay, into the buyer's own wallet): the coins on offer
   const [coins, setCoins] = useState<CoinRoute[]>([]);
+  const [coinIcons, setCoinIcons] = useState<Record<string, string>>({});
+  const coinList = useMemo(() => [...new Set(coins.map((c) => c.coin))], [coins]);
   const [topUpNeed, setTopUpNeed] = useState(0);
   const [topUpFrom, setTopUpFrom] = useState<'checkout' | 'bar'>('checkout');
   const canTopUp = coins.length > 0 && config?.relay !== 'off';
   const openTopUp = () => { tg.select(); setTopUpNeed(0); setTopUpFrom('bar'); setSheet('topup'); };
   useEffect(() => {
     if (!config?.relay || config.relay === 'off') return;
-    api.relayOptions().then((r) => setCoins(r.options)).catch(() => {});
+    api.relayOptions().then((r) => { setCoins(r.options); setCoinIcons(r.icons ?? {}); }).catch(() => {});
   }, [config]);
   // closing any sheet also abandons a quote still on its way, and drops the one shown
   const quoteSeq = useRef(0);
@@ -621,7 +624,7 @@ export default function App() {
           onPopClose={() => setPop(null)}
           popFrom={pop}
           pop={pop === 'region' ? { key: 'region', content: <RegionPop regions={regions} value={region} onPick={(c) => { pickRegion(c); setPop(null); }} /> }
-            : pop === 'wallet' && wallet ? { key: 'wallet', content: <WalletSheet address={wallet} balance={balance} network={config?.network} canTopUp={canTopUp}
+            : pop === 'wallet' && wallet ? { key: 'wallet', content: <WalletSheet address={wallet} balance={balance} network={config?.network} canTopUp={canTopUp} coins={coinList} icons={coinIcons}
                 onTopUp={() => { setPop(null); openTopUp(); }}
                 onCopy={() => navigator.clipboard?.writeText(wallet).then(() => setToast('Address copied')).catch(() => {})}
                 onDisconnect={() => { setPop(null); tonConnectUI.disconnect(); }} /> }
@@ -862,7 +865,8 @@ export default function App() {
                 setTopUpNeed(shown?.gram ? Math.max(0, shown.gram - (balance ?? 0)) : 0);
                 quoteSeq.current++; setTopUpFrom('checkout'); setSheet('topup');
               }}>
-                <span>{balance != null && shown?.gram != null && balance < shown.gram ? 'Not enough GRAM?' : 'No GRAM?'} Top up with {[...new Set(coins.map((c) => c.coin))].slice(0, 3).join(', ')}…</span>
+                <span>{balance != null && shown?.gram != null && balance < shown.gram ? 'Not enough GRAM?' : 'No GRAM?'} <b>Add GRAM</b></span>
+                <CoinStack coins={coinList} icons={coinIcons} size={18} />
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
               </button>
             )}
@@ -899,7 +903,7 @@ export default function App() {
       </Sheet>
 
 
-      <Sheet open={sheet === 'topup'} onClose={closeSheet} label="Top up GRAM">
+      <Sheet open={sheet === 'topup'} onClose={closeSheet} label="Add GRAM">
         <TopUp coins={coins} wallet={wallet} needGram={topUpNeed} onConnect={() => tonConnectUI.openModal()}
           onBack={topUpFrom === 'checkout' && view === 'home' && plan?.available ? () => openReview() : closeSheet} onToast={setToast} />
       </Sheet>
